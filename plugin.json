@@ -1,0 +1,10 @@
+{
+    "id": "com.nef734.wallpaperwidget",
+    "name": "Wallpaper Widget",
+    "description": "A widget to manage wallpapers.",
+    "version": "1.0",
+    "author": "nef734",
+    "icon": "",
+    "type": "widget",
+    "component": "./WallpaperWidget.qml"
+}
