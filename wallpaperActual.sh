@@ -5,18 +5,22 @@ dir="$1"
 mode="${2:-dark}" # Si no se especifica modo, usa "dark" por defecto
 
 if [ -z "$dir" ]; then
-    echo "Error: Faltan argumentos."
-    echo "Uso: $0 <ruta_wallpapers> [light|dark]"
+    echo "Error: Faltan argumentos." >&2
+    echo "Uso: $0 <ruta_wallpapers> [light|dark]" >&2
     exit 1
 fi
 
-target_dir="$dir/$mode"
-
-# Verificar si la carpeta del modo existe (si se ha indexado antes)
-if [ ! -d "$target_dir" ]; then
-    echo "La carpeta $target_dir no existe. ¿Has ejecutado el indexador?"
+if [ ! -d "$dir" ]; then
+    echo "La carpeta $dir no existe." >&2
     exit 1
 fi
 
-# Listar todos los archivos o enlaces simbólicos en esa carpeta
-find "$target_dir" -type l -o -type f
+# Definir patrón de búsqueda según el modo (escapando corchetes para find)
+if [ "$mode" = "light" ]; then
+    pattern='*\[l\]*'
+else
+    pattern='*\[d\]*'
+fi
+
+# Listar archivos que coincidan con la etiqueta en el nombre
+find "$dir" -maxdepth 1 -type f -iname "$pattern"

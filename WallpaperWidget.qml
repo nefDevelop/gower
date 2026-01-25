@@ -146,7 +146,7 @@ PluginComponent {
         stdout: StdioCollector {
             onStreamFinished: {
                 var data = text.trim();
-                // console.warn("WallpaperWidget: List Process Output (first 50 chars): " + data.substring(0, 50));
+                console.warn("WallpaperWidget: List Process Output (first 50 chars): " + data.substring(0, 50));
                 if (!data) return;
                 var lines = data.split('\n');
                 var list = [];
@@ -324,10 +324,13 @@ PluginComponent {
         property string text: ""
         signal clicked()
         property bool enabled: true
+        property color buttonColor: Theme.surfaceContainerHigh || "#333333"
+        property color hoverColor: Theme.surfaceContainerHighest || "#444444"
+        property color textColor: Theme.surfaceText || "#FFFFFF"
         
         implicitWidth: 100
         implicitHeight: 36
-        color: enabled ? (ma.containsMouse ? (Theme.surfaceContainerHighest || "#444444") : (Theme.surfaceContainerHigh || "#333333")) : (Theme.surfaceContainer || "#222222")
+        color: enabled ? (ma.containsMouse ? hoverColor : buttonColor) : (Theme.surfaceContainer || "#222222")
         radius: Theme.cornerRadius
         opacity: enabled ? 1.0 : 0.5
 
@@ -335,7 +338,7 @@ PluginComponent {
             anchors.centerIn: parent
             text: btn.text
             font.weight: Font.Medium
-            color: Theme.surfaceText || "#FFFFFF"
+            color: btn.textColor
         }
 
         MouseArea {
@@ -383,42 +386,34 @@ PluginComponent {
                 spacing: Theme.spacingM
 
                 // Sección Carpeta
-                Rectangle {
+                ColumnLayout {
                     Layout.fillWidth: true
-                    implicitHeight: folderCol.implicitHeight + Theme.spacingM * 2
-                    radius: Theme.cornerRadius
-                    color: Theme.surfaceContainerHigh
+                    spacing: Theme.spacingS
                     
-                    ColumnLayout {
-                        id: folderCol
-                        anchors.fill: parent
-                        anchors.margins: Theme.spacingM
+                    RowLayout {
                         spacing: Theme.spacingXS
+                        DankIcon { name: "folder"; size: Theme.iconSize - 4; color: Theme.primary || Theme.surfaceText || "#FFFFFF" }
+                        StyledText { text: "Carpeta de Fondos"; font.weight: Font.Medium; color: Theme.surfaceVariantText }
+                    }
+                    
+                    StyledTextField {
+                        id: folderField
+                        Layout.fillWidth: true
+                        placeholderText: "/ruta/a/tus/wallpapers"
                         
-                        RowLayout {
-                            DankIcon { name: "folder"; size: Theme.iconSize - 4; color: Theme.primary || Theme.surfaceText || "#FFFFFF" }
-                            StyledText { text: "Carpeta de Fondos"; font.weight: Font.Medium; color: Theme.surfaceVariantText }
+                        Binding {
+                            target: folderField
+                            property: "text"
+                            value: root.wallpaperFolder
+                            when: !root.isEditing
                         }
-                        
-                        StyledTextField {
-                            id: folderField
-                            Layout.fillWidth: true
-                            placeholderText: "/ruta/a/tus/wallpapers"
-                            
-                            Binding {
-                                target: folderField
-                                property: "text"
-                                value: root.wallpaperFolder
-                                when: !root.isEditing
-                            }
 
-                            onTextEdited: root.isEditing = true
-                            onEditingFinished: {
-                                root.wallpaperFolder = text;
-                                root.saveConfig();
-                                root.isEditing = false;
-                                root.refreshList();
-                            }
+                        onTextEdited: root.isEditing = true
+                        onEditingFinished: {
+                            root.wallpaperFolder = text;
+                            root.saveConfig();
+                            root.isEditing = false;
+                            root.refreshList();
                         }
                     }
                 }
@@ -432,7 +427,7 @@ PluginComponent {
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        radius: Theme.cornerRadius
+                        radius: 16
                         color: Theme.surfaceContainerHigh
                         clip: true
 
@@ -474,6 +469,9 @@ PluginComponent {
                         StyledButton {
                             text: "Borrar"
                             implicitWidth: 80
+                            buttonColor: "#3b0b0b"
+                            hoverColor: "#5e1212"
+                            textColor: "#ffcccc"
                             onClicked: root.executeCommand("delete")
                         }
                     }

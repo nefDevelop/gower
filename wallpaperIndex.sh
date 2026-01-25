@@ -20,30 +20,43 @@ else
     exit 1
 fi
 
-# 1. Crear directorios de clasificación
-mkdir -p "$dir/light" "$dir/dark"
+# Limpiar sistema antiguo de carpetas si existe
+if [ -d "$dir/light" ]; then rm -rf "$dir/light"; fi
+if [ -d "$dir/dark" ]; then rm -rf "$dir/dark"; fi
 
-# 2. Limpiar clasificaciones anteriores
-rm -f "$dir/light/"* "$dir/dark/"*
-
-# 3. Buscar imágenes (jpg, png, webp) ignorando las carpetas light/dark para evitar bucles
-find "$dir" -path "$dir/light" -prune -o -path "$dir/dark" -prune -o -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) -print | while read -r img; do
+# Buscar imágenes en el directorio raíz
+find "$dir" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) | while read -r img; do
     
-    # 4. Analizar brillo con ImageMagick (0.0 = negro, 1.0 = blanco)
-    # Redimensionamos a 1x1 pixel y obtenemos la media de gris
+    filename=$(basename "$img")
+    
+    # Analizar brillo
     brightness=$($IM_CMD "$img" -colorspace gray -resize 1x1 -format "%[fx:mean]" info:)
     
-    # Usar awk para comparar decimales (si brillo > 0.5 es light)
-    type=$(echo "$brightness" | awk '{if ($1 > 0.5) print "light"; else print "dark"}')
+    # Determinar etiqueta
+    is_light=$(echo "$brightness" | awk '{if ($1 > 0.5) print 1; else print 0}')
     
-    name=$(basename "$img")
+    if [ "$is_light" -eq 1 ]; then
+        tag="[l]"
+        wrong_tag="[d]"
+    else
+        tag="[d]"
+        wrong_tag="[l]"
+    fi
     
-    # 5. Crear enlace simbólico según el tipo detectado
-    if [ "$type" = "light" ]; then
-        ln -sf "$img" "$dir/light/$name"
-        echo "-> Light: $name"
-    elif [ "$type" = "dark" ]; then
-        ln -sf "$img" "$dir/dark/$name"
-        echo "-> Dark:  $name"
+    # Verificar si necesita renombrado (falta etiqueta correcta o tiene la incorrecta)
+    if ! echo "$filename" | grep -F -q "$tag" || echo "$filename" | grep -F -q "$wrong_tag"; then
+        extension="${filename##*.}"
+        filename_no_ext="${filename%.*}"
+        
+        # Limpiar nombre de etiquetas anteriores
+        clean_name=$(echo "$filename_no_ext" | sed 's/ *\[[ld]\] *//g' | sed 's/^ *//;s/ *$//')
+        
+        if [ -z "$clean_name" ]; then clean_name="wallpaper"; fi
+        
+        new_name="${clean_name} ${tag}.${extension}"
+        
+        # Renombrar
+        mv "$img" "$dir/$new_name"
+        echo "Renombrado: $filename -> $new_name"
     fi
 done
