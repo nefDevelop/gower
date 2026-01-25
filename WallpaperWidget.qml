@@ -65,9 +65,6 @@ PluginComponent {
         console.warn("WallpaperWidget: List Script: " + root.listScriptPath);
         // Retrasamos un poco el inicio para asegurar que todo esté cargado
         startupTimer.start();
-
-        // Intentar iniciar el daemon (awww-daemon) si no está corriendo
-        daemonProcess.running = true;
     }
 
     Timer {
@@ -111,20 +108,12 @@ PluginComponent {
         command: []
     }
 
-    // Proceso para iniciar el daemon
-    Process {
-        id: daemonProcess
-        command: ["bash", "-l", "-c", "awww-daemon >/dev/null &"]
-        onStarted: console.warn("WallpaperWidget: Starting awww-daemon...")
-        stderr: StdioCollector { onStreamFinished: if(text.trim()) console.warn("WallpaperWidget: awww-daemon error: " + text) }
-    }
-
     // Proceso para ejecutar awww
     Process {
         id: awwwProcess
         command: [] 
         onStarted: console.warn("WallpaperWidget: Setting wallpaper...")
-        stderr: StdioCollector { onStreamFinished: if(text.trim()) console.warn("WallpaperWidget: awww error: " + text) }
+        stderr: StdioCollector { onStreamFinished: if(text.trim()) console.warn("WallpaperWidget: Set wallpaper error: " + text) }
         onExited: (code) => {
             root.isLoading = false;
             if (code === 0) console.warn("WallpaperWidget: Wallpaper set successfully.");
@@ -238,7 +227,7 @@ PluginComponent {
             if (root.wallpaperList.length === 0) return;
             root.currentIndex = (root.currentIndex + 1) % root.wallpaperList.length;
             root.updateWallpapers();
-            awwwProcess.command = ["bash", "-l", "-c", "awww img '" + root.currentWallpaper.replace(/'/g, "'\\''") + "'"];
+            awwwProcess.command = ["dms", "ipc", "call", "wallpaper", "set", root.currentWallpaper];
             awwwProcess.running = true;
         } else if (cmd === "set-config") {
             try {
@@ -266,7 +255,7 @@ PluginComponent {
             }
         } else if (cmd === "set") {
             if (root.currentWallpaper) {
-                awwwProcess.command = ["bash", "-l", "-c", "awww img '" + root.currentWallpaper.replace(/'/g, "'\\''") + "'"];
+                awwwProcess.command = ["dms", "ipc", "call", "wallpaper", "set", root.currentWallpaper];
                 awwwProcess.running = true;
             }
         }
