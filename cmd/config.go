@@ -477,7 +477,7 @@ var configInitCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(configCmd) // <-- Adjuntar al comando raíz
+	rootCmd.AddCommand(configCmd)
 
 	configCmd.AddCommand(configInitCmd)
 	configCmd.AddCommand(configShowCmd)
