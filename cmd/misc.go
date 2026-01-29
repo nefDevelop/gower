@@ -6,32 +6,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var favoritesCmd = &cobra.Command{
-	Use:   "favorites",
-	Short: "Muestra tus wallpapers favoritos",
+var miscCmd = &cobra.Command{
+	Use:   "misc",
+	Short: "Miscellaneous utilities",
+	Long:  `This command provides various utility functions for gower.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("Ejecutando el comando 'favorites'...")
-	},
-}
-
-var daemonCmd = &cobra.Command{
-	Use:   "daemon",
-	Short: "Inicia el demonio en segundo plano",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("Ejecutando el comando 'daemon'...")
-	},
-}
-
-var interactiveCmd = &cobra.Command{
-	Use:   "interactive",
-	Short: "Inicia el modo interactivo",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("Ejecutando el comando 'interactive'...")
+		fmt.Println("Comando 'misc' ejecutado. La funcionalidad aún no está implementada.")
 	},
 }
 
 func init() {
-	rootCmd.AddCommand(favoritesCmd)
-	rootCmd.AddCommand(daemonCmd)
-	rootCmd.AddCommand(interactiveCmd)
+	rootCmd.AddCommand(miscCmd)
 }

@@ -3,9 +3,9 @@ package cmd
 
 import (
 	"fmt"
-	// "os"
+	"os"
 
-	// "gower/internal/core"
+	"gower/internal/core"
 
 	"github.com/spf13/cobra"
 )
@@ -27,37 +27,26 @@ var feedCmd = &cobra.Command{
 	Long:  `View, search and manage your wallpaper history feed`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("Ejecutando el comando 'feed'...")
+		fmt.Println("Considera usar 'gower feed show --help' o 'gower feed search --help'")
 	},
 }
 
 func init() {
-	/*
-		// Variables locales si se prefiere, o usar las globales definidas arriba
-		page    int
-		limit   int
-		search  string
-		theme   string
-		purge   bool
-		stats   bool
-		random  bool
-		noColor bool
-	*/
-
 	// Subcomando: feed show
 	showCmd := &cobra.Command{
 		Use:   "show",
 		Short: "Show feed history",
 		Run: func(cmd *cobra.Command, args []string) {
-			/* controller := core.NewController()
+			controller := core.NewController()
 
 			// Mostrar estadísticas si se solicita
-			if stats {
+			if feedStats {
 				displayStats(controller)
 				return
 			}
 
 			// Purgar si se solicita
-			if purge {
+			if feedPurge {
 				if err := controller.PurgeFeed(); err != nil {
 					fmt.Printf("Error purging feed: %v\n", err)
 					os.Exit(1)
@@ -67,33 +56,29 @@ func init() {
 			}
 
 			// Obtener aleatorio si se solicita
-			if random {
-				wallpaper, err := controller.GetRandomFromFeed(theme)
+			if feedRandom {
+				wallpaper, err := controller.GetRandomFromFeed(feedTheme)
 				if err != nil {
 					fmt.Printf("Error getting random wallpaper: %v\n", err)
 					os.Exit(1)
 				}
-				displayWallpaper(wallpaper, noColor)
+				displayWallpaper(wallpaper, feedNoColor)
 				return
 			}
 
 			// Mostrar feed normal
-			wallpapers, err := controller.GetFeed(page, limit, search, theme)
+			wallpapers, err := controller.GetFeed(feedPage, feedLimit, feedSearch, feedTheme)
 			if err != nil {
 				fmt.Printf("Error getting feed: %v\n", err)
 				os.Exit(1)
 			}
 
-			// Mostrar según formato
-			if jsonOutput {
+			// Manejar salida JSON/CSV/Table (se asumen flags globales)
+			if config.JSONOutput { // Usando config.JSONOutput de root.go
 				displayJSON(wallpapers)
-			} else if csvOutput {
-				displayCSV(wallpapers)
-			} else {
-				displayTable(wallpapers, noColor)
+			} else { // Por ahora solo displayTable, se pueden añadir más tarde
+				displayTable(wallpapers, feedNoColor)
 			}
-			*/
-			fmt.Println("Ejecutando 'feed show' (Lógica pendiente de internal/core)...")
 		},
 	}
 
@@ -112,21 +97,19 @@ func init() {
 		Short: "Search in feed",
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			/* controller := core.NewController()
+			controller := core.NewController()
 
-			wallpapers, err := controller.SearchFeed(args[0], page, limit, theme)
+			wallpapers, err := controller.SearchFeed(args[0], feedPage, feedLimit, feedTheme)
 			if err != nil {
 				fmt.Printf("Error searching feed: %v\n", err)
 				os.Exit(1)
 			}
 
-			if jsonOutput {
+			if config.JSONOutput { // Usando config.JSONOutput de root.go
 				displayJSON(wallpapers)
 			} else {
-				displayTable(wallpapers, noColor)
+				displayTable(wallpapers, feedNoColor)
 			}
-			*/
-			fmt.Printf("Buscando en feed: %s\n", args[0])
 		},
 	}
 
@@ -143,14 +126,16 @@ func init() {
 }
 
 // Funciones helper para display
-/* func displayStats(controller *core.Controller) {
+func displayStats(controller *core.Controller) {
 	stats, err := controller.GetFeedStats()
 	if err != nil {
 		fmt.Printf("Error getting stats: %v\n", err)
 		os.Exit(1)
 	}
 
-	if jsonOutput {
+	if config.JSONOutput {
+		// Asumiendo que Stats también puede ser serializado a JSON
+		// y que displayJSON puede manejar diferentes tipos
 		displayJSON(stats)
 	} else {
 		fmt.Printf("Feed Statistics:\n")
@@ -158,6 +143,23 @@ func init() {
 		fmt.Printf("  Dark theme: %d\n", stats.DarkCount)
 		fmt.Printf("  Light theme: %d\n", stats.LightCount)
 		fmt.Printf("  Favorites: %d\n", stats.FavoritesCount)
-		fmt.Printf("  Last added: %s\n", stats.LastAdded.Format("2006-01-02 15:04:05"))
+		// Necesitaríamos saber el formato exacto de LastAdded para mostrarlo
+		// fmt.Printf("  Last added: %s\n", stats.LastAdded.Format("2006-01-02 15:04:05"))
 	}
-} */
+}
+
+func displayWallpaper(wallpaper interface{}, noColor bool) {
+	// Placeholder: Implementar lógica de visualización del wallpaper
+	fmt.Printf("Displaying wallpaper: %+v (Color disabled: %t)\n", wallpaper, noColor)
+}
+
+func displayJSON(data interface{}) {
+	// Placeholder: Implementar lógica de visualización JSON
+	fmt.Printf("Displaying JSON: %+v\n", data)
+}
+
+func displayTable(wallpapers interface{}, noColor bool) {
+	// Placeholder: Implementar lógica de visualización de tabla
+	fmt.Printf("Displaying table: %+v (Color disabled: %t)\n", wallpapers, noColor)
+}
+

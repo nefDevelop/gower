@@ -97,7 +97,7 @@ func init() {
 	configCmd.Flags().BoolVar(&configPath, "path", false,
 		"show configuration file path")
 	configCmd.Flags().BoolVar(&configInit, "init", false,
-		"interactive configuration initialization")
+		"configuration initialization")
 	configCmd.Flags().StringVar(&configImport, "import", "",
 		"import configuration from file")
 	configCmd.Flags().StringVar(&configExport, "export", "",
