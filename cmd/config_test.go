@@ -1,36 +1,11 @@
 package cmd
 
 import (
-	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/spf13/cobra"
 )
-
-// executeCommand ejecuta un comando de Cobra y captura su salida
-func executeCommand(root *cobra.Command, args ...string) (string, error) {
-	buf := new(bytes.Buffer)
-	root.SetOut(buf)
-	root.SetErr(buf)
-	root.SetArgs(args)
-	err := root.Execute()
-	return buf.String(), err
-}
-
-// setupTestHome crea un directorio temporal y configura la variable de entorno HOME
-func setupTestHome(t *testing.T) string {
-	tmpDir, err := os.MkdirTemp("", "gower-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("HOME", tmpDir)
-	// Para compatibilidad con Windows
-	t.Setenv("USERPROFILE", tmpDir)
-	return tmpDir
-}
 
 func TestConfigInit(t *testing.T) {
 	tmpDir := setupTestHome(t)

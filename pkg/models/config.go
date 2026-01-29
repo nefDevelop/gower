@@ -1,5 +1,97 @@
 package models
 
-import (
-	// "github.com/spf13/cobra"
-)
+// Config structures for config.json
+type Config struct {
+	Providers        ProvidersConfig         `json:"providers"`
+	GenericProviders []GenericProviderConfig `json:"generic_providers"`
+	Search           SearchConfig            `json:"search"`
+	Behavior         BehaviorConfig          `json:"behavior"`
+	Power            PowerConfig             `json:"power"`
+	Paths            PathsConfig             `json:"paths"`
+	UI               UIConfig                `json:"ui"`
+	Limits           LimitsConfig            `json:"limits"`
+}
+
+type GenericProviderConfig struct {
+	Name            string          `json:"name"`
+	Enabled         bool            `json:"enabled"`
+	APIURL          string          `json:"api_url"`
+	APIKey          string          `json:"api_key,omitempty"`
+	ResponseMapping ResponseMapping `json:"response_mapping"`
+}
+
+type ResponseMapping struct {
+	ResultsPath   string `json:"results_path"`
+	IDPath        string `json:"id_path"`
+	URLPath       string `json:"url_path"`
+	DimensionPath string `json:"dimension_path,omitempty"`
+}
+
+type ProvidersConfig struct {
+	Wallhaven WallhavenConfig `json:"wallhaven"`
+	Reddit    RedditConfig    `json:"reddit"`
+	Nasa      NasaConfig      `json:"nasa"`
+}
+
+type WallhavenConfig struct {
+	Enabled   bool            `json:"enabled"`
+	APIKey    string          `json:"api_key"`
+	RateLimit RateLimitConfig `json:"ratelimit"`
+}
+
+type RateLimitConfig struct {
+	Requests   int `json:"requests"`
+	PerSeconds int `json:"per_seconds"`
+}
+
+type RedditConfig struct {
+	Enabled   bool   `json:"enabled"`
+	Subreddit string `json:"subreddit"`
+	Sort      string `json:"sort"`
+	Limit     int    `json:"limit"`
+}
+
+type NasaConfig struct {
+	Enabled bool   `json:"enabled"`
+	APIKey  string `json:"api_key"`
+}
+
+type SearchConfig struct {
+	MinWidth    int     `json:"min_width"`
+	MinHeight   int     `json:"min_height"`
+	AspectRatio string  `json:"aspect_ratio"`
+	Tolerance   float64 `json:"tolerance"`
+}
+
+type BehaviorConfig struct {
+	Theme            string `json:"theme"`
+	ChangeInterval   int    `json:"change_interval"`
+	MultiMonitor     string `json:"multi_monitor"`
+	WallpaperCommand string `json:"wallpaper_command"`
+	AutoDownload     bool   `json:"auto_download"`
+	RespectDarkMode  bool   `json:"respect_dark_mode"`
+}
+
+type PowerConfig struct {
+	BatteryMultiplier   int  `json:"battery_multiplier"`
+	PauseOnLowBattery   bool `json:"pause_on_low_battery"`
+	LowBatteryThreshold int  `json:"low_battery_threshold"`
+}
+
+type PathsConfig struct {
+	Wallpapers   string `json:"wallpapers"`
+	UseSystemDir bool   `json:"use_system_dir"`
+}
+
+type UIConfig struct {
+	ShowColors   bool `json:"show_colors"`
+	ItemsPerPage int  `json:"items_per_page"`
+	ImagePreview bool `json:"image_preview"`
+}
+
+type LimitsConfig struct {
+	FeedSoftLimit     int `json:"feed_soft_limit"`
+	FeedHardLimit     int `json:"feed_hard_limit"`
+	RateLimitRequests int `json:"rate_limit_requests"`
+	RateLimitPeriod   int `json:"rate_limit_period"`
+}

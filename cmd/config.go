@@ -11,89 +11,10 @@ import (
 	"strings"
 
 	"gower/internal/utils"
+	"gower/pkg/models"
 
 	"github.com/spf13/cobra"
 )
-
-// Config structures for config.json
-type Config struct {
-	Providers ProvidersConfig `json:"providers"`
-	Search    SearchConfig    `json:"search"`
-	Behavior  BehaviorConfig  `json:"behavior"`
-	Power     PowerConfig     `json:"power"`
-	Paths     PathsConfig     `json:"paths"`
-	UI        UIConfig        `json:"ui"`
-	Limits    LimitsConfig    `json:"limits"`
-}
-
-type ProvidersConfig struct {
-	Wallhaven WallhavenConfig `json:"wallhaven"`
-	Reddit    RedditConfig    `json:"reddit"`
-	Nasa      NasaConfig      `json:"nasa"`
-}
-
-type WallhavenConfig struct {
-	Enabled   bool            `json:"enabled"`
-	APIKey    string          `json:"api_key"`
-	RateLimit RateLimitConfig `json:"ratelimit"`
-}
-
-type RateLimitConfig struct {
-	Requests   int `json:"requests"`
-	PerSeconds int `json:"per_seconds"`
-}
-
-type RedditConfig struct {
-	Enabled   bool   `json:"enabled"`
-	Subreddit string `json:"subreddit"`
-	Sort      string `json:"sort"`
-	Limit     int    `json:"limit"`
-}
-
-type NasaConfig struct {
-	Enabled bool   `json:"enabled"`
-	APIKey  string `json:"api_key"`
-}
-
-type SearchConfig struct {
-	MinWidth    int     `json:"min_width"`
-	MinHeight   int     `json:"min_height"`
-	AspectRatio string  `json:"aspect_ratio"`
-	Tolerance   float64 `json:"tolerance"`
-}
-
-type BehaviorConfig struct {
-	Theme            string `json:"theme"`
-	ChangeInterval   int    `json:"change_interval"`
-	MultiMonitor     string `json:"multi_monitor"`
-	WallpaperCommand string `json:"wallpaper_command"`
-	AutoDownload     bool   `json:"auto_download"`
-	RespectDarkMode  bool   `json:"respect_dark_mode"`
-}
-
-type PowerConfig struct {
-	BatteryMultiplier   int  `json:"battery_multiplier"`
-	PauseOnLowBattery   bool `json:"pause_on_low_battery"`
-	LowBatteryThreshold int  `json:"low_battery_threshold"`
-}
-
-type PathsConfig struct {
-	Wallpapers   string `json:"wallpapers"`
-	UseSystemDir bool   `json:"use_system_dir"`
-}
-
-type UIConfig struct {
-	ShowColors   bool `json:"show_colors"`
-	ItemsPerPage int  `json:"items_per_page"`
-	ImagePreview bool `json:"image_preview"`
-}
-
-type LimitsConfig struct {
-	FeedSoftLimit     int `json:"feed_soft_limit"`
-	FeedHardLimit     int `json:"feed_hard_limit"`
-	RateLimitRequests int `json:"rate_limit_requests"`
-	RateLimitPeriod   int `json:"rate_limit_period"`
-}
 
 var configCmd = &cobra.Command{
 	Use:   "config",
@@ -218,7 +139,7 @@ var configImportCmd = &cobra.Command{
 			return
 		}
 
-		var tmp Config
+		var tmp models.Config
 		if err := json.Unmarshal(data, &tmp); err != nil {
 			fmt.Printf("Archivo de configuración inválido: %v\n", err)
 			return
@@ -255,12 +176,12 @@ func getConfigPath() (string, error) {
 	return filepath.Join(homeDir, ".gower", "config.json"), nil
 }
 
-func loadConfig() (*Config, error) {
+func loadConfig() (*models.Config, error) {
 	path, err := getConfigPath()
 	if err != nil {
 		return nil, err
 	}
-	var cfg Config
+	var cfg models.Config
 	manager := utils.NewSecureJSONManager()
 	if err := manager.ReadJSON(path, &cfg); err != nil {
 		return nil, err
@@ -268,7 +189,7 @@ func loadConfig() (*Config, error) {
 	return &cfg, nil
 }
 
-func saveConfig(cfg *Config) error {
+func saveConfig(cfg *models.Config) error {
 	path, err := getConfigPath()
 	if err != nil {
 		return err
@@ -277,44 +198,45 @@ func saveConfig(cfg *Config) error {
 	return manager.WriteJSON(path, cfg)
 }
 
-func getDefaultConfig() Config {
-	return Config{
-		Providers: ProvidersConfig{
-			Wallhaven: WallhavenConfig{
+func getDefaultConfig() models.Config {
+	return models.Config{
+		Providers: models.ProvidersConfig{
+			Wallhaven: models.WallhavenConfig{
 				Enabled:   true,
 				APIKey:    "",
-				RateLimit: RateLimitConfig{Requests: 45, PerSeconds: 60},
+				RateLimit: models.RateLimitConfig{Requests: 45, PerSeconds: 60},
 			},
-			Reddit: RedditConfig{
+			Reddit: models.RedditConfig{
 				Enabled: true, Subreddit: "wallpapers", Sort: "top", Limit: 100,
 			},
-			Nasa: NasaConfig{
+			Nasa: models.NasaConfig{
 				Enabled: false, APIKey: "DEMO_KEY",
 			},
 		},
-		Search: SearchConfig{
+		GenericProviders: []models.GenericProviderConfig{},
+		Search: models.SearchConfig{
 			MinWidth: 1920, MinHeight: 1080, AspectRatio: "16:9", Tolerance: 0.05,
 		},
-		Behavior: BehaviorConfig{
+		Behavior: models.BehaviorConfig{
 			Theme: "dark", ChangeInterval: 30, MultiMonitor: "clone",
 			WallpaperCommand: "", AutoDownload: true, RespectDarkMode: true,
 		},
-		Power: PowerConfig{
+		Power: models.PowerConfig{
 			BatteryMultiplier: 4, PauseOnLowBattery: true, LowBatteryThreshold: 20,
 		},
-		Paths: PathsConfig{
+		Paths: models.PathsConfig{
 			Wallpapers: "", UseSystemDir: true,
 		},
-		UI: UIConfig{
+		UI: models.UIConfig{
 			ShowColors: true, ItemsPerPage: 10, ImagePreview: true,
 		},
-		Limits: LimitsConfig{
+		Limits: models.LimitsConfig{
 			FeedSoftLimit: 400, FeedHardLimit: 2000, RateLimitRequests: 45, RateLimitPeriod: 60,
 		},
 	}
 }
 
-func setConfigValue(cfg *Config, path string, value string) error {
+func setConfigValue(cfg *models.Config, path string, value string) error {
 	v := reflect.ValueOf(cfg).Elem()
 	parts := strings.Split(path, ".")
 
@@ -370,7 +292,7 @@ func setConfigValue(cfg *Config, path string, value string) error {
 	return nil
 }
 
-func getConfigValue(cfg *Config, path string) (string, error) {
+func getConfigValue(cfg *models.Config, path string) (string, error) {
 	v := reflect.ValueOf(cfg).Elem()
 	parts := strings.Split(path, ".")
 

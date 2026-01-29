@@ -2,85 +2,193 @@ package core
 
 import (
 	"fmt"
-	"gower/pkg/models" // Assuming Wallpaper and FeedStats are in models
+	"gower/internal/providers"
+	"gower/internal/utils"
+	"gower/pkg/models"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
 )
 
-// Controller manages the application's core logic, coordinating
-// between different managers (file, provider, storage, etc.).
+// Controller is the main controller of the application.
 type Controller struct {
-	// Add references to other managers here as they are implemented
-	// fileManager     *FileManager
-	// providerManager *ProviderManager
-	// storageManager  *StorageManager
-	// wallpaperChanger *WallpaperChanger
+	ProviderManager *ProviderManager
+	feedManager     *utils.SecureJSONManager // Manager for feed.json
 }
 
-// NewController creates and returns a new instance of Controller.
-func NewController() *Controller {
+// NewController creates a new Controller.
+func NewController(config *models.Config) *Controller {
+	providerManager := NewProviderManager()
+
+	// Register native providers
+	providerManager.RegisterProvider(&providers.WallhavenProvider{})
+	// Register other native providers here...
+
+	// Register generic providers
+	for _, providerConfig := range config.GenericProviders {
+		if providerConfig.Enabled {
+			provider := &providers.GenericProvider{Config: providerConfig}
+			providerManager.RegisterProvider(provider)
+		}
+	}
+
 	return &Controller{
-		// Initialize managers here
-		// fileManager:     NewFileManager(),
-		// providerManager: NewProviderManager(),
-		// storageManager:  NewStorageManager(),
-		// wallpaperChanger: NewWallpaperChanger(),
+		ProviderManager: providerManager,
+		feedManager:     utils.NewSecureJSONManager(),
 	}
 }
 
-// PurgeFeed is a placeholder for the feed purging logic.
+func (c *Controller) getFeedPath() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(homeDir, ".gower", "data", "feed.json"), nil
+}
+
+func (c *Controller) loadFeed() ([]models.Wallpaper, error) {
+	path, err := c.getFeedPath()
+	if err != nil {
+		return nil, err
+	}
+
+	var feed []models.Wallpaper
+	// If file doesn't exist, return empty list without error
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return []models.Wallpaper{}, nil
+	}
+
+	if err := c.feedManager.ReadJSON(path, &feed); err != nil {
+		return nil, err
+	}
+	return feed, nil
+}
+
+func (c *Controller) saveFeed(feed []models.Wallpaper) error {
+	path, err := c.getFeedPath()
+	if err != nil {
+		return err
+	}
+	return c.feedManager.WriteJSON(path, feed)
+}
+
+// GetFeed retrieves wallpapers from the feed with pagination and optional search/theme filters.
+func (c *Controller) GetFeed(page, limit int, search, theme string) ([]models.Wallpaper, error) {
+	feed, err := c.loadFeed()
+	if err != nil {
+		return nil, err
+	}
+
+	var filteredFeed []models.Wallpaper
+	for _, wp := range feed {
+		matchesSearch := true
+		if search != "" && !strings.Contains(strings.ToLower(wp.ID), strings.ToLower(search)) &&
+			!strings.Contains(strings.ToLower(wp.Source), strings.ToLower(search)) {
+			matchesSearch = false
+		}
+
+		matchesTheme := true
+		if theme != "" && strings.ToLower(wp.Theme) != strings.ToLower(theme) {
+			matchesTheme = false
+		}
+
+		if matchesSearch && matchesTheme {
+			filteredFeed = append(filteredFeed, wp)
+		}
+	}
+
+	// Apply pagination
+	start := (page - 1) * limit
+	end := start + limit
+
+	if start >= len(filteredFeed) {
+		return []models.Wallpaper{}, nil
+	}
+	if end > len(filteredFeed) {
+		end = len(filteredFeed)
+	}
+
+	return filteredFeed[start:end], nil
+}
+
+// SearchFeed searches the feed for wallpapers matching a query.
+func (c *Controller) SearchFeed(query string, page, limit int, theme string) ([]models.Wallpaper, error) {
+	// Reuse GetFeed with the search parameter
+	return c.GetFeed(page, limit, query, theme)
+}
+
+// PurgeFeed clears all entries from the feed.
 func (c *Controller) PurgeFeed() error {
-	fmt.Println("CORE: Purging feed (placeholder)...")
-	return nil
+	return c.saveFeed([]models.Wallpaper{})
 }
 
-// GetRandomFromFeed is a placeholder for getting a random wallpaper from the feed.
-func (c *Controller) GetRandomFromFeed(theme string) (*models.Wallpaper, error) {
-	fmt.Printf("CORE: Getting random wallpaper from feed (theme: %s) (placeholder)...\n", theme)
-	// Return a dummy wallpaper for now
-	return &models.Wallpaper{
-			ID:        "dummy_random",
-			URL:       "https://example.com/random_wallpaper.jpg",
-			Path:      "/tmp/random_wallpaper.jpg",
-			Purity:    "sfw",
-			Category:  "general",
-			Dimension: "1920x1080",
-			Ratio:     "16:9",
-			Source:    "placeholder",
-			Theme:     theme,
-		},
-		nil
+// GetRandomFromFeed retrieves a random wallpaper from the feed, optionally filtered by theme.
+func (c *Controller) GetRandomFromFeed(theme string) (models.Wallpaper, error) {
+	feed, err := c.loadFeed()
+	if err != nil {
+		return models.Wallpaper{}, err
+	}
+
+	var filteredFeed []models.Wallpaper
+	for _, wp := range feed {
+		if theme == "" || strings.ToLower(wp.Theme) == strings.ToLower(theme) {
+			filteredFeed = append(filteredFeed, wp)
+		}
+	}
+
+	if len(filteredFeed) == 0 {
+		return models.Wallpaper{}, fmt.Errorf("no wallpapers found in feed (with given theme)")
+	}
+
+	// TODO: Use a proper random number generator
+	randomIndex := time.Now().Nanosecond() % len(filteredFeed)
+	return filteredFeed[randomIndex], nil
 }
 
-// GetFeed is a placeholder for retrieving the wallpaper feed.
-func (c *Controller) GetFeed(page, limit int, search, theme string) ([]*models.Wallpaper, error) {
-	fmt.Printf("CORE: Getting feed (page: %d, limit: %d, search: %s, theme: %s) (placeholder)...\n", page, limit, search, theme)
-	// Return some dummy wallpapers for now
-	return []*models.Wallpaper{
-			{ID: "dummy_feed_1", URL: "https://example.com/feed_1.jpg", Path: "/tmp/feed_1.jpg"},
-			{ID: "dummy_feed_2", URL: "https://example.com/feed_2.jpg", Path: "/tmp/feed_2.jpg"},
-		},
-		nil
+// GetFeedStats calculates and returns statistics about the feed.
+func (c *Controller) GetFeedStats() (models.FeedStats, error) {
+	feed, err := c.loadFeed()
+	if err != nil {
+		return models.FeedStats{}, err
+	}
+
+	stats := models.FeedStats{
+		Total: len(feed),
+	}
+
+	for _, wp := range feed {
+		if strings.ToLower(wp.Theme) == "dark" {
+			stats.DarkCount++
+		} else if strings.ToLower(wp.Theme) == "light" {
+			stats.LightCount++
+		}
+		// For FavoritesCount and LastAdded, we'd need more info in Wallpaper model
+		// or a separate favorites manager. For now, leave as 0 or default.
+	}
+
+	return stats, nil
 }
 
-// SearchFeed is a placeholder for searching the wallpaper feed.
-func (c *Controller) SearchFeed(query string, page, limit int, theme string) ([]*models.Wallpaper, error) {
-	fmt.Printf("CORE: Searching feed (query: %s, page: %d, limit: %d, theme: %s) (placeholder)...\n", query, page, limit, theme)
-	// Return some dummy wallpapers for now
-	return []*models.Wallpaper{
-			{ID: "dummy_search_1", URL: "https://example.com/search_1.jpg", Path: "/tmp/search_1.jpg"},
-		},
-		nil
+// AddWallpaperToFeed adds a wallpaper to the feed.
+func (c *Controller) AddWallpaperToFeed(wallpaper models.Wallpaper) error {
+	feed, err := c.loadFeed()
+	if err != nil {
+		return err
+	}
+
+	// Check if already exists to avoid duplicates
+	for _, existingWp := range feed {
+		if existingWp.ID == wallpaper.ID {
+			return nil // Already in feed, do nothing
+		}
+	}
+
+	feed = append(feed, wallpaper)
+	return c.saveFeed(feed)
 }
 
-// GetFeedStats is a placeholder for getting feed statistics.
-func (c *Controller) GetFeedStats() (*models.FeedStats, error) {
-	fmt.Println("CORE: Getting feed stats (placeholder)...")
-	// Return dummy stats for now
-	return &models.FeedStats{
-			Total:          100,
-			DarkCount:      60,
-			LightCount:     40,
-			FavoritesCount: 10,
-			// LastAdded:      time.Now(), // This requires importing "time"
-		},
-		nil
+// GetFeedWallpapers returns all wallpapers in the feed.
+func (c *Controller) GetFeedWallpapers() ([]models.Wallpaper, error) {
+	return c.loadFeed()
 }
