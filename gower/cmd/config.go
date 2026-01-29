@@ -242,10 +242,8 @@ func ensureConfig() {
 	configFile := filepath.Join(homeDir, ".gower", "config.json")
 
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
-		fmt.Println("Configuración no encontrada. Inicializando estructura...")
-		if err := createConfigStructure(); err != nil {
-			fmt.Printf("Error inicializando configuración: %v\n", err)
-		}
+		fmt.Println("Configuración no encontrada. Ejecuta 'gower config init' primero.")
+		os.Exit(1)
 	}
 }
 
@@ -456,6 +454,14 @@ func runConfigInit(cmd *cobra.Command, args []string) {
 
 	if _, err := os.Stat(configFile); !os.IsNotExist(err) {
 		fmt.Printf("El archivo de configuración ya existe en: %s\n", configFile)
+		return
+	}
+
+	if config.DryRun {
+		fmt.Printf("[DRY-RUN] Se crearía el directorio base: %s\n", filepath.Dir(configFile))
+		fmt.Println("[DRY-RUN] Se crearían los directorios de datos, caché y logs.")
+		fmt.Println("[DRY-RUN] Se inicializarían los archivos JSON vacíos.")
+		fmt.Printf("[DRY-RUN] Se generaría el archivo de configuración en: %s\n", configFile)
 		return
 	}
 
