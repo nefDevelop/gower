@@ -7,8 +7,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Config holds all global configuration
-type Config struct {
+// CLIConfig holds all global command line flags
+type CLIConfig struct {
 	Verbose    bool
 	Debug      bool
 	Quiet      bool
@@ -17,7 +17,7 @@ type Config struct {
 	DryRun     bool
 }
 
-var config Config
+var cliConfig CLIConfig
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -43,10 +43,10 @@ func init() {
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
-	rootCmd.PersistentFlags().BoolVarP(&config.Verbose, "verbose", "v", false, "Habilita la salida detallada.")
-	rootCmd.PersistentFlags().BoolVar(&config.Debug, "debug", false, "Habilita la salida de depuración.")
-	rootCmd.PersistentFlags().BoolVarP(&config.Quiet, "quiet", "q", false, "Suprime toda la salida excepto los errores.")
-	rootCmd.PersistentFlags().BoolVar(&config.JSONOutput, "json", false, "Formatea la salida como JSON.")
-	rootCmd.PersistentFlags().StringVar(&config.ConfigFile, "config", "", "Ruta al archivo de configuración.")
-	rootCmd.PersistentFlags().BoolVar(&config.DryRun, "dry-run", false, "Simula la ejecución sin realizar cambios.")
+	rootCmd.PersistentFlags().BoolVarP(&cliConfig.Verbose, "verbose", "v", false, "Habilita la salida detallada.")
+	rootCmd.PersistentFlags().BoolVar(&cliConfig.Debug, "debug", false, "Habilita la salida de depuración.")
+	rootCmd.PersistentFlags().BoolVarP(&cliConfig.Quiet, "quiet", "q", false, "Suprime toda la salida excepto los errores.")
+	rootCmd.PersistentFlags().BoolVar(&cliConfig.JSONOutput, "json", false, "Formatea la salida como JSON.")
+	rootCmd.PersistentFlags().StringVar(&cliConfig.ConfigFile, "config", "", "Ruta al archivo de configuración.")
+	rootCmd.PersistentFlags().BoolVar(&cliConfig.DryRun, "dry-run", false, "Simula la ejecución sin realizar cambios.")
 }

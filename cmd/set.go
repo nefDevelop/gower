@@ -54,10 +54,12 @@ func init() {
 }
 
 func runSet(cmd *cobra.Command, args []string) {
+	ensureConfig()
 	fmt.Println("Ejecutando el comando 'set'...")
 	// Aquí iría la lógica real para establecer el wallpaper
 }
 
 func runSetRandom(cmd *cobra.Command, args []string) {
+	ensureConfig()
 	fmt.Println("Ejecutando el comando 'set random'...")
 }
