@@ -13,9 +13,8 @@ Este documento detalla la arquitectura, características y funcionamiento intern
 
 El plugin sigue una arquitectura modular y desacoplada, orquestada por un singleton central (`ui/Controller.qml`). Este controlador es responsable de inicializar y conectar todos los módulos del backend, actuando como la única fuente de verdad y punto de comunicación para la interfaz de usuario.
 
-### Módulos Principales
 
-- **`Controller` (Singleton)**: El cerebro del plugin. Instancia todos los demás módulos, inyecta las dependencias necesarias y expone la API pública que consume la UI.
+
 - **`ProviderManager` (Singleton)**: Gestiona todas las fuentes de wallpapers en línea (Reddit, Wallhaven, NASA). Implementa lógicas de _rate limiting_ y _circuit breaker_ para un consumo de API robusto y respetuoso.
 - **`StorageManager` (Singleton)**: Abstrae toda la lógica de persistencia de datos. Gestiona archivos JSON para el historial, favoritos, lista negra y configuración. Incluye mecanismos de seguridad como backups (`.bak`) y recuperación de datos corruptos.
 - **`WallpaperChanger` (Singleton)**: Se encarga de la lógica de cambiar el fondo de pantalla. Es agnóstico a la plataforma, detectando el entorno de escritorio (KDE, GNOME, feh, etc.) para usar el comando adecuado. También gestiona el cambio automático temporizado y el soporte multimonitor.
