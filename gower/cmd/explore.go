@@ -2,7 +2,8 @@ package cmd
 
 import (
 	"fmt"
-	"time"
+	"gower/internal/core"
+	"gower/internal/providers"
 
 	"github.com/spf13/cobra"
 )
@@ -44,30 +45,28 @@ func runExplore(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	var providers []string
+	controller := core.NewController(cfg)
+	allProviders := controller.ProviderManager.GetProviders()
+
+	var selectedProviders []providers.Provider
 
 	if exploreAll {
-		if cfg.Providers.Wallhaven.Enabled {
-			providers = append(providers, "wallhaven")
-		}
-		if cfg.Providers.Reddit.Enabled {
-			providers = append(providers, "reddit")
-		}
-		if cfg.Providers.Nasa.Enabled {
-			providers = append(providers, "nasa")
-		}
+		selectedProviders = allProviders
 	} else if exploreProvider != "" {
-		providers = []string{exploreProvider}
+		p, err := controller.ProviderManager.GetProvider(exploreProvider)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			return
+		}
+		selectedProviders = append(selectedProviders, p)
 	} else {
-		// Default: Wallhaven if enabled, else Reddit
-		if cfg.Providers.Wallhaven.Enabled {
-			providers = append(providers, "wallhaven")
-		} else if cfg.Providers.Reddit.Enabled {
-			providers = append(providers, "reddit")
+		// Default provider
+		if len(allProviders) > 0 {
+			selectedProviders = append(selectedProviders, allProviders[0])
 		}
 	}
 
-	if len(providers) == 0 {
+	if len(selectedProviders) == 0 {
 		fmt.Println("No hay proveedores habilitados o seleccionados.")
 		return
 	}
@@ -80,21 +79,26 @@ func runExplore(cmd *cobra.Command, args []string) {
 		fmt.Printf("Filtro Color: %s\n", exploreColor)
 	}
 
-	// Rate limit logic
-	rateLimitSeconds := cfg.Limits.RateLimitPeriod
-	if rateLimitSeconds <= 0 {
-		rateLimitSeconds = 60 // Default fallback
+	searchOpts := providers.SearchOptions{
+		MinWidth: exploreMinWidth,
+		Color:    exploreColor,
 	}
-	rateLimit := time.Duration(rateLimitSeconds) * time.Second
 
-	for i, p := range providers {
-		// Si es --all y no es el primero, esperamos el rate limit
-		if exploreAll && i > 0 {
-			fmt.Printf("Esperando %v (Rate Limit) antes de consultar %s...\n", rateLimit, p)
-			time.Sleep(rateLimit)
+	for _, p := range selectedProviders {
+		fmt.Printf("Consultando proveedor: %s...\n", p.GetName())
+		results, err := p.Search(term, searchOpts)
+		if err != nil {
+			fmt.Printf("Error buscando en %s: %v\n", p.GetName(), err)
+			continue
 		}
 
-		fmt.Printf("Consultando proveedor: %s...\n", p)
-		// TODO: Llamar al controlador para realizar la búsqueda real
+		if len(results) == 0 {
+			fmt.Printf("No se encontraron resultados en %s.\n", p.GetName())
+			continue
+		}
+
+		for _, wallpaper := range results {
+			fmt.Printf("  - ID: %s, URL: %s, Dim: %s\n", wallpaper.ID, wallpaper.URL, wallpaper.Dimension)
+		}
 	}
 }
