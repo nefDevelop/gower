@@ -25,17 +25,26 @@ func (p *NasaProvider) GetName() string {
 
 func (p *NasaProvider) Search(query string, opts SearchOptions) ([]models.Wallpaper, error) {
 	if query == "" {
-		return p.fetchAPOD(opts.Limit)
+		return p.fetchAPOD(opts.Limit, opts.ExcludeIDs)
 	}
-	return p.searchImageLibrary(query, opts.Limit)
+	return p.searchImageLibrary(query, opts.Limit, opts.ExcludeIDs)
 }
 
-func (p *NasaProvider) fetchAPOD(limit int) ([]models.Wallpaper, error) {
+func (p *NasaProvider) fetchAPOD(limit int, excludeIDs map[string]bool) ([]models.Wallpaper, error) {
 	if limit <= 0 {
 		limit = 10
 	}
 	// APOD 'count' parameter returns random images
-	apiURL := fmt.Sprintf("https://api.nasa.gov/planetary/apod?api_key=%s&count=%d", p.APIKey, limit)
+	// Pedimos más items para filtrar videos, pero respetando el límite de 100 de la API
+	count := limit * 2
+	if count > 100 {
+		count = 100
+	}
+	apiKey := p.APIKey
+	if apiKey == "" {
+		apiKey = "DEMO_KEY"
+	}
+	apiURL := fmt.Sprintf("https://api.nasa.gov/planetary/apod?api_key=%s&count=%d", apiKey, count)
 
 	resp, err := http.Get(apiURL)
 	if err != nil {
@@ -61,7 +70,15 @@ func (p *NasaProvider) fetchAPOD(limit int) ([]models.Wallpaper, error) {
 
 	var wallpapers []models.Wallpaper
 	for _, item := range results {
+		if len(wallpapers) >= limit {
+			break
+		}
 		if item.MediaType != "image" {
+			continue
+		}
+
+		id := "ns_" + item.Date
+		if excludeIDs != nil && excludeIDs[id] {
 			continue
 		}
 
@@ -71,7 +88,7 @@ func (p *NasaProvider) fetchAPOD(limit int) ([]models.Wallpaper, error) {
 		}
 
 		wallpapers = append(wallpapers, models.Wallpaper{
-			ID:        "ns_" + item.Date,
+			ID:        id,
 			URL:       imgURL,
 			Thumbnail: item.Url, // APOD no da thumbnail separado, usamos la URL estándar
 			Source:    "nasa",
@@ -82,7 +99,7 @@ func (p *NasaProvider) fetchAPOD(limit int) ([]models.Wallpaper, error) {
 	return wallpapers, nil
 }
 
-func (p *NasaProvider) searchImageLibrary(query string, limit int) ([]models.Wallpaper, error) {
+func (p *NasaProvider) searchImageLibrary(query string, limit int, excludeIDs map[string]bool) ([]models.Wallpaper, error) {
 	baseURL := "https://images-api.nasa.gov/search"
 	u, err := url.Parse(baseURL)
 	if err != nil {
@@ -138,6 +155,11 @@ func (p *NasaProvider) searchImageLibrary(query string, limit int) ([]models.Wal
 		}
 
 		data := item.Data[0]
+		id := "ns_" + data.NasaID
+		if excludeIDs != nil && excludeIDs[id] {
+			continue
+		}
+
 		thumb := ""
 		for _, link := range item.Links {
 			if link.Rel == "preview" {
@@ -150,15 +172,14 @@ func (p *NasaProvider) searchImageLibrary(query string, limit int) ([]models.Wal
 		}
 
 		// Heurística mejorada para alta resolución
-		// La API suele devolver ...~thumb.jpg. Intentamos adivinar la original.
-		imgURL := strings.Replace(thumb, "~thumb", "~orig", 1)
+		// Usamos ~large o ~medium que son más seguros que ~orig (que puede ser tif)
+		imgURL := strings.Replace(thumb, "~thumb", "~large", 1)
 		if imgURL == thumb {
-			// Si no hubo reemplazo, intentamos con ~medium como fallback seguro si existe ese patrón
-			imgURL = strings.Replace(thumb, "~small", "~medium", 1)
+			imgURL = strings.Replace(thumb, "~small", "~large", 1)
 		}
 
 		wallpapers = append(wallpapers, models.Wallpaper{
-			ID:        "ns_" + data.NasaID,
+			ID:        id,
 			URL:       imgURL,
 			Thumbnail: thumb,
 			Source:    "nasa",

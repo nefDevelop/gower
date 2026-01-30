@@ -1,10 +1,16 @@
 package core
 
 import (
+	"encoding/json"
 	"gower/pkg/models"
+	"image"
+	"image/color"
+	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 func setupTestHome(t *testing.T) string {
@@ -131,5 +137,113 @@ func TestController_Blacklist(t *testing.T) {
 	}
 	if len(feed) > 0 && feed[0].ID != "2" {
 		t.Errorf("Expected ID 2, got %s", feed[0].ID)
+	}
+}
+
+func createDummyImage(t *testing.T, path string) {
+	width := 100
+	height := 100
+	upLeft := image.Point{0, 0}
+	lowRight := image.Point{width, height}
+	img := image.NewRGBA(image.Rectangle{upLeft, lowRight})
+
+	// Fill with red
+	red := color.RGBA{255, 0, 0, 255}
+	for x := 0; x < width; x++ {
+		for y := 0; y < height; y++ {
+			img.Set(x, y, red)
+		}
+	}
+
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err := png.Encode(f, img); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestController_SyncFeed(t *testing.T) {
+	tmpDir := setupTestHome(t)
+	defer os.RemoveAll(tmpDir)
+
+	cfg := &models.Config{
+		Limits: models.LimitsConfig{
+			FeedHardLimit: 100,
+		},
+		Search: models.SearchConfig{
+			Tolerance: 0.1,
+		},
+	}
+	ctrl := NewController(cfg)
+
+	// Create a dummy image
+	imgPath := filepath.Join(tmpDir, "test_image.png")
+	createDummyImage(t, imgPath)
+
+	// Create a parser cache file
+	parserDir := filepath.Join(tmpDir, ".gower", "data", "parser")
+	if err := os.MkdirAll(parserDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	searchResult := ParserSearch{
+		Date:  time.Now(),
+		Query: "test",
+		Results: []models.Wallpaper{
+			{
+				ID:        "test_1",
+				URL:       imgPath, // Local path
+				Thumbnail: imgPath, // Use same for thumb source
+				Source:    "test",
+			},
+		},
+	}
+
+	data, _ := json.Marshal([]ParserSearch{searchResult})
+	if err := os.WriteFile(filepath.Join(parserDir, "test_provider.json"), data, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Run SyncFeed
+	added, repaired, err := ctrl.SyncFeed()
+	if err != nil {
+		t.Fatalf("SyncFeed failed: %v", err)
+	}
+
+	if added != 1 {
+		t.Errorf("Expected 1 added wallpaper, got %d", added)
+	}
+	if repaired != 0 {
+		t.Errorf("Expected 0 repaired wallpapers, got %d", repaired)
+	}
+
+	// Verify feed
+	feed, _ := ctrl.GetFeed(1, 10, "", "", "")
+	if len(feed) != 1 {
+		t.Fatalf("Expected 1 item in feed, got %d", len(feed))
+	}
+	wp := feed[0]
+	if wp.ID != "test_1" {
+		t.Errorf("Expected ID test_1, got %s", wp.ID)
+	}
+	if wp.Color == "" {
+		t.Error("Expected color to be analyzed")
+	}
+	// Since image is red, it should be close to #FF0000
+	if wp.Color != "#FF0000" {
+		t.Errorf("Expected color #FF0000, got %s", wp.Color)
+	}
+	if wp.Ratio == "" {
+		t.Error("Expected ratio to be calculated")
+	}
+
+	// Verify colors.json
+	colorsPath := filepath.Join(tmpDir, ".gower", "data", "colors.json")
+	colorsData, _ := os.ReadFile(colorsPath)
+	if !strings.Contains(string(colorsData), "#FF0000") {
+		t.Error("Expected colors.json to contain #FF0000")
 	}
 }

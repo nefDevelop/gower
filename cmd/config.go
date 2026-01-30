@@ -26,16 +26,16 @@ var configShowCmd = &cobra.Command{
 	Short: "Mostrar configuración",
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := ensureConfig(); err != nil {
-			fmt.Println(err)
+			cmd.Println(err)
 			return
 		}
 		cfg, err := loadConfig()
 		if err != nil {
-			fmt.Printf("Error cargando configuración: %v\n", err)
+			cmd.Printf("Error cargando configuración: %v\n", err)
 			return
 		}
 		data, _ := json.MarshalIndent(cfg, "", "  ")
-		fmt.Println(string(data))
+		cmd.Println(string(data))
 	},
 }
 
@@ -45,32 +45,32 @@ var configSetCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := ensureConfig(); err != nil {
-			fmt.Println(err)
+			cmd.Println(err)
 			return
 		}
 		parts := strings.SplitN(args[0], "=", 2)
 		if len(parts) != 2 {
-			fmt.Println("Formato requerido: clave=valor")
+			cmd.Println("Formato requerido: clave=valor")
 			return
 		}
 		key, val := parts[0], parts[1]
 
 		cfg, err := loadConfig()
 		if err != nil {
-			fmt.Printf("Error cargando configuración: %v\n", err)
+			cmd.Printf("Error cargando configuración: %v\n", err)
 			return
 		}
 
 		if err := setConfigValue(cfg, key, val); err != nil {
-			fmt.Printf("Error estableciendo valor: %v\n", err)
+			cmd.Printf("Error estableciendo valor: %v\n", err)
 			return
 		}
 
 		if err := saveConfig(cfg); err != nil {
-			fmt.Printf("Error guardando configuración: %v\n", err)
+			cmd.Printf("Error guardando configuración: %v\n", err)
 			return
 		}
-		fmt.Printf("Configuración actualizada: %s = %s\n", key, val)
+		cmd.Printf("Configuración actualizada: %s = %s\n", key, val)
 	},
 }
 
@@ -80,20 +80,20 @@ var configGetCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := ensureConfig(); err != nil {
-			fmt.Println(err)
+			cmd.Println(err)
 			return
 		}
 		cfg, err := loadConfig()
 		if err != nil {
-			fmt.Printf("Error cargando configuración: %v\n", err)
+			cmd.Printf("Error cargando configuración: %v\n", err)
 			return
 		}
 		val, err := getConfigValue(cfg, args[0])
 		if err != nil {
-			fmt.Printf("Error obteniendo valor: %v\n", err)
+			cmd.Printf("Error obteniendo valor: %v\n", err)
 			return
 		}
-		fmt.Println(val)
+		cmd.Println(val)
 	},
 }
 
@@ -102,15 +102,15 @@ var configResetCmd = &cobra.Command{
 	Short: "Restablecer configuración",
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := ensureConfig(); err != nil {
-			fmt.Println(err)
+			cmd.Println(err)
 			return
 		}
 		defaultCfg := getDefaultConfig()
 		if err := saveConfig(&defaultCfg); err != nil {
-			fmt.Printf("Error restableciendo configuración: %v\n", err)
+			cmd.Printf("Error restableciendo configuración: %v\n", err)
 			return
 		}
-		fmt.Println("Configuración restablecida a los valores por defecto.")
+		cmd.Println("Configuración restablecida a los valores por defecto.")
 	},
 }
 
@@ -123,18 +123,18 @@ var configExportCmd = &cobra.Command{
 		path, _ := getConfigPath()
 		data, err := ioutil.ReadFile(path)
 		if err != nil {
-			fmt.Printf("Error leyendo configuración: %v\n", err)
+			cmd.Printf("Error leyendo configuración: %v\n", err)
 			return
 		}
 
 		if len(args) > 0 {
 			if err := ioutil.WriteFile(args[0], data, 0644); err != nil {
-				fmt.Printf("Error exportando: %v\n", err)
+				cmd.Printf("Error exportando: %v\n", err)
 				return
 			}
-			fmt.Printf("Configuración exportada a: %s\n", args[0])
+			cmd.Printf("Configuración exportada a: %s\n", args[0])
 		} else {
-			fmt.Println(string(data))
+			cmd.Println(string(data))
 		}
 	},
 }
@@ -147,22 +147,22 @@ var configImportCmd = &cobra.Command{
 		ensureConfig()
 		data, err := ioutil.ReadFile(args[0])
 		if err != nil {
-			fmt.Printf("Error leyendo archivo: %v\n", err)
+			cmd.Printf("Error leyendo archivo: %v\n", err)
 			return
 		}
 
 		var tmp models.Config
 		if err := json.Unmarshal(data, &tmp); err != nil {
-			fmt.Printf("Archivo de configuración inválido: %v\n", err)
+			cmd.Printf("Archivo de configuración inválido: %v\n", err)
 			return
 		}
 
 		path, _ := getConfigPath()
 		if err := ioutil.WriteFile(path, data, 0644); err != nil {
-			fmt.Printf("Error guardando configuración: %v\n", err)
+			cmd.Printf("Error guardando configuración: %v\n", err)
 			return
 		}
-		fmt.Println("Configuración importada exitosamente.")
+		cmd.Println("Configuración importada exitosamente.")
 	},
 }
 
@@ -223,6 +223,9 @@ func getDefaultConfig() models.Config {
 			Nasa: models.NasaConfig{
 				Enabled: false, APIKey: "DEMO_KEY",
 			},
+			Bing: models.BingConfig{
+				Enabled: true, Market: "en-US",
+			},
 		},
 		GenericProviders: []models.GenericProviderConfig{},
 		Search: models.SearchConfig{
@@ -261,7 +264,8 @@ func setConfigValue(cfg *models.Config, path string, value string) error {
 		for i := 0; i < v.NumField(); i++ {
 			field := typ.Field(i)
 			tag := field.Tag.Get("json")
-			if tag == part || strings.Split(tag, ",")[0] == part {
+			tagVal := strings.Split(tag, ",")[0]
+			if strings.EqualFold(tagVal, part) {
 				v = v.Field(i)
 				found = true
 				break
@@ -317,7 +321,8 @@ func getConfigValue(cfg *models.Config, path string) (string, error) {
 		for i := 0; i < v.NumField(); i++ {
 			field := typ.Field(i)
 			tag := field.Tag.Get("json")
-			if tag == part || strings.Split(tag, ",")[0] == part {
+			tagVal := strings.Split(tag, ",")[0]
+			if strings.EqualFold(tagVal, part) {
 				v = v.Field(i)
 				found = true
 				break
@@ -331,7 +336,7 @@ func getConfigValue(cfg *models.Config, path string) (string, error) {
 	return fmt.Sprintf("%v", v.Interface()), nil
 }
 
-func createConfigStructure() error {
+func createConfigStructure(cmd *cobra.Command) error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return err
@@ -374,7 +379,7 @@ func createConfigStructure() error {
 		return fmt.Errorf("error guardando configuración inicial: %v", err)
 	}
 
-	fmt.Printf("Estructura de configuración creada en: %s\n", baseDir)
+	cmd.Printf("Estructura de configuración creada en: %s\n", baseDir)
 	return nil
 }
 
@@ -387,20 +392,20 @@ func runConfigInit(cmd *cobra.Command, args []string) {
 	configFile := filepath.Join(homeDir, ".gower", "config.json")
 
 	if _, err := os.Stat(configFile); !os.IsNotExist(err) {
-		fmt.Printf("El archivo de configuración ya existe en: %s\n", configFile)
+		cmd.Printf("El archivo de configuración ya existe en: %s\n", configFile)
 		return
 	}
 
 	if config.DryRun {
-		fmt.Printf("[DRY-RUN] Se crearía el directorio base: %s\n", filepath.Dir(configFile))
-		fmt.Println("[DRY-RUN] Se crearían los directorios de datos, caché y logs.")
-		fmt.Println("[DRY-RUN] Se inicializarían los archivos JSON vacíos.")
-		fmt.Printf("[DRY-RUN] Se generaría el archivo de configuración en: %s\n", configFile)
+		cmd.Printf("[DRY-RUN] Se crearía el directorio base: %s\n", filepath.Dir(configFile))
+		cmd.Println("[DRY-RUN] Se crearían los directorios de datos, caché y logs.")
+		cmd.Println("[DRY-RUN] Se inicializarían los archivos JSON vacíos.")
+		cmd.Printf("[DRY-RUN] Se generaría el archivo de configuración en: %s\n", configFile)
 		return
 	}
 
-	if err := createConfigStructure(); err != nil {
-		fmt.Printf("Error: %v\n", err)
+	if err := createConfigStructure(cmd); err != nil {
+		cmd.Printf("Error: %v\n", err)
 	}
 }
 

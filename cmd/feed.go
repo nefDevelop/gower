@@ -181,28 +181,46 @@ var feedUpdateCmd = &cobra.Command{
 		controller := core.NewController(cfg)
 
 		fmt.Println("Syncing feed from parser caches...")
-		count, err := controller.SyncFeed()
+		count, repaired, err := controller.SyncFeed()
 		if err != nil {
 			fmt.Printf("Error syncing feed: %v\n", err)
 			os.Exit(1)
 		}
 
-		if count == 0 {
+		if count == 0 && repaired == 0 {
+			// Verificar si ya tenemos suficientes wallpapers (Soft Limit)
+			stats, err := controller.GetFeedStats()
+			if err == nil && cfg.Limits.FeedSoftLimit > 0 && stats.Total >= cfg.Limits.FeedSoftLimit {
+				fmt.Printf("Feed saludable (%d items, límite suave: %d). Saltando búsqueda automática.\n", stats.Total, cfg.Limits.FeedSoftLimit)
+				return
+			}
+
+			// Verificar Rate Limit usando la fecha de los archivos de caché
+			lastUpdate, err := controller.GetLastProviderUpdateTime()
+			if err == nil && !lastUpdate.IsZero() {
+				elapsed := time.Since(lastUpdate)
+				limitPeriod := time.Duration(cfg.Limits.RateLimitPeriod) * time.Minute
+				if elapsed < limitPeriod && !feedForce {
+					fmt.Printf("Límite de frecuencia activo. Última búsqueda hace %v (Límite: %v). Saltando búsqueda en proveedores.\nUse --force para ignorar.\n", elapsed.Round(time.Minute), limitPeriod)
+					return
+				}
+			}
+
 			// If nothing added, maybe caches are empty. Run explore all.
 			fmt.Println("No new wallpapers found in cache. Running 'explore --all'...")
 			// We call the explore command logic directly or via subprocess
 			// For simplicity, we can just invoke the runExplore function if we exported it or use executeCommand logic
 			// But since runExplore is in same package:
 			exploreAll = true
-			exploreSave = true // Ensure it saves to parser cache
+			exploreSave = true                         // Ensure it saves to parser cache
 			runExplore(exploreCmd, []string{"random"}) // Search for "random" or generic
-			
+
 			// Sync again
 			fmt.Println("Syncing feed again...")
-			count, _ = controller.SyncFeed()
+			count, repaired, _ = controller.SyncFeed()
 		}
 
-		fmt.Printf("Feed updated. Added %d new wallpapers.\n", count)
+		fmt.Printf("Feed updated. Added %d new wallpapers, repaired %d.\n", count, repaired)
 	},
 }
 
@@ -224,6 +242,7 @@ func init() {
 	feedShowCmd.Flags().BoolVar(&feedRefresh, "refresh", false, "Refresh feed view")
 
 	feedPurgeCmd.Flags().BoolVar(&feedForce, "force", false, "Force purge without confirmation")
+	feedUpdateCmd.Flags().BoolVar(&feedForce, "force", false, "Force update ignoring limits")
 
 	feedStatsCmd.Flags().BoolVar(&feedDetailed, "detailed", false, "Show detailed statistics")
 

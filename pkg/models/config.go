@@ -1,6 +1,5 @@
 package models
 
-// Config structures for config.json
 type Config struct {
 	Providers        ProvidersConfig         `json:"providers"`
 	GenericProviders []GenericProviderConfig `json:"generic_providers"`
@@ -10,38 +9,20 @@ type Config struct {
 	Paths            PathsConfig             `json:"paths"`
 	UI               UIConfig                `json:"ui"`
 	Limits           LimitsConfig            `json:"limits"`
-}
-
-type GenericProviderConfig struct {
-	Name            string          `json:"name"`
-	Enabled         bool            `json:"enabled"`
-	APIURL          string          `json:"api_url"`
-	APIKey          string          `json:"api_key,omitempty"`
-	ResponseMapping ResponseMapping `json:"response_mapping"`
-}
-
-type ResponseMapping struct {
-	ResultsPath   string `json:"results_path"`
-	IDPath        string `json:"id_path"`
-	URLPath       string `json:"url_path"`
-	DimensionPath string `json:"dimension_path,omitempty"`
+	DryRun           bool                    `json:"dry_run,omitempty"`
 }
 
 type ProvidersConfig struct {
 	Wallhaven WallhavenConfig `json:"wallhaven"`
 	Reddit    RedditConfig    `json:"reddit"`
 	Nasa      NasaConfig      `json:"nasa"`
+	Bing      BingConfig      `json:"bing"`
 }
 
 type WallhavenConfig struct {
 	Enabled   bool            `json:"enabled"`
 	APIKey    string          `json:"api_key"`
-	RateLimit RateLimitConfig `json:"ratelimit"`
-}
-
-type RateLimitConfig struct {
-	Requests   int `json:"requests"`
-	PerSeconds int `json:"per_seconds"`
+	RateLimit RateLimitConfig `json:"rate_limit"`
 }
 
 type RedditConfig struct {
@@ -54,6 +35,32 @@ type RedditConfig struct {
 type NasaConfig struct {
 	Enabled bool   `json:"enabled"`
 	APIKey  string `json:"api_key"`
+}
+
+type BingConfig struct {
+	Enabled bool   `json:"enabled"`
+	Market  string `json:"market"` // e.g. "en-US", "es-ES"
+}
+
+type GenericProviderConfig struct {
+	Name            string          `json:"name"`
+	Enabled         bool            `json:"enabled"`
+	APIURL          string          `json:"api_url,omitempty"`
+	APIKey          string          `json:"api_key,omitempty"`
+	ResponseMapping ResponseMapping `json:"response_mapping,omitempty"`
+}
+
+type ResponseMapping struct {
+	ResultsPath   string `json:"results_path"`
+	URLPath       string `json:"url_path"`
+	ThumbnailPath string `json:"thumbnail_path"`
+	IDPath        string `json:"id_path"`
+	DimensionPath string `json:"dimension_path"`
+}
+
+type RateLimitConfig struct {
+	Requests   int `json:"requests"`
+	PerSeconds int `json:"per_seconds"`
 }
 
 type SearchConfig struct {

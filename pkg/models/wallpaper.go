@@ -12,8 +12,9 @@ type Wallpaper struct {
 	Category  string `json:"category,omitempty"`
 	Dimension string `json:"dimension,omitempty"` // Resolution (e.g. 1920x1080)
 	Ratio     string `json:"ratio,omitempty"`
-	Theme     string `json:"theme,omitempty"` // Analyzed color theme
-	Color     string `json:"color,omitempty"` // Dominant color hex
+	Theme     string `json:"theme,omitempty"`     // Analyzed color theme
+	Color     string `json:"color,omitempty"`     // Dominant color hex
 	Permalink string `json:"permalink,omitempty"` // Permalink to the source (e.g., Reddit post)
 	Title     string `json:"title,omitempty"`     // Title of the wallpaper
+	Seen      bool   `json:"seen"`
 }
