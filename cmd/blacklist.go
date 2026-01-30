@@ -1,9 +1,7 @@
 package cmd
 
 import (
-	"fmt"
 	"gower/internal/core"
-	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -18,22 +16,22 @@ var blacklistCmd = &cobra.Command{
 
 		cfg, err := loadConfig()
 		if err != nil {
-			fmt.Printf("Error loading config: %v\n", err)
-			os.Exit(1)
+			cmd.Printf("Error loading config: %v\n", err)
+			return
 		}
 		controller := core.NewController(cfg)
 
 		if err := controller.AddToBlacklist(id); err != nil {
-			fmt.Printf("Error adding to blacklist: %v\n", err)
-			os.Exit(1)
+			cmd.Printf("Error adding to blacklist: %v\n", err)
+			return
 		}
 
 		// Remove from feed if present
 		if err := controller.RemoveFromFeed(id); err != nil {
-			fmt.Printf("Warning: Failed to remove from feed: %v\n", err)
+			cmd.Printf("Warning: Failed to remove from feed: %v\n", err)
 		}
 
-		fmt.Printf("Wallpaper %s added to blacklist.\n", id)
+		cmd.Printf("Wallpaper %s added to blacklist.\n", id)
 	},
 }
 

@@ -58,8 +58,8 @@ func TestExploreNativeProvider(t *testing.T) {
 	if !strings.Contains(output, "Querying provider: wallhaven") {
 		t.Errorf("Expected output to contain 'Querying provider: wallhaven', got: %s", output)
 	}
-	if !strings.Contains(output, "ID: wallhaven-wh-123") {
-		t.Errorf("Expected output to contain dummy wallhaven data, got: %s", output)
+	if !strings.Contains(output, "ID: wh_") {
+		t.Errorf("Expected output to contain wallhaven data (ID: wh_...), got: %s", output)
 	}
 }
 

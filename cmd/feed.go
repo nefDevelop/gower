@@ -2,9 +2,7 @@
 package cmd
 
 import (
-	"fmt"
 	"math/rand"
-	"os"
 	"time"
 
 	"gower/internal/core"
@@ -30,7 +28,7 @@ var feedCmd = &cobra.Command{
 	Short: "Manage wallpaper feed/history",
 	Long:  `View, search and manage your wallpaper history feed`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("Ejecutando el comando 'feed'...")
+		cmd.Println("Ejecutando el comando 'feed'...")
 		cmd.Help()
 	},
 }
@@ -41,32 +39,32 @@ var feedShowCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		cfg, err := loadConfig()
 		if err != nil {
-			fmt.Printf("Error loading config: %v\n", err)
-			os.Exit(1)
+			cmd.Printf("Error loading config: %v\n", err)
+			return
 		}
 		controller := core.NewController(cfg)
 
 		if feedRefresh {
-			fmt.Println("Refreshing feed view...")
+			cmd.Println("Refreshing feed view...")
 		}
 
 		// Mostrar feed normal
 		wallpapers, err := controller.GetFeed(feedPage, feedLimit, "", feedTheme, feedColor)
 		if err != nil {
-			fmt.Printf("Error getting feed: %v\n", err)
-			os.Exit(1)
+			cmd.Printf("Error getting feed: %v\n", err)
+			return
 		}
 
 		if len(wallpapers) == 0 {
-			fmt.Println("No wallpapers found in feed.")
+			cmd.Println("No wallpapers found in feed.")
 			return
 		}
 
 		// Manejar salida JSON/CSV/Table (se asumen flags globales)
 		if config.JSONOutput {
-			displayJSON(wallpapers)
+			displayJSON(cmd, wallpapers)
 		} else {
-			displayTable(wallpapers, config.NoColor)
+			displayTable(cmd, wallpapers, config.NoColor)
 		}
 	},
 }
@@ -76,22 +74,22 @@ var feedPurgeCmd = &cobra.Command{
 	Short: "Purge feed history",
 	Run: func(cmd *cobra.Command, args []string) {
 		if !feedForce {
-			fmt.Println("Are you sure you want to purge the feed? Use --force to confirm.")
+			cmd.Println("Are you sure you want to purge the feed? Use --force to confirm.")
 			return
 		}
 
 		cfg, err := loadConfig()
 		if err != nil {
-			fmt.Printf("Error loading config: %v\n", err)
-			os.Exit(1)
+			cmd.Printf("Error loading config: %v\n", err)
+			return
 		}
 		controller := core.NewController(cfg)
 
 		if err := controller.PurgeFeed(); err != nil {
-			fmt.Printf("Error purging feed: %v\n", err)
-			os.Exit(1)
+			cmd.Printf("Error purging feed: %v\n", err)
+			return
 		}
-		fmt.Println("Feed purged successfully")
+		cmd.Println("Feed purged successfully")
 	},
 }
 
@@ -101,11 +99,11 @@ var feedStatsCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		cfg, err := loadConfig()
 		if err != nil {
-			fmt.Printf("Error loading config: %v\n", err)
-			os.Exit(1)
+			cmd.Printf("Error loading config: %v\n", err)
+			return
 		}
 		controller := core.NewController(cfg)
-		displayStats(controller)
+		displayStats(cmd, controller)
 	},
 }
 
@@ -115,17 +113,17 @@ var feedAnalyzeCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		cfg, err := loadConfig()
 		if err != nil {
-			fmt.Printf("Error loading config: %v\n", err)
-			os.Exit(1)
+			cmd.Printf("Error loading config: %v\n", err)
+			return
 		}
 		controller := core.NewController(cfg)
 
-		fmt.Println("Analyzing feed items...")
+		cmd.Println("Analyzing feed items...")
 		if err := controller.AnalyzeFeed(feedAll); err != nil {
-			fmt.Printf("Error analyzing feed: %v\n", err)
-			os.Exit(1)
+			cmd.Printf("Error analyzing feed: %v\n", err)
+			return
 		}
-		fmt.Println("Analysis complete.")
+		cmd.Println("Analysis complete.")
 	},
 }
 
@@ -135,8 +133,8 @@ var feedRandomCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		cfg, err := loadConfig()
 		if err != nil {
-			fmt.Printf("Error loading config: %v\n", err)
-			os.Exit(1)
+			cmd.Printf("Error loading config: %v\n", err)
+			return
 		}
 		controller := core.NewController(cfg)
 
@@ -145,12 +143,12 @@ var feedRandomCmd = &cobra.Command{
 		if feedFromFavorites {
 			favorites, err := loadFavorites() // Using function from favorites.go
 			if err != nil {
-				fmt.Printf("Error loading favorites: %v\n", err)
-				os.Exit(1)
+				cmd.Printf("Error loading favorites: %v\n", err)
+				return
 			}
 			if len(favorites) == 0 {
-				fmt.Println("No favorites found.")
-				os.Exit(1)
+				cmd.Println("No favorites found.")
+				return
 			}
 			// Simple random pick from favorites
 			rand.Seed(time.Now().UnixNano())
@@ -160,12 +158,12 @@ var feedRandomCmd = &cobra.Command{
 			var err error
 			wallpaper, err = controller.GetRandomFromFeed(feedTheme)
 			if err != nil {
-				fmt.Printf("Error getting random wallpaper: %v\n", err)
-				os.Exit(1)
+				cmd.Printf("Error getting random wallpaper: %v\n", err)
+				return
 			}
 		}
 
-		displayWallpaper(wallpaper, config.NoColor)
+		displayWallpaper(cmd, wallpaper, config.NoColor)
 	},
 }
 
@@ -175,23 +173,23 @@ var feedUpdateCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		cfg, err := loadConfig()
 		if err != nil {
-			fmt.Printf("Error loading config: %v\n", err)
-			os.Exit(1)
+			cmd.Printf("Error loading config: %v\n", err)
+			return
 		}
 		controller := core.NewController(cfg)
 
-		fmt.Println("Syncing feed from parser caches...")
+		cmd.Println("Syncing feed from parser caches...")
 		count, repaired, err := controller.SyncFeed()
 		if err != nil {
-			fmt.Printf("Error syncing feed: %v\n", err)
-			os.Exit(1)
+			cmd.Printf("Error syncing feed: %v\n", err)
+			return
 		}
 
 		if count == 0 && repaired == 0 {
 			// Verificar si ya tenemos suficientes wallpapers (Soft Limit)
 			stats, err := controller.GetFeedStats()
 			if err == nil && cfg.Limits.FeedSoftLimit > 0 && stats.Total >= cfg.Limits.FeedSoftLimit {
-				fmt.Printf("Feed saludable (%d items, límite suave: %d). Saltando búsqueda automática.\n", stats.Total, cfg.Limits.FeedSoftLimit)
+				cmd.Printf("Feed saludable (%d items, límite suave: %d). Saltando búsqueda automática.\n", stats.Total, cfg.Limits.FeedSoftLimit)
 				return
 			}
 
@@ -201,13 +199,13 @@ var feedUpdateCmd = &cobra.Command{
 				elapsed := time.Since(lastUpdate)
 				limitPeriod := time.Duration(cfg.Limits.RateLimitPeriod) * time.Minute
 				if elapsed < limitPeriod && !feedForce {
-					fmt.Printf("Límite de frecuencia activo. Última búsqueda hace %v (Límite: %v). Saltando búsqueda en proveedores.\nUse --force para ignorar.\n", elapsed.Round(time.Minute), limitPeriod)
+					cmd.Printf("Límite de frecuencia activo. Última búsqueda hace %v (Límite: %v). Saltando búsqueda en proveedores.\nUse --force para ignorar.\n", elapsed.Round(time.Minute), limitPeriod)
 					return
 				}
 			}
 
 			// If nothing added, maybe caches are empty. Run explore all.
-			fmt.Println("No new wallpapers found in cache. Running 'explore --all'...")
+			cmd.Println("No new wallpapers found in cache. Running 'explore --all'...")
 			// We call the explore command logic directly or via subprocess
 			// For simplicity, we can just invoke the runExplore function if we exported it or use executeCommand logic
 			// But since runExplore is in same package:
@@ -216,11 +214,11 @@ var feedUpdateCmd = &cobra.Command{
 			runExplore(exploreCmd, []string{"random"}) // Search for "random" or generic
 
 			// Sync again
-			fmt.Println("Syncing feed again...")
+			cmd.Println("Syncing feed again...")
 			count, repaired, _ = controller.SyncFeed()
 		}
 
-		fmt.Printf("Feed updated. Added %d new wallpapers, repaired %d.\n", count, repaired)
+		cmd.Printf("Feed updated. Added %d new wallpapers, repaired %d.\n", count, repaired)
 	},
 }
 
@@ -253,42 +251,42 @@ func init() {
 }
 
 // Funciones helper para display
-func displayStats(controller *core.Controller) {
+func displayStats(cmd *cobra.Command, controller *core.Controller) {
 	stats, err := controller.GetFeedStats()
 	if err != nil {
-		fmt.Printf("Error getting stats: %v\n", err)
-		os.Exit(1)
+		cmd.Printf("Error getting stats: %v\n", err)
+		return
 	}
 
 	if config.JSONOutput {
 		// Asumiendo que Stats también puede ser serializado a JSON
 		// y que displayJSON puede manejar diferentes tipos
-		displayJSON(stats)
+		displayJSON(cmd, stats)
 	} else {
-		fmt.Printf("Feed Statistics:\n")
-		fmt.Printf("  Total wallpapers: %d\n", stats.Total)
-		fmt.Printf("  Dark theme: %d\n", stats.DarkCount)
-		fmt.Printf("  Light theme: %d\n", stats.LightCount)
-		fmt.Printf("  Favorites: %d\n", stats.FavoritesCount)
+		cmd.Printf("Feed Statistics:\n")
+		cmd.Printf("  Total wallpapers: %d\n", stats.Total)
+		cmd.Printf("  Dark theme: %d\n", stats.DarkCount)
+		cmd.Printf("  Light theme: %d\n", stats.LightCount)
+		cmd.Printf("  Favorites: %d\n", stats.FavoritesCount)
 		if feedDetailed {
-			fmt.Println("  (Detailed stats not implemented yet)")
+			cmd.Println("  (Detailed stats not implemented yet)")
 		}
 		// Necesitaríamos saber el formato exacto de LastAdded para mostrarlo
 		// fmt.Printf("  Last added: %s\n", stats.LastAdded.Format("2006-01-02 15:04:05"))
 	}
 }
 
-func displayWallpaper(wallpaper interface{}, noColor bool) {
+func displayWallpaper(cmd *cobra.Command, wallpaper interface{}, noColor bool) {
 	// Placeholder: Implementar lógica de visualización del wallpaper
-	fmt.Printf("Displaying wallpaper: %+v (Color disabled: %t)\n", wallpaper, noColor)
+	cmd.Printf("Displaying wallpaper: %+v (Color disabled: %t)\n", wallpaper, noColor)
 }
 
-func displayJSON(data interface{}) {
+func displayJSON(cmd *cobra.Command, data interface{}) {
 	// Placeholder: Implementar lógica de visualización JSON
-	fmt.Printf("Displaying JSON: %+v\n", data)
+	cmd.Printf("Displaying JSON: %+v\n", data)
 }
 
-func displayTable(wallpapers interface{}, noColor bool) {
+func displayTable(cmd *cobra.Command, wallpapers interface{}, noColor bool) {
 	// Placeholder: Implementar lógica de visualización de tabla
-	fmt.Printf("Displaying table: %+v (Color disabled: %t)\n", wallpapers, noColor)
+	cmd.Printf("Displaying table: %+v (Color disabled: %t)\n", wallpapers, noColor)
 }

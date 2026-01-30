@@ -40,12 +40,12 @@ var favoritesListCmd = &cobra.Command{
 		ensureConfig()
 		favorites, err := loadFavorites()
 		if err != nil {
-			fmt.Printf("Error loading favorites: %v\n", err)
+			cmd.Printf("Error loading favorites: %v\n", err)
 			return
 		}
 
 		if len(favorites) == 0 {
-			fmt.Println("No favorite wallpapers yet.")
+			cmd.Println("No favorite wallpapers yet.")
 			return
 		}
 
@@ -63,10 +63,10 @@ var favoritesListCmd = &cobra.Command{
 
 		if config.JSONOutput {
 			data, _ := json.MarshalIndent(pageItems, "", "  ")
-			fmt.Println(string(data))
+			cmd.Println(string(data))
 		} else {
 			for _, fav := range pageItems {
-				fmt.Printf("ID: %s, URL: %s, Source: %s, Notes: %s\n", fav.ID, fav.URL, fav.Source, fav.Notes)
+				cmd.Printf("ID: %s, URL: %s, Source: %s, Notes: %s\n", fav.ID, fav.URL, fav.Source, fav.Notes)
 			}
 		}
 	},
@@ -82,13 +82,13 @@ var favoritesAddCmd = &cobra.Command{
 
 		favorites, err := loadFavorites()
 		if err != nil {
-			fmt.Printf("Error loading favorites: %v\n", err)
+			cmd.Printf("Error loading favorites: %v\n", err)
 			return
 		}
 
 		for _, fav := range favorites {
 			if fav.ID == wallpaperID {
-				fmt.Printf("Wallpaper %s is already in favorites.\n", wallpaperID)
+				cmd.Printf("Wallpaper %s is already in favorites.\n", wallpaperID)
 				return
 			}
 		}
@@ -115,9 +115,9 @@ var favoritesAddCmd = &cobra.Command{
 
 		if foundInFeed {
 			if err := manager.WriteJSON(feedPath, feed); err != nil {
-				fmt.Printf("Warning: Could not update feed: %v\n", err)
+				cmd.Printf("Warning: Could not update feed: %v\n", err)
 			}
-			fmt.Printf("Moved wallpaper %s from feed to favorites.\n", wallpaperID)
+			cmd.Printf("Moved wallpaper %s from feed to favorites.\n", wallpaperID)
 		} else {
 			// Fallback to dummy
 			wallpaperToAdd = models.Wallpaper{
@@ -131,10 +131,10 @@ var favoritesAddCmd = &cobra.Command{
 		favorites = append(favorites, newFav)
 
 		if err := saveFavorites(favorites); err != nil {
-			fmt.Printf("Error saving favorites: %v\n", err)
+			cmd.Printf("Error saving favorites: %v\n", err)
 			return
 		}
-		fmt.Printf("Wallpaper %s added to favorites list.\n", wallpaperID)
+		cmd.Printf("Wallpaper %s added to favorites list.\n", wallpaperID)
 	},
 }
 
@@ -148,7 +148,7 @@ var favoritesRemoveCmd = &cobra.Command{
 
 		favorites, err := loadFavorites()
 		if err != nil {
-			fmt.Printf("Error loading favorites: %v\n", err)
+			cmd.Printf("Error loading favorites: %v\n", err)
 			return
 		}
 
@@ -164,16 +164,16 @@ var favoritesRemoveCmd = &cobra.Command{
 
 		if !found {
 			if !favForce {
-				fmt.Printf("Wallpaper %s not found in favorites.\n", wallpaperID)
+				cmd.Printf("Wallpaper %s not found in favorites.\n", wallpaperID)
 			}
 			return
 		}
 
 		if err := saveFavorites(newFavorites); err != nil {
-			fmt.Printf("Error saving favorites: %v\n", err)
+			cmd.Printf("Error saving favorites: %v\n", err)
 			return
 		}
-		fmt.Printf("Wallpaper %s removed from favorites.\n", wallpaperID)
+		cmd.Printf("Wallpaper %s removed from favorites.\n", wallpaperID)
 	},
 }
 
@@ -185,24 +185,24 @@ var favoritesExportCmd = &cobra.Command{
 		ensureConfig()
 		favorites, err := loadFavorites()
 		if err != nil {
-			fmt.Printf("Error loading favorites: %v\n", err)
+			cmd.Printf("Error loading favorites: %v\n", err)
 			return
 		}
 
 		data, err := json.MarshalIndent(favorites, "", "  ")
 		if err != nil {
-			fmt.Printf("Error marshalling favorites: %v\n", err)
+			cmd.Printf("Error marshalling favorites: %v\n", err)
 			return
 		}
 
 		if favFile != "" {
 			if err := ioutil.WriteFile(favFile, data, 0644); err != nil {
-				fmt.Printf("Error exporting favorites to %s: %v\n", favFile, err)
+				cmd.Printf("Error exporting favorites to %s: %v\n", favFile, err)
 				return
 			}
-			fmt.Printf("Favorites exported to %s.\n", favFile)
+			cmd.Printf("Favorites exported to %s.\n", favFile)
 		} else {
-			fmt.Println(string(data))
+			cmd.Println(string(data))
 		}
 	},
 }
@@ -215,27 +215,27 @@ var favoritesImportCmd = &cobra.Command{
 		ensureConfig()
 		filePath := favFile
 		if filePath == "" {
-			fmt.Println("Error: --file flag is required for import")
+			cmd.Println("Error: --file flag is required for import")
 			os.Exit(1)
 		}
 
 		data, err := ioutil.ReadFile(filePath)
 		if err != nil {
-			fmt.Printf("Error reading import file %s: %v\n", filePath, err)
+			cmd.Printf("Error reading import file %s: %v\n", filePath, err)
 			return
 		}
 
 		var importedFavorites []FavoriteWallpaper
 		if err := json.Unmarshal(data, &importedFavorites); err != nil {
-			fmt.Printf("Error unmarshalling import file: %v\n", err)
+			cmd.Printf("Error unmarshalling import file: %v\n", err)
 			return
 		}
 
 		if err := saveFavorites(importedFavorites); err != nil {
-			fmt.Printf("Error saving favorites: %v\n", err)
+			cmd.Printf("Error saving favorites: %v\n", err)
 			return
 		}
-		fmt.Printf("Favorites imported successfully from %s. Total favorites: %d\n", filePath, len(importedFavorites))
+		cmd.Printf("Favorites imported successfully from %s. Total favorites: %d\n", filePath, len(importedFavorites))
 	},
 }
 
