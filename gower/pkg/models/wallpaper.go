@@ -14,4 +14,6 @@ type Wallpaper struct {
 	Ratio     string `json:"ratio,omitempty"`
 	Theme     string `json:"theme,omitempty"` // Analyzed color theme
 	Color     string `json:"color,omitempty"` // Dominant color hex
+	Permalink string `json:"permalink,omitempty"` // Permalink to the source (e.g., Reddit post)
+	Title     string `json:"title,omitempty"`     // Title of the wallpaper
 }

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt" // Add this import
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,9 +50,12 @@ func TestConfigSetAndGet(t *testing.T) {
 	executeCommand(rootCmd, "config", "init")
 
 	// Test Set
-	_, err := executeCommand(rootCmd, "config", "set", "behavior.theme=light")
+	setOutput, err := executeCommand(rootCmd, "config", "set", "behavior.theme=light")
 	if err != nil {
 		t.Fatalf("Error ejecutando set: %v", err)
+	}
+	if !strings.Contains(setOutput, "Configuración actualizada: behavior.theme = light") {
+		t.Errorf("Salida inesperada para set: %s", setOutput)
 	}
 
 	// Test Get
@@ -79,7 +83,7 @@ func TestConfigReset(t *testing.T) {
 		t.Fatalf("Error ejecutando reset: %v", err)
 	}
 
-	if !strings.Contains(output, "restablecida") {
+	if !strings.Contains(output, "Configuración restablecida a los valores por defecto.") {
 		t.Errorf("Salida inesperada: %s", output)
 	}
 
@@ -99,9 +103,14 @@ func TestConfigExportAndImport(t *testing.T) {
 	exportFile := filepath.Join(tmpDir, "backup.json")
 
 	// Test Export
-	_, err := executeCommand(rootCmd, "config", "export", exportFile)
+	exportOutput, err := executeCommand(rootCmd, "config", "export", exportFile)
 	if err != nil {
 		t.Fatalf("Error ejecutando export: %v", err)
+	}
+
+	expectedExportOutput := fmt.Sprintf("Configuración exportada a: %s", exportFile)
+	if !strings.Contains(exportOutput, expectedExportOutput) {
+		t.Errorf("Expected output to contain '%s', got '%s'", expectedExportOutput, exportOutput)
 	}
 
 	if _, err := os.Stat(exportFile); os.IsNotExist(err) {
@@ -112,7 +121,14 @@ func TestConfigExportAndImport(t *testing.T) {
 	executeCommand(rootCmd, "config", "set", "behavior.theme=light")
 
 	// Test Import (debería restaurar 'dark' que es lo que se exportó)
-	executeCommand(rootCmd, "config", "import", exportFile)
+	importOutput, err := executeCommand(rootCmd, "config", "import", exportFile)
+	if err != nil {
+		t.Fatalf("Error ejecutando import: %v", err)
+	}
+
+	if !strings.Contains(importOutput, "Configuración importada exitosamente.") {
+		t.Errorf("Expected output to contain 'Configuración importada exitosamente.', got '%s'", importOutput)
+	}
 
 	output, _ := executeCommand(rootCmd, "config", "get", "behavior.theme")
 	if strings.TrimSpace(output) != "dark" {

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"gower/internal/providers"
 	"gower/internal/utils"
-	"gower/pkg/models"
+	"gower/pkg/models" // Import models package
 	"io"
 	"net/http"
 	"os"
@@ -28,6 +28,7 @@ func NewController(config *models.Config) *Controller {
 	providerManager.RegisterProvider(&providers.WallhavenProvider{
 		APIKey: config.Providers.Wallhaven.APIKey,
 	})
+	providerManager.RegisterProvider(providers.NewRedditProvider(config.Providers.Reddit)) // Register RedditProvider
 	// Register other native providers here...
 
 	// Register generic providers
@@ -646,3 +647,4 @@ func (c *Controller) SyncFeed() (int, error) {
 	}
 	return 0, nil
 }
+

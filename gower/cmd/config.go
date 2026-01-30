@@ -21,11 +21,11 @@ var configCmd = &cobra.Command{
 	Short: "Manage configuration",
 }
 
-var configShowCmd = &cobra.Command{
-	Use:   "show",
-	Short: "Mostrar configuración",
 	Run: func(cmd *cobra.Command, args []string) {
-		ensureConfig()
+		if err := ensureConfig(); err != nil {
+			fmt.Println(err)
+			return
+		}
 		cfg, err := loadConfig()
 		if err != nil {
 			fmt.Printf("Error cargando configuración: %v\n", err)
@@ -41,7 +41,10 @@ var configSetCmd = &cobra.Command{
 	Short: "Cambiar configuración",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		ensureConfig()
+		if err := ensureConfig(); err != nil {
+			fmt.Println(err)
+			return
+		}
 		parts := strings.SplitN(args[0], "=", 2)
 		if len(parts) != 2 {
 			fmt.Println("Formato requerido: clave=valor")
@@ -73,7 +76,10 @@ var configGetCmd = &cobra.Command{
 	Short: "Obtener valor",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		ensureConfig()
+		if err := ensureConfig(); err != nil {
+			fmt.Println(err)
+			return
+		}
 		cfg, err := loadConfig()
 		if err != nil {
 			fmt.Printf("Error cargando configuración: %v\n", err)
@@ -92,7 +98,10 @@ var configResetCmd = &cobra.Command{
 	Use:   "reset",
 	Short: "Restablecer configuración",
 	Run: func(cmd *cobra.Command, args []string) {
-		ensureConfig()
+		if err := ensureConfig(); err != nil {
+			fmt.Println(err)
+			return
+		}
 		defaultCfg := getDefaultConfig()
 		if err := saveConfig(&defaultCfg); err != nil {
 			fmt.Printf("Error restableciendo configuración: %v\n", err)
@@ -154,18 +163,17 @@ var configImportCmd = &cobra.Command{
 	},
 }
 
-func ensureConfig() {
+func ensureConfig() error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		fmt.Printf("Error obteniendo directorio home: %v\n", err)
-		return
+		return fmt.Errorf("Error obteniendo directorio home: %v", err)
 	}
 	configFile := filepath.Join(homeDir, ".gower", "config.json")
 
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
-		fmt.Println("Configuración no encontrada. Ejecuta 'gower config init' primero.")
-		os.Exit(1)
+		return fmt.Errorf("Configuración no encontrada. Ejecuta 'gower config init' primero.")
 	}
+	return nil
 }
 
 func getConfigPath() (string, error) {
