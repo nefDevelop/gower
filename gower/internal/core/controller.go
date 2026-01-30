@@ -9,12 +9,15 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 // Controller is the main controller of the application.
 type Controller struct {
+	Config          *models.Config
 	ProviderManager *ProviderManager
 	feedManager     *utils.SecureJSONManager // Manager for feed.json
 	ColorManager    *ColorManager
@@ -36,6 +39,9 @@ func NewController(config *models.Config) *Controller {
 	if config.Providers.Nasa.Enabled {
 		providerManager.RegisterProvider(providers.NewNasaProvider(config.Providers.Nasa.APIKey))
 	}
+	if config.Providers.Bing.Enabled {
+		providerManager.RegisterProvider(providers.NewBingProvider(config.Providers.Bing.Market))
+	}
 	// Register other native providers here...
 
 	// Register generic providers
@@ -47,6 +53,7 @@ func NewController(config *models.Config) *Controller {
 	}
 
 	return &Controller{
+		Config:          config,
 		ProviderManager: providerManager,
 		feedManager:     utils.NewSecureJSONManager(),
 		ColorManager:    NewColorManager(),
@@ -184,9 +191,103 @@ func (c *Controller) PurgeFeed() error {
 	return c.saveFeed([]models.Wallpaper{})
 }
 
-// AnalyzeFeed analyzes the feed (placeholder).
+// AnalyzeFeed analyzes the feed items, regenerates thumbnails/colors if needed, and rebuilds the color index.
 func (c *Controller) AnalyzeFeed(all bool) error {
-	// Implementation for analyzing feed items (e.g. extracting colors)
+	feed, err := c.loadFeed()
+	if err != nil {
+		return err
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	thumbDir := filepath.Join(homeDir, ".gower", "cache", "thumbs")
+
+	type job struct {
+		Index int
+		Wp    models.Wallpaper
+	}
+
+	jobs := make(chan job, len(feed))
+	results := make(chan job, len(feed))
+
+	workers := 5
+	var wg sync.WaitGroup
+
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := range jobs {
+				wp := j.Wp
+				changed := false
+				thumbPath := filepath.Join(thumbDir, wp.ID+".jpg")
+
+				_, errStat := os.Stat(thumbPath)
+				thumbExists := errStat == nil
+
+				// If thumbnail is missing, we must generate it to analyze color
+				if !thumbExists {
+					src := wp.Thumbnail
+					if src == "" {
+						src = wp.URL
+					}
+					w, h, err := c.ColorManager.GenerateThumbnail(src, thumbPath)
+					if err == nil {
+						// If we generated it, we can set ratio if missing
+						if wp.Ratio == "" && w > 0 && h > 0 {
+							wp.Ratio = calculateRatio(w, h)
+							changed = true
+						}
+						// And we can analyze color
+						if color, err := c.ColorManager.AnalyzeColor(thumbPath); err == nil {
+							wp.Color = color
+							changed = true
+						}
+					} else {
+						utils.Log.Error("Failed to generate thumbnail for %s: %v", wp.ID, err)
+					}
+				} else if all || wp.Color == "" {
+					// Thumbnail exists, just re-analyze color
+					if color, err := c.ColorManager.AnalyzeColor(thumbPath); err == nil {
+						if wp.Color != color {
+							wp.Color = color
+							changed = true
+						}
+					} else {
+						utils.Log.Error("Failed to analyze color for %s: %v", wp.ID, err)
+					}
+				}
+
+				if changed {
+					results <- job{Index: j.Index, Wp: wp}
+				}
+			}
+		}()
+	}
+
+	for i, wp := range feed {
+		jobs <- job{Index: i, Wp: wp}
+	}
+	close(jobs)
+	wg.Wait()
+	close(results)
+
+	updatedCount := 0
+	for res := range results {
+		feed[res.Index] = res.Wp
+		updatedCount++
+	}
+
+	// Always rebuild index to ensure it matches current feed colors
+	if err := c.rebuildColorsIndex(feed); err != nil {
+		utils.Log.Error("Failed to rebuild colors index: %v", err)
+	}
+
+	if updatedCount > 0 {
+		return c.saveFeed(feed)
+	}
 	return nil
 }
 
@@ -335,6 +436,11 @@ func (c *Controller) AddToBlacklist(id string) error {
 	return c.feedManager.WriteJSON(path, blacklist)
 }
 
+// GetBlacklist returns the current blacklist.
+func (c *Controller) GetBlacklist() ([]string, error) {
+	return c.loadBlacklist()
+}
+
 // RemoveFromFeed removes a wallpaper from the feed by ID.
 func (c *Controller) RemoveFromFeed(id string) error {
 	feed, err := c.loadFeed()
@@ -461,17 +567,13 @@ func (c *Controller) DownloadWallpaper(wp models.Wallpaper) (string, error) {
 	// 1. Generate Thumbnail
 	thumbDir := filepath.Join(filepath.Dir(filepath.Dir(filePath)), "thumbs")
 	thumbPath := filepath.Join(thumbDir, filepath.Base(filePath))
-	if err := c.ColorManager.GenerateThumbnail(filePath, thumbPath); err != nil {
+	if _, _, err := c.ColorManager.GenerateThumbnail(filePath, thumbPath); err != nil {
 		utils.Log.Error("Failed to generate thumbnail for %s: %v", wp.ID, err)
 	}
 
 	// 2. Analyze and Index Color
-	hexColor, err := c.ColorManager.AnalyzeColor(filePath)
-	if err == nil {
-		if err := c.ColorManager.UpdateIndex(hexColor); err != nil {
-			utils.Log.Error("Failed to update color index: %v", err)
-		}
-	} else {
+	_, err = c.ColorManager.AnalyzeColor(filePath)
+	if err != nil {
 		utils.Log.Debug("Color analysis failed/skipped for %s: %v", wp.ID, err)
 	}
 
@@ -580,10 +682,10 @@ func (c *Controller) SaveParserSearch(providerName, query string, results []mode
 }
 
 // SyncFeed processes parser cache files and populates the feed.
-func (c *Controller) SyncFeed() (int, error) {
+func (c *Controller) SyncFeed() (int, int, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	parserDir := filepath.Join(homeDir, ".gower", "data", "parser")
 
@@ -591,25 +693,34 @@ func (c *Controller) SyncFeed() (int, error) {
 	if err != nil {
 		// If dir doesn't exist, just return 0
 		if os.IsNotExist(err) {
-			return 0, nil
+			return 0, 0, nil
 		}
-		return 0, err
+		return 0, 0, err
 	}
 
 	// Load existing feed and blacklist to avoid duplicates
 	feed, _ := c.loadFeed()
 	blacklist, _ := c.loadBlacklist()
 
-	existing := make(map[string]bool)
+	inFeed := make(map[string]bool)
 	for _, wp := range feed {
-		existing[wp.ID] = true
-	}
-	for _, id := range blacklist {
-		existing[id] = true
+		inFeed[wp.ID] = true
 	}
 
+	isBlacklisted := make(map[string]bool)
+	for _, id := range blacklist {
+		isBlacklisted[id] = true
+	}
+
+	// Track IDs processed in this run to avoid duplicates from multiple parser files
+	processed := make(map[string]bool)
+
 	addedCount := 0
+	repairedCount := 0
 	thumbDir := filepath.Join(homeDir, ".gower", "cache", "thumbs")
+
+	// 1. Recolectar candidatos únicos
+	var candidates []models.Wallpaper
 
 	for _, file := range files {
 		if file.IsDir() || filepath.Ext(file.Name()) != ".json" {
@@ -623,34 +734,222 @@ func (c *Controller) SyncFeed() (int, error) {
 
 		for _, search := range searches {
 			for _, wp := range search.Results {
-				if existing[wp.ID] {
+				if isBlacklisted[wp.ID] {
+					continue
+				}
+				if processed[wp.ID] {
 					continue
 				}
 
-				// Process new wallpaper
-				thumbPath := filepath.Join(thumbDir, wp.ID+".jpg")
-
-				// 1. Generate/Download Thumbnail
-				// Use full URL as source for thumbnail generation
-				if err := c.ColorManager.GenerateThumbnail(wp.URL, thumbPath); err == nil {
-					// 2. Analyze Color
-					if color, err := c.ColorManager.AnalyzeColor(thumbPath); err == nil {
-						// Assuming models.Wallpaper has a Color field or we use Palette
-						// Since we can't see models, we assume we can't set it easily without reflection or if field exists.
-						// For now, we just analyze it as requested.
-						_ = color
+				// Check if already in feed
+				if inFeed[wp.ID] {
+					// Check if thumbnail exists
+					thumbPath := filepath.Join(thumbDir, wp.ID+".jpg")
+					if _, err := os.Stat(thumbPath); err == nil {
+						// Exists, skip
+						processed[wp.ID] = true
+						continue
 					}
+					// Thumbnail missing, add to candidates to regenerate
 				}
 
-				feed = append(feed, wp)
-				existing[wp.ID] = true
-				addedCount++
+				candidates = append(candidates, wp)
+				processed[wp.ID] = true
 			}
 		}
 	}
 
-	if addedCount > 0 {
-		return addedCount, c.saveFeed(feed)
+	if len(candidates) == 0 {
+		return 0, 0, nil
 	}
-	return 0, nil
+
+	// 2. Procesar concurrentemente (Worker Pool)
+	// Limitamos a 5 goroutines para no saturar red/cpu
+	workers := 5
+	jobs := make(chan models.Wallpaper, len(candidates))
+	results := make(chan models.Wallpaper, len(candidates))
+	var wg sync.WaitGroup
+
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for wp := range jobs {
+				thumbPath := filepath.Join(thumbDir, wp.ID+".jpg")
+
+				// Usar thumbnail URL si existe para ahorrar ancho de banda
+				src := wp.Thumbnail
+				if src == "" {
+					src = wp.URL
+				}
+
+				// Generar thumbnail y analizar color
+				width, height, err := c.ColorManager.GenerateThumbnail(src, thumbPath)
+				if err == nil {
+					// Validar Ratio antes de continuar
+					if !c.matchesAspectRatio(width, height) {
+						os.Remove(thumbPath) // Limpiar thumbnail generado
+						continue
+					}
+
+					// Calcular Ratio si falta
+					if wp.Ratio == "" && width > 0 && height > 0 {
+						wp.Ratio = calculateRatio(width, height)
+					}
+
+					if color, err := c.ColorManager.AnalyzeColor(thumbPath); err == nil {
+						wp.Color = color
+					}
+
+					// Marcar como no visto
+					wp.Seen = false
+
+					results <- wp
+				}
+				// Si falla la descarga, no lo agregamos al feed (o podríamos agregarlo sin color)
+			}
+		}()
+	}
+
+	// Enviar trabajos
+	for _, wp := range candidates {
+		jobs <- wp
+	}
+	close(jobs)
+
+	// Esperar y cerrar
+	wg.Wait()
+	close(results)
+
+	// Recolectar resultados
+	for wp := range results {
+		if inFeed[wp.ID] {
+			// Update existing entry
+			for i := range feed {
+				if feed[i].ID == wp.ID {
+					wp.Seen = feed[i].Seen // Preserve seen status
+					feed[i] = wp
+					break
+				}
+			}
+			repairedCount++
+		} else {
+			feed = append(feed, wp)
+			addedCount++
+		}
+	}
+
+	// Reconstruir colors.json basado en el feed actualizado
+	c.rebuildColorsIndex(feed)
+
+	if addedCount > 0 || repairedCount > 0 {
+		// Aplicar Hard Limit (FIFO)
+		if c.Config.Limits.FeedHardLimit > 0 && len(feed) > c.Config.Limits.FeedHardLimit {
+			// Mantener solo los últimos N elementos
+			feed = feed[len(feed)-c.Config.Limits.FeedHardLimit:]
+		}
+		return addedCount, repairedCount, c.saveFeed(feed)
+	}
+	return 0, 0, nil
+}
+
+func calculateRatio(w, h int) string {
+	if h == 0 {
+		return ""
+	}
+	gcd := func(a, b int) int {
+		for b != 0 {
+			a, b = b, a%b
+		}
+		return a
+	}
+	d := gcd(w, h)
+	return fmt.Sprintf("%d:%d", w/d, h/d)
+}
+
+func (c *Controller) rebuildColorsIndex(feed []models.Wallpaper) error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(homeDir, ".gower", "data", "colors.json")
+
+	// Crear mapa de la paleta permitida para filtrado estricto
+	paletteMap := make(map[string]bool)
+	for _, color := range StandardPalette {
+		paletteMap[color] = true
+	}
+
+	uniqueColors := make(map[string]bool)
+	var colors []string
+
+	for _, wp := range feed {
+		if wp.Color != "" && paletteMap[wp.Color] && !uniqueColors[wp.Color] {
+			uniqueColors[wp.Color] = true
+			colors = append(colors, wp.Color)
+		}
+	}
+
+	return c.feedManager.WriteJSON(path, colors)
+}
+
+func (c *Controller) matchesAspectRatio(width, height int) bool {
+	if c.Config == nil || c.Config.Search.AspectRatio == "" {
+		return true
+	}
+
+	target := c.Config.Search.AspectRatio
+	var targetRatio float64
+
+	if strings.Contains(target, ":") {
+		parts := strings.Split(target, ":")
+		if len(parts) == 2 {
+			w, err1 := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
+			h, err2 := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+			if err1 == nil && err2 == nil && h != 0 {
+				targetRatio = w / h
+			}
+		}
+	} else {
+		targetRatio, _ = strconv.ParseFloat(target, 64)
+	}
+
+	if targetRatio == 0 {
+		return true
+	}
+
+	currentRatio := float64(width) / float64(height)
+	diff := currentRatio - targetRatio
+	if diff < 0 {
+		diff = -diff
+	}
+
+	return diff <= c.Config.Search.Tolerance
+}
+
+// GetLastProviderUpdateTime returns the modification time of the most recently updated provider cache file.
+func (c *Controller) GetLastProviderUpdateTime() (time.Time, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return time.Time{}, err
+	}
+	parserDir := filepath.Join(homeDir, ".gower", "data", "parser")
+
+	files, err := os.ReadDir(parserDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return time.Time{}, nil
+		}
+		return time.Time{}, err
+	}
+
+	var lastTime time.Time
+	for _, file := range files {
+		if info, err := file.Info(); err == nil && !file.IsDir() && filepath.Ext(file.Name()) == ".json" {
+			if info.ModTime().After(lastTime) {
+				lastTime = info.ModTime()
+			}
+		}
+	}
+	return lastTime, nil
 }

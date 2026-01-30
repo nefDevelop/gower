@@ -5,13 +5,35 @@ import (
 	"image"
 	"image/jpeg"
 	_ "image/png" // Support PNG decoding
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
 // ColorManager handles image processing tasks such as thumbnail generation and color analysis.
 type ColorManager struct{}
+
+// StandardPalette defines a set of base colors for quantization.
+var StandardPalette = []string{
+	"#000000", // Black
+	"#FFFFFF", // White
+	"#808080", // Gray
+	"#FF0000", // Red
+	"#00FF00", // Green
+	"#0000FF", // Blue
+	"#FFFF00", // Yellow
+	"#00FFFF", // Cyan
+	"#FF00FF", // Magenta
+	"#FFA500", // Orange
+	"#800080", // Purple
+	"#A52A2A", // Brown
+	"#FFC0CB", // Pink
+	"#008080", // Teal
+	"#000080", // Navy
+	"#800000", // Maroon
+}
 
 // NewColorManager creates a new instance of ColorManager.
 func NewColorManager() *ColorManager {
@@ -20,7 +42,7 @@ func NewColorManager() *ColorManager {
 
 // GenerateThumbnail creates a thumbnail for the specified image file.
 // If src is a URL, it downloads it first.
-func (cm *ColorManager) GenerateThumbnail(src, destPath string) error {
+func (cm *ColorManager) GenerateThumbnail(src, destPath string) (int, int, error) {
 	var img image.Image
 	var err error
 
@@ -28,32 +50,32 @@ func (cm *ColorManager) GenerateThumbnail(src, destPath string) error {
 	if len(src) > 4 && src[:4] == "http" {
 		resp, err := http.Get(src)
 		if err != nil {
-			return err
+			return 0, 0, err
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
-			return fmt.Errorf("failed to download image: %d", resp.StatusCode)
+			return 0, 0, fmt.Errorf("failed to download image: %d", resp.StatusCode)
 		}
 		img, _, err = image.Decode(resp.Body)
 	} else {
 		file, err := os.Open(src)
 		if err != nil {
-			return err
+			return 0, 0, err
 		}
 		defer file.Close()
 		img, _, err = image.Decode(file)
 	}
 
 	if err != nil {
-		return fmt.Errorf("failed to decode image: %w", err)
+		return 0, 0, fmt.Errorf("failed to decode image: %w", err)
 	}
 	if img == nil {
-		return fmt.Errorf("image.Decode returned nil image for %s", src) // Explicit check
+		return 0, 0, fmt.Errorf("image.Decode returned nil image for %s", src) // Explicit check
 	}
 
 	dir := filepath.Dir(destPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("failed to create thumbnail directory: %w", err)
+		return 0, 0, fmt.Errorf("failed to create thumbnail directory: %w", err)
 	}
 
 	// Simple resizing (Nearest Neighbor equivalent for standard lib)
@@ -73,11 +95,11 @@ func (cm *ColorManager) GenerateThumbnail(src, destPath string) error {
 
 	out, err := os.Create(destPath)
 	if err != nil {
-		return err
+		return 0, 0, err
 	}
 	defer out.Close()
 
-	return jpeg.Encode(out, dst, &jpeg.Options{Quality: 80})
+	return bounds.Dx(), bounds.Dy(), jpeg.Encode(out, dst, &jpeg.Options{Quality: 80})
 }
 
 // AnalyzeColor determines the dominant color of the image.
@@ -115,7 +137,38 @@ func (cm *ColorManager) AnalyzeColor(path string) (string, error) {
 	g = (g / count) >> 8
 	b = (b / count) >> 8
 
-	return fmt.Sprintf("#%02x%02x%02x", uint8(r), uint8(g), uint8(b)), nil
+	// Find nearest color in palette
+	return findNearestColor(int(r), int(g), int(b)), nil
+}
+
+func findNearestColor(r, g, b int) string {
+	minDist := math.MaxFloat64
+	nearest := "#000000"
+
+	for _, hex := range StandardPalette {
+		pr, pg, pb := hexToRGB(hex)
+		// Euclidean distance
+		dist := math.Sqrt(math.Pow(float64(r-pr), 2) + math.Pow(float64(g-pg), 2) + math.Pow(float64(b-pb), 2))
+		if dist < minDist {
+			minDist = dist
+			nearest = hex
+		}
+	}
+	return nearest
+}
+
+func hexToRGB(hex string) (int, int, int) {
+	if len(hex) > 0 && hex[0] == '#' {
+		hex = hex[1:]
+	}
+	if len(hex) != 6 {
+		return 0, 0, 0
+	}
+	val, err := strconv.ParseUint(hex, 16, 32)
+	if err != nil {
+		return 0, 0, 0
+	}
+	return int(val >> 16), int((val >> 8) & 0xFF), int(val & 0xFF)
 }
 
 // UpdateIndex adds the color to the search index.

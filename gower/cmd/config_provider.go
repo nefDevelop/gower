@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -37,26 +36,26 @@ var configProviderListCmd = &cobra.Command{
 		ensureConfig()
 		cfg, err := loadConfig()
 		if err != nil {
-			fmt.Printf("Error loading config: %v\n", err)
+			cmd.Printf("Error loading config: %v\n", err)
 			return
 		}
 
-		fmt.Println("Native Providers:")
-		fmt.Printf("  [Wallhaven] Enabled: %v\n", cfg.Providers.Wallhaven.Enabled)
-		fmt.Printf("  [Reddit]    Enabled: %v, Subreddits: %s\n", cfg.Providers.Reddit.Enabled, cfg.Providers.Reddit.Subreddit)
-		fmt.Printf("  [Nasa]      Enabled: %v\n", cfg.Providers.Nasa.Enabled)
+		cmd.Println("Native Providers:")
+		cmd.Printf("  [Wallhaven] Enabled: %v\n", cfg.Providers.Wallhaven.Enabled)
+		cmd.Printf("  [Reddit]    Enabled: %v, Subreddits: %s\n", cfg.Providers.Reddit.Enabled, cfg.Providers.Reddit.Subreddit)
+		cmd.Printf("  [Nasa]      Enabled: %v\n", cfg.Providers.Nasa.Enabled)
 
 		if len(cfg.GenericProviders) > 0 {
-			fmt.Println("\nGeneric Providers:")
+			cmd.Println("\nGeneric Providers:")
 			for _, p := range cfg.GenericProviders {
 				status := "Disabled"
 				if p.Enabled {
 					status = "Enabled"
 				}
-				fmt.Printf("  [%s] %s - URL: %s\n", p.Name, status, p.APIURL)
+				cmd.Printf("  [%s] %s - URL: %s\n", p.Name, status, p.APIURL)
 			}
 		} else {
-			fmt.Println("\nNo generic providers configured.")
+			cmd.Println("\nNo generic providers configured.")
 		}
 	},
 }
@@ -76,14 +75,14 @@ var configProviderAddCmd = &cobra.Command{
 
 		cfg, err := loadConfig()
 		if err != nil {
-			fmt.Printf("Error loading config: %v\n", err)
+			cmd.Printf("Error loading config: %v\n", err)
 			return
 		}
 
 		// Verificar si ya existe
 		for _, p := range cfg.GenericProviders {
 			if p.Name == name {
-				fmt.Printf("Error: Provider '%s' already exists.\n", name)
+				cmd.Printf("Error: Provider '%s' already exists.\n", name)
 				return
 			}
 		}
@@ -99,7 +98,7 @@ var configProviderAddCmd = &cobra.Command{
 		cfg.GenericProviders = append(cfg.GenericProviders, newProvider)
 
 		if err := saveConfig(cfg); err != nil {
-			fmt.Printf("Error saving config: %v\n", err)
+			cmd.Printf("Error saving config: %v\n", err)
 			return
 		}
 
@@ -114,16 +113,16 @@ var configProviderAddCmd = &cobra.Command{
 		homeDir, _ := os.UserHomeDir()
 		parserDir := filepath.Join(homeDir, ".gower", "data", "parser")
 		if err := os.MkdirAll(parserDir, 0755); err != nil {
-			fmt.Printf("Warning: Could not create parser directory: %v\n", err)
+			cmd.Printf("Warning: Could not create parser directory: %v\n", err)
 		}
 
 		parserFile := filepath.Join(parserDir, name+".json")
 		data, _ := json.MarshalIndent(mapping, "", "  ")
 		if err := ioutil.WriteFile(parserFile, data, 0644); err != nil {
-			fmt.Printf("Warning: Could not save parser config: %v\n", err)
+			cmd.Printf("Warning: Could not save parser config: %v\n", err)
 		}
 
-		fmt.Printf("Provider '%s' added successfully.\n", name)
+		cmd.Printf("Provider '%s' added successfully.\n", name)
 	},
 }
 
@@ -137,7 +136,7 @@ var configProviderRemoveCmd = &cobra.Command{
 
 		cfg, err := loadConfig()
 		if err != nil {
-			fmt.Printf("Error loading config: %v\n", err)
+			cmd.Printf("Error loading config: %v\n", err)
 			return
 		}
 
@@ -152,13 +151,13 @@ var configProviderRemoveCmd = &cobra.Command{
 		}
 
 		if !found {
-			fmt.Printf("Provider '%s' not found.\n", name)
+			cmd.Printf("Provider '%s' not found.\n", name)
 			return
 		}
 
 		cfg.GenericProviders = newProviders
 		if err := saveConfig(cfg); err != nil {
-			fmt.Printf("Error saving config: %v\n", err)
+			cmd.Printf("Error saving config: %v\n", err)
 			return
 		}
 
@@ -166,10 +165,10 @@ var configProviderRemoveCmd = &cobra.Command{
 		homeDir, _ := os.UserHomeDir()
 		parserFile := filepath.Join(homeDir, ".gower", "data", "parser", name+".json")
 		if err := os.Remove(parserFile); err != nil && !os.IsNotExist(err) {
-			fmt.Printf("Warning: Could not remove parser file: %v\n", err)
+			cmd.Printf("Warning: Could not remove parser file: %v\n", err)
 		}
 
-		fmt.Printf("Provider '%s' removed.\n", name)
+		cmd.Printf("Provider '%s' removed.\n", name)
 	},
 }
 
@@ -190,7 +189,7 @@ var configProviderRedditAddCmd = &cobra.Command{
 
 		cfg, err := loadConfig()
 		if err != nil {
-			fmt.Printf("Error loading config: %v\n", err)
+			cmd.Printf("Error loading config: %v\n", err)
 			return
 		}
 
@@ -200,17 +199,17 @@ var configProviderRedditAddCmd = &cobra.Command{
 		} else {
 			// Evitar duplicados simples
 			if strings.Contains(current, sub) {
-				fmt.Printf("Subreddit '%s' seems to be already in the list.\n", sub)
+				cmd.Printf("Subreddit '%s' seems to be already in the list.\n", sub)
 				return
 			}
 			cfg.Providers.Reddit.Subreddit = current + "+" + sub
 		}
 
 		if err := saveConfig(cfg); err != nil {
-			fmt.Printf("Error saving config: %v\n", err)
+			cmd.Printf("Error saving config: %v\n", err)
 			return
 		}
-		fmt.Printf("Added '%s' to Reddit sources. New list: %s\n", sub, cfg.Providers.Reddit.Subreddit)
+		cmd.Printf("Added '%s' to Reddit sources. New list: %s\n", sub, cfg.Providers.Reddit.Subreddit)
 	},
 }
 
@@ -224,7 +223,7 @@ var configProviderRedditRemoveCmd = &cobra.Command{
 
 		cfg, err := loadConfig()
 		if err != nil {
-			fmt.Printf("Error loading config: %v\n", err)
+			cmd.Printf("Error loading config: %v\n", err)
 			return
 		}
 
@@ -241,16 +240,16 @@ var configProviderRedditRemoveCmd = &cobra.Command{
 		}
 
 		if !found {
-			fmt.Printf("Subreddit '%s' not found in list.\n", sub)
+			cmd.Printf("Subreddit '%s' not found in list.\n", sub)
 			return
 		}
 
 		cfg.Providers.Reddit.Subreddit = strings.Join(newParts, "+")
 		if err := saveConfig(cfg); err != nil {
-			fmt.Printf("Error saving config: %v\n", err)
+			cmd.Printf("Error saving config: %v\n", err)
 			return
 		}
-		fmt.Printf("Removed '%s' from Reddit sources. New list: %s\n", sub, cfg.Providers.Reddit.Subreddit)
+		cmd.Printf("Removed '%s' from Reddit sources. New list: %s\n", sub, cfg.Providers.Reddit.Subreddit)
 	},
 }
 

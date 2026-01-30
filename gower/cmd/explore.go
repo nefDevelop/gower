@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"encoding/json"
-	"fmt"
 	"gower/internal/core"
 	"gower/internal/providers"
 	"gower/pkg/models"
@@ -53,7 +52,7 @@ func runExplore(cmd *cobra.Command, args []string) {
 
 	cfg, err := loadConfig()
 	if err != nil {
-		fmt.Printf("Error loading config: %v\n", err)
+		cmd.Printf("Error loading config: %v\n", err)
 		return
 	}
 
@@ -67,7 +66,7 @@ func runExplore(cmd *cobra.Command, args []string) {
 	} else if exploreProvider != "" {
 		p, err := controller.ProviderManager.GetProvider(exploreProvider)
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
+			cmd.Printf("Error: %v\n", err)
 			return
 		}
 		selectedProviders = append(selectedProviders, p)
@@ -79,24 +78,39 @@ func runExplore(cmd *cobra.Command, args []string) {
 	}
 
 	if len(selectedProviders) == 0 {
-		fmt.Println("No enabled providers found or selected.")
+		cmd.Println("No enabled providers found or selected.")
 		return
 	}
 
 	if !config.Quiet && !config.JSONOutput {
-		fmt.Printf("Exploring: '%s'\n", term)
+		displayTerm := term
+		if displayTerm == "" {
+			displayTerm = "random/latest"
+		}
+		cmd.Printf("Exploring: '%s'\n", displayTerm)
 		if exploreMinWidth > 0 {
-			fmt.Printf("Filter Min-Width: %dpx\n", exploreMinWidth)
+			cmd.Printf("Filter Min-Width: %dpx\n", exploreMinWidth)
 		}
 		if exploreMinHeight > 0 {
-			fmt.Printf("Filter Min-Height: %dpx\n", exploreMinHeight)
+			cmd.Printf("Filter Min-Height: %dpx\n", exploreMinHeight)
 		}
 		if exploreAspectRatio != "" {
-			fmt.Printf("Filter Aspect-Ratio: %s\n", exploreAspectRatio)
+			cmd.Printf("Filter Aspect-Ratio: %s\n", exploreAspectRatio)
 		}
 		if exploreColor != "" {
-			fmt.Printf("Filter Color: %s\n", exploreColor)
+			cmd.Printf("Filter Color: %s\n", exploreColor)
 		}
+	}
+
+	// Prepare ExcludeIDs from feed and blacklist
+	feed, _ := controller.GetFeedWallpapers()
+	blacklist, _ := controller.GetBlacklist()
+	excludeMap := make(map[string]bool)
+	for _, wp := range feed {
+		excludeMap[wp.ID] = true
+	}
+	for _, id := range blacklist {
+		excludeMap[id] = true
 	}
 
 	searchOpts := providers.SearchOptions{
@@ -106,18 +120,19 @@ func runExplore(cmd *cobra.Command, args []string) {
 		Color:       exploreColor,
 		Page:        explorePage,
 		ForceUpdate: exploreForceUpdate,
+		ExcludeIDs:  excludeMap,
 	}
 
 	var allWallpapers []models.Wallpaper
 
 	for _, p := range selectedProviders {
 		if !config.Quiet && !config.JSONOutput {
-			fmt.Printf("Querying provider: %s...\n", p.GetName())
+			cmd.Printf("Querying provider: %s...\n", p.GetName())
 		}
 		results, err := p.Search(term, searchOpts)
 		if err != nil {
 			if !config.Quiet {
-				fmt.Printf("Error searching %s: %v\n", p.GetName(), err)
+				cmd.Printf("Error searching %s: %v\n", p.GetName(), err)
 			}
 			continue
 		}
@@ -125,7 +140,7 @@ func runExplore(cmd *cobra.Command, args []string) {
 		// Save to parser cache
 		if err := controller.SaveParserSearch(p.GetName(), term, results); err != nil {
 			if !config.Quiet {
-				fmt.Printf("Warning: Failed to save parser cache for %s: %v\n", p.GetName(), err)
+				cmd.Printf("Warning: Failed to save parser cache for %s: %v\n", p.GetName(), err)
 			}
 		}
 
@@ -134,26 +149,26 @@ func runExplore(cmd *cobra.Command, args []string) {
 
 	if len(allWallpapers) == 0 {
 		if !config.Quiet && !config.JSONOutput {
-			fmt.Println("No results found.")
+			cmd.Println("No results found.")
 		}
 		return
 	}
 
 	if config.JSONOutput {
 		data, _ := json.MarshalIndent(allWallpapers, "", "  ")
-		fmt.Println(string(data))
+		cmd.Println(string(data))
 	} else {
 		for _, w := range allWallpapers {
-			fmt.Printf("  - ID: %s | Res: %s | Source: %s | URL: %s\n", w.ID, w.Dimension, w.Source, w.URL)
+			cmd.Printf("  - ID: %s | Res: %s | Source: %s | URL: %s\n", w.ID, w.Dimension, w.Source, w.URL)
 		}
 	}
 
 	if exploreSave {
 		count, err := controller.AddWallpapersToFeed(allWallpapers)
 		if err != nil {
-			fmt.Printf("Error saving to feed: %v\n", err)
+			cmd.Printf("Error saving to feed: %v\n", err)
 		} else if !config.Quiet && !config.JSONOutput {
-			fmt.Printf("Saved %d new wallpapers to feed.\n", count)
+			cmd.Printf("Saved %d new wallpapers to feed.\n", count)
 		}
 	}
 }

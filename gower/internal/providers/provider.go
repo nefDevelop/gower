@@ -13,6 +13,7 @@ type SearchOptions struct {
 	AspectRatio string
 	Color       string
 	ForceUpdate bool
+	ExcludeIDs  map[string]bool
 }
 
 // Provider defines the interface for wallpaper providers.
