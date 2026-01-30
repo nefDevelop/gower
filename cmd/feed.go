@@ -169,11 +169,49 @@ var feedRandomCmd = &cobra.Command{
 	},
 }
 
+var feedUpdateCmd = &cobra.Command{
+	Use:   "update",
+	Short: "Sync feed from provider caches",
+	Run: func(cmd *cobra.Command, args []string) {
+		cfg, err := loadConfig()
+		if err != nil {
+			fmt.Printf("Error loading config: %v\n", err)
+			os.Exit(1)
+		}
+		controller := core.NewController(cfg)
+
+		fmt.Println("Syncing feed from parser caches...")
+		count, err := controller.SyncFeed()
+		if err != nil {
+			fmt.Printf("Error syncing feed: %v\n", err)
+			os.Exit(1)
+		}
+
+		if count == 0 {
+			// If nothing added, maybe caches are empty. Run explore all.
+			fmt.Println("No new wallpapers found in cache. Running 'explore --all'...")
+			// We call the explore command logic directly or via subprocess
+			// For simplicity, we can just invoke the runExplore function if we exported it or use executeCommand logic
+			// But since runExplore is in same package:
+			exploreAll = true
+			exploreSave = true // Ensure it saves to parser cache
+			runExplore(exploreCmd, []string{"random"}) // Search for "random" or generic
+			
+			// Sync again
+			fmt.Println("Syncing feed again...")
+			count, _ = controller.SyncFeed()
+		}
+
+		fmt.Printf("Feed updated. Added %d new wallpapers.\n", count)
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(feedCmd)
 
 	// Agregar subcomandos
 	feedCmd.AddCommand(feedShowCmd)
+	feedCmd.AddCommand(feedUpdateCmd)
 	feedCmd.AddCommand(feedPurgeCmd)
 	feedCmd.AddCommand(feedStatsCmd)
 	feedCmd.AddCommand(feedAnalyzeCmd)
