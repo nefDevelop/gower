@@ -19,7 +19,11 @@ func resetExploreFlags() {
 	exploreProvider = ""
 	exploreAll = false
 	exploreMinWidth = 0
+	exploreMinHeight = 0
+	exploreAspectRatio = ""
 	exploreColor = ""
+	explorePage = 1
+	exploreForceUpdate = false
 }
 
 // createTestConfig crea un archivo config.json personalizado para un test.
@@ -51,8 +55,8 @@ func TestExploreNativeProvider(t *testing.T) {
 		t.Fatalf("Error executing explore: %v", err)
 	}
 
-	if !strings.Contains(output, "Consultando proveedor: wallhaven") {
-		t.Errorf("Expected output to contain 'Consultando proveedor: wallhaven', got: %s", output)
+	if !strings.Contains(output, "Querying provider: wallhaven") {
+		t.Errorf("Expected output to contain 'Querying provider: wallhaven', got: %s", output)
 	}
 	if !strings.Contains(output, "ID: wallhaven-wh-123") {
 		t.Errorf("Expected output to contain dummy wallhaven data, got: %s", output)
@@ -102,8 +106,8 @@ func TestExploreGenericProvider(t *testing.T) {
 	}
 
 	// 4. Verificar la salida
-	if !strings.Contains(output, "Consultando proveedor: generic_test") {
-		t.Errorf("Expected output to contain 'Consultando proveedor: generic_test', got: %s", output)
+	if !strings.Contains(output, "Querying provider: generic_test") {
+		t.Errorf("Expected output to contain 'Querying provider: generic_test', got: %s", output)
 	}
 	if !strings.Contains(output, "ID: generic_test-generic-1") {
 		t.Errorf("Expected output to contain data from generic provider, got: %s", output)
@@ -147,10 +151,10 @@ func TestExploreAllProviders(t *testing.T) {
 	}
 
 	// 4. Verificar que ambos son consultados
-	if !strings.Contains(output, "Consultando proveedor: wallhaven") {
+	if !strings.Contains(output, "Querying provider: wallhaven") {
 		t.Errorf("Expected to see wallhaven being consulted, got: %s", output)
 	}
-	if !strings.Contains(output, "Consultando proveedor: generic_test") {
+	if !strings.Contains(output, "Querying provider: generic_test") {
 		t.Errorf("Expected to see generic_test being consulted, got: %s", output)
 	}
 }

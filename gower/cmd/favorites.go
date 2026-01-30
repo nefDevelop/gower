@@ -6,12 +6,26 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strings"
+
+	// "strings"
 
 	"gower/internal/utils"
 	"gower/pkg/models"
 
 	"github.com/spf13/cobra"
+)
+
+type FavoriteWallpaper struct {
+	models.Wallpaper
+	Notes string `json:"notes,omitempty"`
+}
+
+var (
+	favPage  int
+	favLimit int
+	favNotes string
+	favForce bool
+	favFile  string
 )
 
 var favoritesCmd = &cobra.Command{
@@ -35,8 +49,25 @@ var favoritesListCmd = &cobra.Command{
 			return
 		}
 
-		for _, fav := range favorites {
-			fmt.Printf("ID: %s, URL: %s, Source: %s\n", fav.ID, fav.URL, fav.Source)
+		// Pagination
+		start := (favPage - 1) * favLimit
+		if start >= len(favorites) {
+			start = len(favorites)
+		}
+		end := start + favLimit
+		if end > len(favorites) {
+			end = len(favorites)
+		}
+
+		pageItems := favorites[start:end]
+
+		if config.JSONOutput {
+			data, _ := json.MarshalIndent(pageItems, "", "  ")
+			fmt.Println(string(data))
+		} else {
+			for _, fav := range pageItems {
+				fmt.Printf("ID: %s, URL: %s, Source: %s, Notes: %s\n", fav.ID, fav.URL, fav.Source, fav.Notes)
+			}
 		}
 	},
 }
@@ -52,10 +83,13 @@ var favoritesAddCmd = &cobra.Command{
 		// In a real scenario, you would fetch the wallpaper details using its ID
 		// from the original provider. For now, we'll create a dummy wallpaper.
 		// This part needs to be integrated with the explore/download logic.
-		dummyWallpaper := models.Wallpaper{
-			ID:     wallpaperID,
-			URL:    fmt.Sprintf("http://example.com/wallpaper/%s", wallpaperID),
-			Source: "unknown", // Source should be determined when fetching details
+		dummyWallpaper := FavoriteWallpaper{
+			Wallpaper: models.Wallpaper{
+				ID:     wallpaperID,
+				URL:    fmt.Sprintf("http://example.com/wallpaper/%s", wallpaperID),
+				Source: "unknown",
+			},
+			Notes: favNotes,
 		}
 
 		favorites, err := loadFavorites()
@@ -95,7 +129,7 @@ var favoritesRemoveCmd = &cobra.Command{
 		}
 
 		found := false
-		newFavorites := []models.Wallpaper{}
+		newFavorites := []FavoriteWallpaper{}
 		for _, fav := range favorites {
 			if fav.ID == wallpaperID {
 				found = true
@@ -105,7 +139,9 @@ var favoritesRemoveCmd = &cobra.Command{
 		}
 
 		if !found {
-			fmt.Printf("Wallpaper %s not found in favorites.\n", wallpaperID)
+			if !favForce {
+				fmt.Printf("Wallpaper %s not found in favorites.\n", wallpaperID)
+			}
 			return
 		}
 
@@ -118,9 +154,9 @@ var favoritesRemoveCmd = &cobra.Command{
 }
 
 var favoritesExportCmd = &cobra.Command{
-	Use:   "export [file]",
+	Use:   "export",
 	Short: "Export favorite wallpapers to a file",
-	Args:  cobra.MaximumNArgs(1),
+	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		ensureConfig()
 		favorites, err := loadFavorites()
@@ -135,12 +171,12 @@ var favoritesExportCmd = &cobra.Command{
 			return
 		}
 
-		if len(args) > 0 {
-			if err := ioutil.WriteFile(args[0], data, 0644); err != nil {
-				fmt.Printf("Error exporting favorites to %s: %v\n", args[0], err)
+		if favFile != "" {
+			if err := ioutil.WriteFile(favFile, data, 0644); err != nil {
+				fmt.Printf("Error exporting favorites to %s: %v\n", favFile, err)
 				return
 			}
-			fmt.Printf("Favorites exported to %s.\n", args[0])
+			fmt.Printf("Favorites exported to %s.\n", favFile)
 		} else {
 			fmt.Println(string(data))
 		}
@@ -148,12 +184,16 @@ var favoritesExportCmd = &cobra.Command{
 }
 
 var favoritesImportCmd = &cobra.Command{
-	Use:   "import <file>",
+	Use:   "import",
 	Short: "Import favorite wallpapers from a file",
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		ensureConfig()
-		filePath := args[0]
+		filePath := favFile
+		if filePath == "" {
+			fmt.Println("Error: --file flag is required for import")
+			os.Exit(1)
+		}
 
 		data, err := ioutil.ReadFile(filePath)
 		if err != nil {
@@ -161,7 +201,7 @@ var favoritesImportCmd = &cobra.Command{
 			return
 		}
 
-		var importedFavorites []models.Wallpaper
+		var importedFavorites []FavoriteWallpaper
 		if err := json.Unmarshal(data, &importedFavorites); err != nil {
 			fmt.Printf("Error unmarshalling import file: %v\n", err)
 			return
@@ -177,7 +217,7 @@ var favoritesImportCmd = &cobra.Command{
 		// Simple merge: add new ones, overwrite if ID exists (or skip if we want to avoid duplicates)
 		// For simplicity, let's just append and then deduplicate.
 		// A more robust solution would involve a map for faster lookups.
-		mergedFavorites := make(map[string]models.Wallpaper)
+		mergedFavorites := make(map[string]FavoriteWallpaper)
 		for _, fav := range existingFavorites {
 			mergedFavorites[fav.ID] = fav
 		}
@@ -185,7 +225,7 @@ var favoritesImportCmd = &cobra.Command{
 			mergedFavorites[fav.ID] = fav // Overwrite if ID exists, or add new
 		}
 
-		finalFavorites := []models.Wallpaper{}
+		finalFavorites := []FavoriteWallpaper{}
 		for _, fav := range mergedFavorites {
 			finalFavorites = append(finalFavorites, fav)
 		}
@@ -206,17 +246,17 @@ func getFavoritesPath() (string, error) {
 	return filepath.Join(homeDir, ".gower", "data", "favorites.json"), nil
 }
 
-func loadFavorites() ([]models.Wallpaper, error) {
+func loadFavorites() ([]FavoriteWallpaper, error) {
 	path, err := getFavoritesPath()
 	if err != nil {
 		return nil, err
 	}
 
-	var favorites []models.Wallpaper
+	var favorites []FavoriteWallpaper
 	manager := utils.NewSecureJSONManager()
 	// If file doesn't exist, return empty list without error
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return []models.Wallpaper{}, nil
+		return []FavoriteWallpaper{}, nil
 	}
 
 	if err := manager.ReadJSON(path, &favorites); err != nil {
@@ -225,7 +265,7 @@ func loadFavorites() ([]models.Wallpaper, error) {
 	return favorites, nil
 }
 
-func saveFavorites(favorites []models.Wallpaper) error {
+func saveFavorites(favorites []FavoriteWallpaper) error {
 	path, err := getFavoritesPath()
 	if err != nil {
 		return err
@@ -242,4 +282,14 @@ func init() {
 	favoritesCmd.AddCommand(favoritesRemoveCmd)
 	favoritesCmd.AddCommand(favoritesExportCmd)
 	favoritesCmd.AddCommand(favoritesImportCmd)
+
+	favoritesListCmd.Flags().IntVar(&favPage, "page", 1, "Page number")
+	favoritesListCmd.Flags().IntVar(&favLimit, "limit", 10, "Items per page")
+
+	favoritesAddCmd.Flags().StringVar(&favNotes, "notes", "", "Add notes to the favorite")
+
+	favoritesRemoveCmd.Flags().BoolVar(&favForce, "force", false, "Do not return error if not found")
+
+	favoritesExportCmd.Flags().StringVar(&favFile, "file", "", "Output file path")
+	favoritesImportCmd.Flags().StringVar(&favFile, "file", "", "Input file path")
 }

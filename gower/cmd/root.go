@@ -9,12 +9,14 @@ import (
 
 // CLIConfig holds all global command line flags
 type CLIConfig struct {
-	Verbose    bool
-	Debug      bool
-	Quiet      bool
-	JSONOutput bool
-	ConfigFile string
-	DryRun     bool
+	Verbose     bool
+	Debug       bool
+	Quiet       bool
+	JSONOutput  bool
+	TableOutput bool
+	NoColor     bool
+	ConfigFile  string
+	DryRun      bool
 }
 
 var config CLIConfig
@@ -28,6 +30,7 @@ from various online sources.`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	// Run: func(cmd *cobra.Command, args []string) { },
+	Version: "0.1.0",
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -47,6 +50,8 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&config.Debug, "debug", false, "Habilita la salida de depuración.")
 	rootCmd.PersistentFlags().BoolVarP(&config.Quiet, "quiet", "q", false, "Suprime toda la salida excepto los errores.")
 	rootCmd.PersistentFlags().BoolVar(&config.JSONOutput, "json", false, "Formatea la salida como JSON.")
+	rootCmd.PersistentFlags().BoolVar(&config.TableOutput, "table", false, "Output en tabla (default).")
+	rootCmd.PersistentFlags().BoolVar(&config.NoColor, "no-color", false, "Desactivar colores en output.")
 	rootCmd.PersistentFlags().StringVar(&config.ConfigFile, "config", "", "Ruta al archivo de configuración.")
 	rootCmd.PersistentFlags().BoolVar(&config.DryRun, "dry-run", false, "Simula la ejecución sin realizar cambios.")
 }

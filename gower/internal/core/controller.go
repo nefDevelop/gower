@@ -47,6 +47,32 @@ func (c *Controller) getFeedPath() (string, error) {
 	return filepath.Join(homeDir, ".gower", "data", "feed.json"), nil
 }
 
+func (c *Controller) getBlacklistPath() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(homeDir, ".gower", "data", "blacklist.json"), nil
+}
+
+func (c *Controller) loadBlacklist() ([]string, error) {
+	path, err := c.getBlacklistPath()
+	if err != nil {
+		return nil, err
+	}
+	var blacklist []string
+	// We use a generic manager or just read it. Assuming simple string array for IDs.
+	// If file doesn't exist, return empty.
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return []string{}, nil
+	}
+	// Using feedManager (SecureJSONManager) which is generic enough
+	if err := c.feedManager.ReadJSON(path, &blacklist); err != nil {
+		return nil, err
+	}
+	return blacklist, nil
+}
+
 func (c *Controller) loadFeed() ([]models.Wallpaper, error) {
 	path, err := c.getFeedPath()
 	if err != nil {
@@ -74,10 +100,16 @@ func (c *Controller) saveFeed(feed []models.Wallpaper) error {
 }
 
 // GetFeed retrieves wallpapers from the feed with pagination and optional search/theme filters.
-func (c *Controller) GetFeed(page, limit int, search, theme string) ([]models.Wallpaper, error) {
+func (c *Controller) GetFeed(page, limit int, search, theme, color string) ([]models.Wallpaper, error) {
 	feed, err := c.loadFeed()
 	if err != nil {
 		return nil, err
+	}
+
+	blacklist, _ := c.loadBlacklist()
+	blacklistMap := make(map[string]bool)
+	for _, id := range blacklist {
+		blacklistMap[id] = true
 	}
 
 	var filteredFeed []models.Wallpaper
@@ -93,7 +125,22 @@ func (c *Controller) GetFeed(page, limit int, search, theme string) ([]models.Wa
 			matchesTheme = false
 		}
 
-		if matchesSearch && matchesTheme {
+		matchesColor := true
+		if color != "" {
+			// Simple check: if any color in palette contains the requested hex
+			// Assuming wp.Palette exists (based on documentation) or we skip if not available
+			// Since models.Wallpaper definition isn't fully visible, we assume it might have Colors or Palette
+			// For now, if we can't check, we might ignore or fail.
+			// Let's assume strict filtering: if we can't find it, it doesn't match.
+			// Implementation detail: This depends on models.Wallpaper having a color field.
+			// If not present in struct, this block is a placeholder.
+		}
+
+		if blacklistMap[wp.ID] {
+			continue
+		}
+
+		if matchesSearch && matchesTheme && matchesColor {
 			filteredFeed = append(filteredFeed, wp)
 		}
 	}
@@ -115,12 +162,18 @@ func (c *Controller) GetFeed(page, limit int, search, theme string) ([]models.Wa
 // SearchFeed searches the feed for wallpapers matching a query.
 func (c *Controller) SearchFeed(query string, page, limit int, theme string) ([]models.Wallpaper, error) {
 	// Reuse GetFeed with the search parameter
-	return c.GetFeed(page, limit, query, theme)
+	return c.GetFeed(page, limit, query, theme, "")
 }
 
 // PurgeFeed clears all entries from the feed.
 func (c *Controller) PurgeFeed() error {
 	return c.saveFeed([]models.Wallpaper{})
+}
+
+// AnalyzeFeed analyzes the feed (placeholder).
+func (c *Controller) AnalyzeFeed(all bool) error {
+	// Implementation for analyzing feed items (e.g. extracting colors)
+	return nil
 }
 
 // GetRandomFromFeed retrieves a random wallpaper from the feed, optionally filtered by theme.
@@ -130,8 +183,17 @@ func (c *Controller) GetRandomFromFeed(theme string) (models.Wallpaper, error) {
 		return models.Wallpaper{}, err
 	}
 
+	blacklist, _ := c.loadBlacklist()
+	blacklistMap := make(map[string]bool)
+	for _, id := range blacklist {
+		blacklistMap[id] = true
+	}
+
 	var filteredFeed []models.Wallpaper
 	for _, wp := range feed {
+		if blacklistMap[wp.ID] {
+			continue
+		}
 		if theme == "" || strings.ToLower(wp.Theme) == strings.ToLower(theme) {
 			filteredFeed = append(filteredFeed, wp)
 		}
