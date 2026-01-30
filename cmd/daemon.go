@@ -3,7 +3,6 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"os/signal"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"gower/internal/core"
+	"gower/internal/utils"
 
 	"github.com/spf13/cobra"
 )
@@ -78,6 +78,11 @@ func init() {
 	daemonStatusCmd.Flags().BoolVar(&daemonJSON, "json", false, "Output in JSON")
 }
 
+// init initializes the random seed once
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
+
 func getPidFilePath() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".gower", "gower.pid")
@@ -91,10 +96,11 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 	}
 
 	pid := os.Getpid()
-	ioutil.WriteFile(pidFile, []byte(strconv.Itoa(pid)), 0644)
+	os.WriteFile(pidFile, []byte(strconv.Itoa(pid)), 0644)
 	defer os.Remove(pidFile)
 
 	fmt.Printf("Daemon started with PID %d\n", pid)
+	utils.Log.Info("Daemon started with PID %d", pid)
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1, syscall.SIGUSR2)
@@ -113,12 +119,15 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 			switch sig {
 			case syscall.SIGINT, syscall.SIGTERM:
 				fmt.Println("Stopping daemon...")
+				utils.Log.Info("Stopping daemon...")
 				return
 			case syscall.SIGUSR1:
 				fmt.Println("Daemon paused.")
+				utils.Log.Info("Daemon paused.")
 				paused = true
 			case syscall.SIGUSR2:
 				fmt.Println("Daemon resumed.")
+				utils.Log.Info("Daemon resumed.")
 				paused = false
 				changeWallpaper()
 			}
@@ -133,26 +142,31 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 func changeWallpaper() {
 	cfg, err := loadConfig()
 	if err != nil {
+		utils.Log.Error("Daemon failed to load config: %v", err)
 		return
 	}
 	controller := core.NewController(cfg)
 
 	wallpapers, err := controller.GetCachedWallpapers(daemonFromFavorites, daemonTheme)
 	if err != nil || len(wallpapers) == 0 {
+		utils.Log.Debug("Daemon: No cached wallpapers found (err: %v)", err)
 		return
 	}
 
-	rand.Seed(time.Now().UnixNano())
 	wp := wallpapers[rand.Intn(len(wallpapers))]
 
 	path, _ := controller.GetWallpaperLocalPath(wp)
 	changer := core.NewWallpaperChanger("")
-	changer.SetWallpaper(path, cfg.Behavior.MultiMonitor)
+	if err := changer.SetWallpaper(path, cfg.Behavior.MultiMonitor); err != nil {
+		utils.Log.Error("Daemon failed to set wallpaper %s: %v", wp.ID, err)
+	} else {
+		utils.Log.Info("Daemon set wallpaper: %s", wp.ID)
+	}
 }
 
 func runDaemonStop(cmd *cobra.Command, args []string) {
 	pidFile := getPidFilePath()
-	data, err := ioutil.ReadFile(pidFile)
+	data, err := os.ReadFile(pidFile)
 	if err != nil {
 		fmt.Println("Daemon not running (no pid file).")
 		return
@@ -171,7 +185,7 @@ func runDaemonStop(cmd *cobra.Command, args []string) {
 
 func runDaemonStatus(cmd *cobra.Command, args []string) {
 	pidFile := getPidFilePath()
-	data, err := ioutil.ReadFile(pidFile)
+	data, err := os.ReadFile(pidFile)
 	running := false
 	pid := 0
 
@@ -203,7 +217,7 @@ func runDaemonStatus(cmd *cobra.Command, args []string) {
 
 func sendSignal(sig syscall.Signal, action string) {
 	pidFile := getPidFilePath()
-	data, err := ioutil.ReadFile(pidFile)
+	data, err := os.ReadFile(pidFile)
 	if err != nil {
 		fmt.Println("Daemon not running.")
 		return

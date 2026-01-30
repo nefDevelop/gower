@@ -2,60 +2,71 @@
 package core
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 )
 
 type WallpaperChanger struct {
-	Command string
-	Args    []string
+	Env string
 }
 
 func NewWallpaperChanger(desktopEnv string) *WallpaperChanger {
-	var cmd string
-	var args []string
-
-	switch {
-	case strings.Contains(strings.ToLower(desktopEnv), "kde"):
-		cmd = "dbus-send"
-		args = []string{"--session", "--dest=org.kde.plasmashell",
-			"--type=method_call", "/PlasmaShell",
-			"org.kde.PlasmaShell.evaluateScript",
-			"string:...KDE script..."}
-	case strings.Contains(strings.ToLower(desktopEnv), "gnome"):
-		cmd = "gsettings"
-		args = []string{"set", "org.gnome.desktop.background",
-			"picture-uri", "file://"}
-	case commandExists("feh"):
-		cmd = "feh"
-		args = []string{"--bg-fill"}
-	case commandExists("nitrogen"):
-		cmd = "nitrogen"
-		args = []string{"--set-auto"}
-	default:
-		// Intentar detectar automáticamente
-		cmd = detectWallpaperCommand()
+	env := strings.ToLower(desktopEnv)
+	if env == "" {
+		env = detectDesktopEnv()
+	} else {
+		// Normalizar entrada manual
+		if strings.Contains(env, "kde") {
+			env = "kde"
+		} else if strings.Contains(env, "gnome") {
+			env = "gnome"
+		}
 	}
-
-	return &WallpaperChanger{Command: cmd, Args: args}
+	return &WallpaperChanger{Env: env}
 }
 
 func (wc *WallpaperChanger) SetWallpaper(path string, multiMonitor string) error {
-	var finalArgs []string
+	var cmd *exec.Cmd
 
-	// Copiar args base
-	finalArgs = append(finalArgs, wc.Args...)
+	switch wc.Env {
+	case "kde":
+		script := fmt.Sprintf(`
+			var allDesktops = desktops();
+			for (i=0;i<allDesktops.length;i++) {
+				d = allDesktops[i];
+				d.wallpaperPlugin = "org.kde.image";
+				d.currentConfigGroup = Array("Wallpaper", "org.kde.image", "General");
+				d.writeConfig("Image", "file://%s");
+			}
+		`, path)
+		cmd = exec.Command("dbus-send", "--session", "--dest=org.kde.plasmashell",
+			"--type=method_call", "/PlasmaShell",
+			"org.kde.PlasmaShell.evaluateScript",
+			"string:"+script)
 
-	// Manejar multimonitor
-	if multiMonitor == "distinct" && wc.Command == "feh" {
-		finalArgs = append(finalArgs, "--no-fehbg")
-		// Lógica para múltiples wallpapers
+	case "gnome":
+		uri := "file://" + path
+		// Establecer tanto para modo claro como oscuro en versiones modernas de Gnome
+		exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri).Run()
+		cmd = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri-dark", uri)
+
+	case "feh":
+		args := []string{"--bg-fill", path}
+		if multiMonitor == "distinct" {
+			// Nota: Para distinct real se necesitarían múltiples rutas, aquí asumimos clonado/fill
+			args = []string{"--no-fehbg", "--bg-fill", path}
+		}
+		cmd = exec.Command("feh", args...)
+
+	case "nitrogen":
+		cmd = exec.Command("nitrogen", "--set-auto", "--save", path)
+
+	default:
+		return fmt.Errorf("unsupported or undetected desktop environment: %s", wc.Env)
 	}
 
-	finalArgs = append(finalArgs, path)
-
-	cmd := exec.Command(wc.Command, finalArgs...)
 	return cmd.Run()
 }
 
@@ -64,13 +75,19 @@ func commandExists(cmd string) bool {
 	return err == nil
 }
 
-func detectWallpaperCommand() string {
+func detectDesktopEnv() string {
 	desktop := strings.ToLower(os.Getenv("XDG_CURRENT_DESKTOP"))
 	if strings.Contains(desktop, "gnome") {
-		return "gsettings"
+		return "gnome"
 	}
 	if strings.Contains(desktop, "kde") {
-		return "dbus-send"
+		return "kde"
 	}
-	return ""
+	if commandExists("feh") {
+		return "feh"
+	}
+	if commandExists("nitrogen") {
+		return "nitrogen"
+	}
+	return "unknown"
 }

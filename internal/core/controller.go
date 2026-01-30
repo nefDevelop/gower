@@ -17,6 +17,7 @@ import (
 type Controller struct {
 	ProviderManager *ProviderManager
 	feedManager     *utils.SecureJSONManager // Manager for feed.json
+	ColorManager    *ColorManager
 }
 
 // NewController creates a new Controller.
@@ -24,7 +25,9 @@ func NewController(config *models.Config) *Controller {
 	providerManager := NewProviderManager()
 
 	// Register native providers
-	providerManager.RegisterProvider(&providers.WallhavenProvider{})
+	providerManager.RegisterProvider(&providers.WallhavenProvider{
+		APIKey: config.Providers.Wallhaven.APIKey,
+	})
 	// Register other native providers here...
 
 	// Register generic providers
@@ -38,6 +41,7 @@ func NewController(config *models.Config) *Controller {
 	return &Controller{
 		ProviderManager: providerManager,
 		feedManager:     utils.NewSecureJSONManager(),
+		ColorManager:    NewColorManager(),
 	}
 }
 
@@ -350,6 +354,24 @@ func (c *Controller) DownloadWallpaper(wp models.Wallpaper) (string, error) {
 		return "", err
 	}
 
+	// Post-download processing
+	// 1. Generate Thumbnail
+	thumbDir := filepath.Join(filepath.Dir(filepath.Dir(filePath)), "thumbs")
+	thumbPath := filepath.Join(thumbDir, filepath.Base(filePath))
+	if err := c.ColorManager.GenerateThumbnail(filePath, thumbPath); err != nil {
+		utils.Log.Error("Failed to generate thumbnail for %s: %v", wp.ID, err)
+	}
+
+	// 2. Analyze and Index Color
+	hexColor, err := c.ColorManager.AnalyzeColor(filePath)
+	if err == nil {
+		if err := c.ColorManager.UpdateIndex(hexColor); err != nil {
+			utils.Log.Error("Failed to update color index: %v", err)
+		}
+	} else {
+		utils.Log.Debug("Color analysis failed/skipped for %s: %v", wp.ID, err)
+	}
+
 	return filePath, nil
 }
 
@@ -402,4 +424,54 @@ func (c *Controller) GetCachedWallpapers(includeFavorites bool, theme string) ([
 		}
 	}
 	return result, nil
+}
+
+// ParserSearch represents a search session stored in the parser cache.
+type ParserSearch struct {
+	Date    time.Time          `json:"date"`
+	Query   string             `json:"query"`
+	Results []models.Wallpaper `json:"results"`
+}
+
+func (c *Controller) getParserPath(providerName string) (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(homeDir, ".gower", "data", "parser", providerName+".json"), nil
+}
+
+// SaveParserSearch saves the search results to the provider's parser cache file.
+// It enforces a 14-day retention policy for old searches.
+func (c *Controller) SaveParserSearch(providerName, query string, results []models.Wallpaper) error {
+	path, err := c.getParserPath(providerName)
+	if err != nil {
+		return err
+	}
+
+	var searches []ParserSearch
+	// Try to read existing file
+	if _, err := os.Stat(path); err == nil {
+		// We ignore error here to overwrite corrupt files or start fresh
+		_ = c.feedManager.ReadJSON(path, &searches)
+	}
+
+	// Prune searches older than 14 days
+	cutoff := time.Now().AddDate(0, 0, -14)
+	var validSearches []ParserSearch
+	for _, s := range searches {
+		if s.Date.After(cutoff) {
+			validSearches = append(validSearches, s)
+		}
+	}
+
+	// Append new search
+	newSearch := ParserSearch{
+		Date:    time.Now(),
+		Query:   query,
+		Results: results,
+	}
+	validSearches = append(validSearches, newSearch)
+
+	return c.feedManager.WriteJSON(path, validSearches)
 }

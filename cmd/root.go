@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 
+	"gower/internal/utils"
+
 	"github.com/spf13/cobra"
 )
 
@@ -30,6 +32,13 @@ from various online sources.`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	// Run: func(cmd *cobra.Command, args []string) { },
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		if err := utils.InitLogger(config.Debug); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: Failed to initialize logger: %v\n", err)
+		} else {
+			utils.Log.Info("Execution started: %s %v", cmd.CommandPath(), args)
+		}
+	},
 	Version: "0.1.0",
 }
 
