@@ -106,6 +106,7 @@ func TestExportAllZip(t *testing.T) {
 }
 
 func TestExportAll(t *testing.T) {
+	exportFile = "" // Reset global flag variable to avoid pollution from previous tests
 	tmpDir := setupTestHome(t)
 	defer os.RemoveAll(tmpDir)
 

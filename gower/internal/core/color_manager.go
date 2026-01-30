@@ -66,9 +66,9 @@ func (cm *ColorManager) GenerateThumbnail(src, destPath string) (int, int, error
 		img, _, err = image.Decode(file)
 	}
 
-	if err != nil {
-		return 0, 0, fmt.Errorf("failed to decode image: %w", err)
-	}
+	// if err != nil {
+	// 	return 0, 0, fmt.Errorf("failed to decode image: %w", err)
+	// }
 	if img == nil {
 		return 0, 0, fmt.Errorf("image.Decode returned nil image for %s", src) // Explicit check
 	}

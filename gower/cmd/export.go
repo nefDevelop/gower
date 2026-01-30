@@ -36,11 +36,11 @@ var exportAllCmd = &cobra.Command{
 
 		// ZIP MODE
 		if exportFile != "" {
-			if err := exportAllToZip(exportFile, exportIncludeImages); err != nil {
-				fmt.Printf("Error creating zip export: %v\n", err)
+			if err := exportAllToZip(cmd, exportFile, exportIncludeImages); err != nil {
+				cmd.Printf("Error creating zip export: %v\n", err)
 				return
 			}
-			fmt.Printf("All data exported to: %s\n", exportFile)
+			cmd.Printf("All data exported to: %s\n", exportFile)
 			return
 		}
 
@@ -51,7 +51,7 @@ var exportAllCmd = &cobra.Command{
 		}
 
 		if err := os.MkdirAll(destDir, 0755); err != nil {
-			fmt.Printf("Error creating destination directory %s: %v\n", destDir, err)
+			cmd.Printf("Error creating destination directory %s: %v\n", destDir, err)
 			return
 		}
 
@@ -59,12 +59,12 @@ var exportAllCmd = &cobra.Command{
 		configPath, _ := getConfigPath()
 		configData, err := ioutil.ReadFile(configPath)
 		if err != nil {
-			fmt.Printf("Warning: Could not read config.json: %v\n", err)
+			cmd.Printf("Warning: Could not read config.json: %v\n", err)
 		} else {
 			if err := ioutil.WriteFile(filepath.Join(destDir, "config.json"), configData, 0644); err != nil {
-				fmt.Printf("Error exporting config.json: %v\n", err)
+				cmd.Printf("Error exporting config.json: %v\n", err)
 			} else {
-				fmt.Printf("Exported config.json to %s\n", filepath.Join(destDir, "config.json"))
+				cmd.Printf("Exported config.json to %s\n", filepath.Join(destDir, "config.json"))
 			}
 		}
 
@@ -72,12 +72,12 @@ var exportAllCmd = &cobra.Command{
 		favoritesPath, _ := getFavoritesPath()
 		favoritesData, err := ioutil.ReadFile(favoritesPath)
 		if err != nil {
-			fmt.Printf("Warning: Could not read favorites.json: %v\n", err)
+			cmd.Printf("Warning: Could not read favorites.json: %v\n", err)
 		} else {
 			if err := ioutil.WriteFile(filepath.Join(destDir, "favorites.json"), favoritesData, 0644); err != nil {
-				fmt.Printf("Error exporting favorites.json: %v\n", err)
+				cmd.Printf("Error exporting favorites.json: %v\n", err)
 			} else {
-				fmt.Printf("Exported favorites.json to %s\n", filepath.Join(destDir, "favorites.json"))
+				cmd.Printf("Exported favorites.json to %s\n", filepath.Join(destDir, "favorites.json"))
 			}
 		}
 
@@ -85,27 +85,27 @@ var exportAllCmd = &cobra.Command{
 		// Need to load config to initialize controller
 		cfg, err := loadConfig()
 		if err != nil {
-			fmt.Printf("Error loading config for feed export: %v\n", err)
+			cmd.Printf("Error loading config for feed export: %v\n", err)
 			return
 		}
 		controller := core.NewController(cfg)
 		feedWallpapers, err := controller.GetFeedWallpapers()
 		if err != nil {
-			fmt.Printf("Warning: Could not get feed wallpapers: %v\n", err)
+			cmd.Printf("Warning: Could not get feed wallpapers: %v\n", err)
 		} else {
 			feedData, err := json.MarshalIndent(feedWallpapers, "", "  ")
 			if err != nil {
-				fmt.Printf("Error marshalling feed data: %v\n", err)
+				cmd.Printf("Error marshalling feed data: %v\n", err)
 			} else {
 				if err := ioutil.WriteFile(filepath.Join(destDir, "feed.json"), feedData, 0644); err != nil {
-					fmt.Printf("Error exporting feed.json: %v\n", err)
+					cmd.Printf("Error exporting feed.json: %v\n", err)
 				} else {
-					fmt.Printf("Exported feed.json to %s\n", filepath.Join(destDir, "feed.json"))
+					cmd.Printf("Exported feed.json to %s\n", filepath.Join(destDir, "feed.json"))
 				}
 			}
 		}
 
-		fmt.Printf("All data exported to directory: %s\n", destDir)
+		cmd.Printf("All data exported to directory: %s\n", destDir)
 	},
 }
 
@@ -118,18 +118,18 @@ var exportConfigCmd = &cobra.Command{
 		configPath, _ := getConfigPath()
 		data, err := ioutil.ReadFile(configPath)
 		if err != nil {
-			fmt.Printf("Error reading configuration: %v\n", err)
+			cmd.Printf("Error reading configuration: %v\n", err)
 			return
 		}
 
 		if exportFile != "" {
 			if err := ioutil.WriteFile(exportFile, data, 0644); err != nil {
-				fmt.Printf("Error exporting config to %s: %v\n", exportFile, err)
+				cmd.Printf("Error exporting config to %s: %v\n", exportFile, err)
 				return
 			}
-			fmt.Printf("Configuration exported to: %s\n", exportFile)
+			cmd.Printf("Configuration exported to: %s\n", exportFile)
 		} else {
-			fmt.Println(string(data))
+			cmd.Println(string(data))
 		}
 	},
 }
@@ -142,35 +142,35 @@ var exportFeedCmd = &cobra.Command{
 		ensureConfig()
 		cfg, err := loadConfig()
 		if err != nil {
-			fmt.Printf("Error loading config for feed export: %v\n", err)
+			cmd.Printf("Error loading config for feed export: %v\n", err)
 			return
 		}
 		controller := core.NewController(cfg)
 		feedWallpapers, err := controller.GetFeedWallpapers()
 		if err != nil {
-			fmt.Printf("Error getting feed wallpapers: %v\n", err)
+			cmd.Printf("Error getting feed wallpapers: %v\n", err)
 			return
 		}
 
 		data, err := json.MarshalIndent(feedWallpapers, "", "  ")
 		if err != nil {
-			fmt.Printf("Error marshalling feed data: %v\n", err)
+			cmd.Printf("Error marshalling feed data: %v\n", err)
 			return
 		}
 
 		if exportFile != "" {
 			if err := ioutil.WriteFile(exportFile, data, 0644); err != nil {
-				fmt.Printf("Error exporting feed to %s: %v\n", exportFile, err)
+				cmd.Printf("Error exporting feed to %s: %v\n", exportFile, err)
 				return
 			}
-			fmt.Printf("Feed exported to: %s\n", exportFile)
+			cmd.Printf("Feed exported to: %s\n", exportFile)
 		} else {
-			fmt.Println(string(data))
+			cmd.Println(string(data))
 		}
 	},
 }
 
-func exportAllToZip(filename string, includeImages bool) error {
+func exportAllToZip(cmd *cobra.Command, filename string, includeImages bool) error {
 	f, err := os.Create(filename)
 	if err != nil {
 		return err
@@ -187,12 +187,12 @@ func exportAllToZip(filename string, includeImages bool) error {
 		}
 		data, err := ioutil.ReadFile(srcPath)
 		if err != nil {
-			fmt.Printf("Warning: Could not read %s for zip: %v\n", srcPath, err)
+			cmd.Printf("Warning: Could not read %s for zip: %v\n", srcPath, err)
 			return
 		}
 		zf, err := w.Create(zipName)
 		if err != nil {
-			fmt.Printf("Warning: Could not create zip entry %s: %v\n", zipName, err)
+			cmd.Printf("Warning: Could not create zip entry %s: %v\n", zipName, err)
 			return
 		}
 		zf.Write(data)

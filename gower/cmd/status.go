@@ -92,57 +92,57 @@ func runStatus(cmd *cobra.Command, args []string) {
 
 	if statusJSON {
 		data, _ := json.MarshalIndent(output, "", "  ")
-		fmt.Println(string(data))
+		cmd.Println(string(data))
 		return
 	}
 
 	// Text output
 	if output.System != nil {
-		fmt.Println("--- System ---")
-		fmt.Printf("OS: %s\n", output.System.OS)
-		fmt.Printf("Arch: %s\n", output.System.Arch)
-		fmt.Printf("Home: %s\n", output.System.HomeDir)
-		fmt.Println("Dependencies:")
+		cmd.Println("--- System ---")
+		cmd.Printf("OS: %s\n", output.System.OS)
+		cmd.Printf("Arch: %s\n", output.System.Arch)
+		cmd.Printf("Home: %s\n", output.System.HomeDir)
+		cmd.Println("Dependencies:")
 		for dep, installed := range output.System.Dependencies {
 			status := "Not Found"
 			if installed {
 				status = "Installed"
 			}
-			fmt.Printf("  %s: %s\n", dep, status)
+			cmd.Printf("  %s: %s\n", dep, status)
 		}
-		fmt.Println()
+		cmd.Println()
 	}
 
 	if output.Daemon != nil {
-		fmt.Println("--- Daemon ---")
+		cmd.Println("--- Daemon ---")
 		state := "Stopped"
 		if output.Daemon.Running {
 			state = fmt.Sprintf("Running (PID: %d)", output.Daemon.PID)
 		}
-		fmt.Printf("Status: %s\n", state)
-		fmt.Println()
+		cmd.Printf("Status: %s\n", state)
+		cmd.Println()
 	}
 
 	if output.Providers != nil {
-		fmt.Println("--- Providers ---")
-		fmt.Printf("Wallhaven: %v\n", output.Providers.Wallhaven)
-		fmt.Printf("Reddit: %v\n", output.Providers.Reddit)
-		fmt.Printf("Nasa: %v\n", output.Providers.Nasa)
+		cmd.Println("--- Providers ---")
+		cmd.Printf("Wallhaven: %v\n", output.Providers.Wallhaven)
+		cmd.Printf("Reddit: %v\n", output.Providers.Reddit)
+		cmd.Printf("Nasa: %v\n", output.Providers.Nasa)
 		if len(output.Providers.Generic) > 0 {
-			fmt.Println("Generic:")
+			cmd.Println("Generic:")
 			for _, p := range output.Providers.Generic {
-				fmt.Printf("  %s\n", p)
+				cmd.Printf("  %s\n", p)
 			}
 		}
-		fmt.Println()
+		cmd.Println()
 	}
 
 	if output.Storage != nil {
-		fmt.Println("--- Storage ---")
-		fmt.Printf("Cache: %s\n", output.Storage.CacheSize)
-		fmt.Printf("Data: %s\n", output.Storage.DataSize)
-		fmt.Printf("Total: %s\n", output.Storage.TotalSize)
-		fmt.Println()
+		cmd.Println("--- Storage ---")
+		cmd.Printf("Cache: %s\n", output.Storage.CacheSize)
+		cmd.Printf("Data: %s\n", output.Storage.DataSize)
+		cmd.Printf("Total: %s\n", output.Storage.TotalSize)
+		cmd.Println()
 	}
 }
 

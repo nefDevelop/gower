@@ -7,7 +7,16 @@ import (
 	"testing"
 )
 
+func resetStatusFlags() {
+	statusJSON = false
+	statusProviders = false
+	statusStorage = false
+	statusDaemon = false
+	statusSystem = false
+}
+
 func TestStatusAll(t *testing.T) {
+	resetStatusFlags()
 	tmpDir := setupTestHome(t)
 	defer os.RemoveAll(tmpDir)
 
@@ -33,6 +42,7 @@ func TestStatusAll(t *testing.T) {
 }
 
 func TestStatusJSON(t *testing.T) {
+	resetStatusFlags()
 	tmpDir := setupTestHome(t)
 	defer os.RemoveAll(tmpDir)
 
@@ -52,6 +62,7 @@ func TestStatusJSON(t *testing.T) {
 }
 
 func TestStatusFlags(t *testing.T) {
+	resetStatusFlags()
 	tmpDir := setupTestHome(t)
 	defer os.RemoveAll(tmpDir)
 
@@ -75,6 +86,7 @@ func TestStatusFlags(t *testing.T) {
 	os.MkdirAll(cacheDir, 0755)
 	os.WriteFile(filepath.Join(cacheDir, "test"), []byte("test"), 0644)
 
+	resetStatusFlags() // Reset again to clear providers flag
 	output, err = executeCommand(rootCmd, "status", "--storage")
 	if err != nil {
 		t.Fatalf("Error executing status --storage: %v", err)

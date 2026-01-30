@@ -37,8 +37,8 @@ func TestFavoritesAddAndList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error executing favorites add: %v", err)
 	}
-	if !strings.Contains(output, "Wallpaper test-id-1 added to favorites.") {
-		t.Errorf("Expected 'Wallpaper test-id-1 added to favorites.', got: %s", output)
+	if !strings.Contains(output, "Wallpaper test-id-1 added to favorites list.") {
+		t.Errorf("Expected 'Wallpaper test-id-1 added to favorites list.', got: %s", output)
 	}
 
 	// List favorites
