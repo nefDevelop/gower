@@ -4,118 +4,228 @@ import (
 	"encoding/json"
 	"fmt"
 	"gower/pkg/models"
+	"math/rand"
 	"net/http"
 	"strings"
 	"time"
 )
 
-// RedditProvider is a wallpaper provider for Reddit.
+// RedditProvider implements the Provider interface for Reddit.
 type RedditProvider struct {
 	Config models.RedditConfig
-	Client *http.Client
 }
 
-// NewRedditProvider creates a new instance of RedditProvider.
+// NewRedditProvider creates a new RedditProvider.
 func NewRedditProvider(config models.RedditConfig) *RedditProvider {
-	return &RedditProvider{
-		Config: config,
-		Client: &http.Client{Timeout: 10 * time.Second},
-	}
+	return &RedditProvider{Config: config}
 }
 
-// GetName returns the name of the provider.
-func (rp *RedditProvider) GetName() string {
-	return "Reddit"
+func (p *RedditProvider) GetName() string {
+	return "reddit"
 }
 
-// Search searches for wallpapers on Reddit.
-func (rp *RedditProvider) Search(query string, options SearchOptions) ([]models.Wallpaper, error) {
-	if !rp.Config.Enabled {
-		return nil, fmt.Errorf("Reddit provider is not enabled")
-	}
-
-	subreddit := rp.Config.Subreddit
+func (p *RedditProvider) Search(query string, opts SearchOptions) ([]models.Wallpaper, error) {
+	subreddit := p.Config.Subreddit
 	if subreddit == "" {
-		subreddit = "wallpapers" // Default to r/wallpapers if not specified
+		subreddit = "wallpapers"
+	}
+	sort := p.Config.Sort
+	if sort == "" {
+		sort = "mix"
+	}
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = p.Config.Limit
+	}
+	if limit <= 0 {
+		limit = 25
 	}
 
-	// Allow overriding subreddits with the query, if it's a "subreddit:foo+bar" format
-	if strings.HasPrefix(query, "subreddit:") {
-		subreddit = strings.TrimPrefix(query, "subreddit:")
-		query = "" // Clear query if it was a subreddit override
+	// Estrategia MIX: Combinar Hot, New y Top
+	if query == "" && sort == "mix" {
+		return p.searchMixed(subreddit, limit)
 	}
 
-	// Construct URL
-	// Example: https://www.reddit.com/r/wallpapers/search.json?q=nature&restrict_sr=on&sort=hot&limit=100
-	url := fmt.Sprintf("https://www.reddit.com/r/%s/search.json?restrict_sr=on", subreddit)
-	
-	// Add query if not empty
+	// Pedimos más items a la API (hasta 100) para compensar el filtrado posterior
+	apiLimit := 50
+	if limit > apiLimit {
+		apiLimit = limit
+	}
+	if apiLimit > 100 {
+		apiLimit = 100
+	}
+
+	var url string
+	timeParam := ""
+	if sort == "top" || sort == "controversial" {
+		timeParam = "&t=all" // Si es top, traemos los mejores de todos los tiempos para asegurar resultados
+	}
+
 	if query != "" {
-		url += fmt.Sprintf("&q=%s", query)
+		url = fmt.Sprintf("https://www.reddit.com/r/%s/search.json?q=%s&restrict_sr=1&sort=%s&limit=%d%s", subreddit, query, sort, apiLimit, timeParam)
+	} else {
+		url = fmt.Sprintf("https://www.reddit.com/r/%s/%s.json?limit=%d%s", subreddit, sort, apiLimit, timeParam)
 	}
 
-	// Add sort option
-	sort := rp.Config.Sort
-	if options.Sort != "" {
-		sort = options.Sort
+	return p.fetchFromReddit(url, limit)
+}
+
+func (p *RedditProvider) searchMixed(subreddit string, limit int) ([]models.Wallpaper, error) {
+	// Dividimos el esfuerzo, pero pedimos suficiente de cada uno
+	apiLimit := 40
+
+	urlHot := fmt.Sprintf("https://www.reddit.com/r/%s/hot.json?limit=%d", subreddit, apiLimit)
+	urlNew := fmt.Sprintf("https://www.reddit.com/r/%s/new.json?limit=%d", subreddit, apiLimit)
+	urlTop := fmt.Sprintf("https://www.reddit.com/r/%s/top.json?limit=%d&t=month", subreddit, apiLimit) // Top del mes para variar
+
+	// Hacemos las peticiones (secuenciales por simplicidad, podrían ser paralelas)
+	resHot, _ := p.fetchFromReddit(urlHot, limit)
+	resNew, _ := p.fetchFromReddit(urlNew, limit)
+	resTop, _ := p.fetchFromReddit(urlTop, limit)
+
+	// Combinar y desduplicar
+	uniqueMap := make(map[string]models.Wallpaper)
+	var combined []models.Wallpaper
+
+	// Función helper para agregar
+	add := func(list []models.Wallpaper) {
+		for _, wp := range list {
+			if _, exists := uniqueMap[wp.ID]; !exists {
+				uniqueMap[wp.ID] = wp
+				combined = append(combined, wp)
+			}
+		}
 	}
-	url += fmt.Sprintf("&sort=%s", sort)
 
-	// Add limit option
-	limit := rp.Config.Limit
-	if options.Limit > 0 {
-		limit = options.Limit
+	add(resHot)
+	add(resNew)
+	add(resTop)
+
+	// Barajar resultados
+	rand.Seed(time.Now().UnixNano())
+	rand.Shuffle(len(combined), func(i, j int) { combined[i], combined[j] = combined[j], combined[i] })
+
+	if len(combined) > limit {
+		return combined[:limit], nil
 	}
-	url += fmt.Sprintf("&limit=%d", limit)
+	return combined, nil
+}
 
-
+func (p *RedditProvider) fetchFromReddit(url string, limit int) ([]models.Wallpaper, error) {
+	client := &http.Client{}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "gower-wallpaper-app/0.1") // Reddit requires a User-Agent
+	req.Header.Set("User-Agent", "Gower/1.0")
 
-	resp, err := rp.Client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Reddit API returned status %d: %s", resp.StatusCode, resp.Status)
+		return nil, fmt.Errorf("reddit api returned status: %d", resp.StatusCode)
 	}
 
-	var redditResponse struct {
+	var result struct {
 		Data struct {
 			Children []struct {
 				Data struct {
 					ID        string `json:"id"`
-					URL       string `json:"url_overridden_by_dest"` // Direct image URL
-					Permalink string `json:"permalink"`
 					Title     string `json:"title"`
-					// Could add more fields like "thumbnail", "preview" for rich metadata
+					URL       string `json:"url"`
+					PostHint  string `json:"post_hint"`
+					Permalink string `json:"permalink"`
+					IsVideo   bool   `json:"is_video"`
+					Preview   struct {
+						Images []struct {
+							Source struct {
+								URL    string `json:"url"`
+								Width  int    `json:"width"`
+								Height int    `json:"height"`
+							} `json:"source"`
+							Resolutions []struct {
+								URL   string `json:"url"`
+								Width int    `json:"width"`
+							} `json:"resolutions"`
+						} `json:"images"`
+					} `json:"preview"`
 				} `json:"data"`
 			} `json:"children"`
 		} `json:"data"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&redditResponse); err != nil {
-		return nil, fmt.Errorf("failed to decode Reddit API response: %w", err)
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
 	}
 
 	var wallpapers []models.Wallpaper
-	for _, child := range redditResponse.Data.Children {
-		data := child.Data
-		// Filter out non-image URLs (e.g., self-posts, video links)
-		if strings.HasSuffix(data.URL, ".jpg") || strings.HasSuffix(data.URL, ".png") || strings.HasSuffix(data.URL, ".jpeg") {
-			wallpapers = append(wallpapers, models.Wallpaper{
-				ID:        fmt.Sprintf("rd_%s", data.ID), // Prefix with rd_ to avoid ID collisions
-				URL:       data.URL,
-				Source:    "Reddit",
-				Permalink: fmt.Sprintf("https://www.reddit.com%s", data.Permalink),
-				Title:     data.Title,
-			})
+	for _, child := range result.Data.Children {
+		// Respetar el límite solicitado por el usuario
+		if len(wallpapers) >= limit {
+			break
 		}
+
+		data := child.Data
+		if data.IsVideo {
+			continue
+		}
+
+		// Detección mejorada de imágenes
+		isImage := data.PostHint == "image"
+		if !isImage {
+			// Fallback: comprobar extensión si post_hint no es explícito
+			lowerURL := strings.ToLower(data.URL)
+			if strings.HasSuffix(lowerURL, ".jpg") || strings.HasSuffix(lowerURL, ".jpeg") || strings.HasSuffix(lowerURL, ".png") {
+				isImage = true
+			}
+		}
+
+		if !isImage {
+			continue
+		}
+
+		// Obtener la mejor URL posible
+		imageURL := data.URL
+		if len(data.Preview.Images) > 0 {
+			imageURL = data.Preview.Images[0].Source.URL
+		}
+		// Decodificar entidades HTML (&amp; -> &)
+		imageURL = strings.ReplaceAll(imageURL, "&amp;", "&")
+
+		// Determinar thumbnail
+		thumb := ""
+		if len(data.Preview.Images) > 0 {
+			// Intentar buscar una resolución cercana a 320px de ancho
+			for _, res := range data.Preview.Images[0].Resolutions {
+				if res.Width >= 320 {
+					thumb = strings.ReplaceAll(res.URL, "&amp;", "&")
+					break
+				}
+			}
+			if thumb == "" && len(data.Preview.Images[0].Resolutions) > 0 {
+				thumb = strings.ReplaceAll(data.Preview.Images[0].Resolutions[0].URL, "&amp;", "&")
+			}
+		}
+
+		// Determinar dimensión
+		dimension := ""
+		if len(data.Preview.Images) > 0 {
+			src := data.Preview.Images[0].Source
+			dimension = fmt.Sprintf("%dx%d", src.Width, src.Height)
+		}
+
+		wallpapers = append(wallpapers, models.Wallpaper{
+			ID:        "rd_" + data.ID,
+			URL:       imageURL,
+			Thumbnail: thumb,
+			Source:    "reddit",
+			Title:     data.Title,
+			Permalink: "https://reddit.com" + data.Permalink,
+			Dimension: dimension,
+		})
 	}
 
 	return wallpapers, nil
