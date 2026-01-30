@@ -88,13 +88,13 @@ func TestController_GetWallpaperAndDownload(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("image"))
+		w.Write([]byte("image")) // Revert to "image" content
 	}))
 	defer server.Close()
 
 	cfg := &models.Config{}
 	ctrl := core.NewController(cfg)
-	wp := models.Wallpaper{ID: "test-1", URL: server.URL + "/img.jpg"}
+	wp := models.Wallpaper{ID: "test-1", URL: server.URL + "/img.jpg"} // Revert to .jpg
 	ctrl.AddWallpaperToFeed(wp)
 
 	// Test GetWallpaper

@@ -16,7 +16,7 @@ func TestConfigInit(t *testing.T) {
 		t.Fatalf("Error ejecutando init: %v", err)
 	}
 
-	if !strings.Contains(output, "Estructura de configuración creada") {
+	if !strings.Contains(output, "Estructura de configuración creada en:") {
 		t.Errorf("Salida inesperada: %s", output)
 	}
 
