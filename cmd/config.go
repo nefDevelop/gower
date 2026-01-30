@@ -21,6 +21,9 @@ var configCmd = &cobra.Command{
 	Short: "Manage configuration",
 }
 
+var configShowCmd = &cobra.Command{
+	Use:   "show",
+	Short: "Mostrar configuración",
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := ensureConfig(); err != nil {
 			fmt.Println(err)
@@ -215,7 +218,7 @@ func getDefaultConfig() models.Config {
 				RateLimit: models.RateLimitConfig{Requests: 45, PerSeconds: 60},
 			},
 			Reddit: models.RedditConfig{
-				Enabled: true, Subreddit: "wallpapers", Sort: "top", Limit: 100,
+				Enabled: true, Subreddit: "wallpapers", Sort: "mix", Limit: 100,
 			},
 			Nasa: models.NasaConfig{
 				Enabled: false, APIKey: "DEMO_KEY",

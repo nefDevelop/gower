@@ -25,10 +25,17 @@ func NewController(config *models.Config) *Controller {
 	providerManager := NewProviderManager()
 
 	// Register native providers
-	providerManager.RegisterProvider(&providers.WallhavenProvider{
-		APIKey: config.Providers.Wallhaven.APIKey,
-	})
-	providerManager.RegisterProvider(providers.NewRedditProvider(config.Providers.Reddit)) // Register RedditProvider
+	if config.Providers.Wallhaven.Enabled {
+		providerManager.RegisterProvider(&providers.WallhavenProvider{
+			APIKey: config.Providers.Wallhaven.APIKey,
+		})
+	}
+	if config.Providers.Reddit.Enabled {
+		providerManager.RegisterProvider(providers.NewRedditProvider(config.Providers.Reddit))
+	}
+	if config.Providers.Nasa.Enabled {
+		providerManager.RegisterProvider(providers.NewNasaProvider(config.Providers.Nasa.APIKey))
+	}
 	// Register other native providers here...
 
 	// Register generic providers
@@ -647,4 +654,3 @@ func (c *Controller) SyncFeed() (int, error) {
 	}
 	return 0, nil
 }
-
