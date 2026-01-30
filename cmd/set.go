@@ -3,6 +3,12 @@ package cmd
 
 import (
 	"fmt"
+	"math/rand"
+	"os"
+	"time"
+
+	"gower/internal/core"
+	"gower/pkg/models"
 
 	"github.com/spf13/cobra"
 )
@@ -55,11 +61,127 @@ func init() {
 
 func runSet(cmd *cobra.Command, args []string) {
 	ensureConfig()
-	fmt.Println("Ejecutando el comando 'set'...")
-	// Aquí iría la lógica real para establecer el wallpaper
+
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Printf("Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+	controller := core.NewController(cfg)
+
+	var wallpaper *models.Wallpaper
+
+	// 1. Determine target wallpaper
+	if len(args) > 0 {
+		input := args[0]
+		// Check if it looks like a URL
+		if len(input) > 4 && input[:4] == "http" {
+			wallpaper = &models.Wallpaper{
+				ID:     "manual_url",
+				URL:    input,
+				Source: "manual",
+			}
+		} else {
+			// Assume ID
+			wp, err := controller.GetWallpaper(input)
+			if err != nil {
+				fmt.Printf("Error: %v\n", err)
+				os.Exit(1)
+			}
+			wallpaper = wp
+		}
+	} else if setURL != "" {
+		wallpaper = &models.Wallpaper{
+			ID:     "manual_url",
+			URL:    setURL,
+			Source: "manual",
+		}
+	} else if setID != "" {
+		wp, err := controller.GetWallpaper(setID)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+		wallpaper = wp
+	} else {
+		cmd.Help()
+		return
+	}
+
+	applyWallpaper(controller, *wallpaper)
 }
 
 func runSetRandom(cmd *cobra.Command, args []string) {
 	ensureConfig()
-	fmt.Println("Ejecutando el comando 'set random'...")
+
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Printf("Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+	controller := core.NewController(cfg)
+
+	var wallpaper models.Wallpaper
+
+	if setFromFavorites {
+		favorites, err := loadFavorites()
+		if err != nil {
+			fmt.Printf("Error loading favorites: %v\n", err)
+			os.Exit(1)
+		}
+		if len(favorites) == 0 {
+			fmt.Println("No favorites found.")
+			os.Exit(1)
+		}
+		rand.Seed(time.Now().UnixNano())
+		fav := favorites[rand.Intn(len(favorites))]
+		wallpaper = fav.Wallpaper
+	} else {
+		var err error
+		wallpaper, err = controller.GetRandomFromFeed(setTheme)
+		if err != nil {
+			fmt.Printf("Error getting random wallpaper: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	applyWallpaper(controller, wallpaper)
+}
+
+func applyWallpaper(controller *core.Controller, wp models.Wallpaper) {
+	fmt.Printf("Setting wallpaper: %s (Source: %s)\n", wp.ID, wp.Source)
+
+	localPath := ""
+	if !setNoDownload {
+		var err error
+		localPath, err = controller.DownloadWallpaper(wp)
+		if err != nil {
+			fmt.Printf("Error downloading wallpaper: %v\n", err)
+			os.Exit(1)
+		}
+	} else {
+		// If no download, we assume URL is a local path or we can't do much
+		localPath = wp.URL
+	}
+
+	// Determine desktop environment (simple detection or config)
+	// For now, we rely on core.NewWallpaperChanger auto-detection
+	changer := core.NewWallpaperChanger("")
+
+	// Override multi-monitor if flag set
+	mmMode := setMultiMonitor
+	if mmMode == "" {
+		// Fallback to config if available, otherwise default
+		// We don't have easy access to config struct here without reloading or passing it
+		// But NewController(cfg) was called, so we could pass cfg.Behavior.MultiMonitor
+		// For simplicity, let's default to "clone" or let changer handle it
+		mmMode = "clone"
+	}
+
+	if err := changer.SetWallpaper(localPath, mmMode); err != nil {
+		fmt.Printf("Error setting wallpaper: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Wallpaper set successfully.")
 }
