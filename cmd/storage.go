@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"gower/internal/utils"
+
 	"github.com/spf13/cobra"
 )
 
@@ -88,8 +90,10 @@ var storageRepairCmd = &cobra.Command{
 					if err == nil && json.Valid(data) {
 						if err := ioutil.WriteFile(path, data, 0644); err == nil {
 							fmt.Printf("Successfully repaired %s\n", f)
+							utils.Log.Info("Storage repair: Successfully repaired %s from backup", f)
 						} else {
 							fmt.Printf("Failed to write repaired file %s: %v\n", f, err)
+							utils.Log.Error("Storage repair: Failed to write repaired file %s: %v", f, err)
 						}
 					} else {
 						fmt.Printf("Backup for %s is also corrupt or unreadable.\n", f)

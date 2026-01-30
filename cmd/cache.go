@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"gower/internal/utils"
+
 	"github.com/spf13/cobra"
 )
 
@@ -24,6 +26,7 @@ var cacheCleanCmd = &cobra.Command{
 		err := os.RemoveAll(cacheDir)
 		if err != nil {
 			fmt.Printf("Error cleaning cache: %v\n", err)
+			utils.Log.Error("Cache clean failed: %v", err)
 			return
 		}
 		// Recreate structure
@@ -31,6 +34,7 @@ var cacheCleanCmd = &cobra.Command{
 		os.MkdirAll(filepath.Join(cacheDir, "thumbs"), 0755)
 
 		fmt.Println("Cache cleaned successfully.")
+		utils.Log.Info("Cache cleaned successfully")
 	},
 }
 

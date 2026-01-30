@@ -3,6 +3,7 @@ package providers
 import (
 	"encoding/json"
 	"fmt"
+	"gower/internal/utils"
 	"gower/pkg/models"
 	"net/http"
 	"net/url"
@@ -60,6 +61,8 @@ func (p *WallhavenProvider) Search(query string, opts SearchOptions) ([]models.W
 	}
 
 	u.RawQuery = q.Encode()
+
+	utils.Log.Debug("Wallhaven fetching: %s", u.String())
 
 	resp, err := http.Get(u.String())
 	if err != nil {

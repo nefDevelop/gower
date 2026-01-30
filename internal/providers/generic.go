@@ -2,6 +2,7 @@ package providers
 
 import (
 	"fmt"
+	"gower/internal/utils"
 	"gower/pkg/models"
 	"io"
 	"net/http"
@@ -23,6 +24,8 @@ func (p *GenericProvider) Search(query string, opts SearchOptions) ([]models.Wal
 	url := p.Config.APIURL
 	url = strings.ReplaceAll(url, "{query}", query)
 	url = strings.ReplaceAll(url, "{apikey}", p.Config.APIKey)
+
+	utils.Log.Debug("Generic provider %s fetching: %s", p.Config.Name, url)
 
 	resp, err := http.Get(url)
 	if err != nil {

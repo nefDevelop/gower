@@ -3,6 +3,7 @@ package core
 
 import (
 	"fmt"
+	"gower/internal/utils"
 	"os"
 	"os/exec"
 	"strings"
@@ -28,6 +29,7 @@ func NewWallpaperChanger(desktopEnv string) *WallpaperChanger {
 }
 
 func (wc *WallpaperChanger) SetWallpaper(path string, multiMonitor string) error {
+	utils.Log.Info("Setting wallpaper: %s (Env: %s)", path, wc.Env)
 	var cmd *exec.Cmd
 
 	switch wc.Env {

@@ -373,7 +373,11 @@ func (c *Controller) AddWallpaperToFeed(wallpaper models.Wallpaper) error {
 	}
 
 	feed = append(feed, wallpaper)
-	return c.saveFeed(feed)
+	if err := c.saveFeed(feed); err != nil {
+		return err
+	}
+	utils.Log.Info("Added wallpaper %s to feed", wallpaper.ID)
+	return nil
 }
 
 // AddWallpapersToFeed adds multiple wallpapers to the feed efficiently.
@@ -433,7 +437,11 @@ func (c *Controller) AddToBlacklist(id string) error {
 	if err != nil {
 		return err
 	}
-	return c.feedManager.WriteJSON(path, blacklist)
+	if err := c.feedManager.WriteJSON(path, blacklist); err != nil {
+		return err
+	}
+	utils.Log.Info("Added wallpaper %s to blacklist", id)
+	return nil
 }
 
 // GetBlacklist returns the current blacklist.
@@ -462,7 +470,11 @@ func (c *Controller) RemoveFromFeed(id string) error {
 		return nil
 	}
 
-	return c.saveFeed(newFeed)
+	if err := c.saveFeed(newFeed); err != nil {
+		return err
+	}
+	utils.Log.Info("Removed wallpaper %s from feed", id)
+	return nil
 }
 
 // GetFeedWallpapers returns all wallpapers in the feed.
@@ -577,6 +589,7 @@ func (c *Controller) DownloadWallpaper(wp models.Wallpaper) (string, error) {
 		utils.Log.Debug("Color analysis failed/skipped for %s: %v", wp.ID, err)
 	}
 
+	utils.Log.Info("Downloaded wallpaper: %s", wp.ID)
 	return filePath, nil
 }
 
@@ -683,6 +696,8 @@ func (c *Controller) SaveParserSearch(providerName, query string, results []mode
 
 // SyncFeed processes parser cache files and populates the feed.
 func (c *Controller) SyncFeed() (int, int, error) {
+	utils.Log.Info("Starting feed sync...")
+
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return 0, 0, err
@@ -848,8 +863,13 @@ func (c *Controller) SyncFeed() (int, int, error) {
 			// Mantener solo los últimos N elementos
 			feed = feed[len(feed)-c.Config.Limits.FeedHardLimit:]
 		}
-		return addedCount, repairedCount, c.saveFeed(feed)
+		err := c.saveFeed(feed)
+		if err == nil {
+			utils.Log.Info("Feed sync completed. Added: %d, Repaired: %d", addedCount, repairedCount)
+		}
+		return addedCount, repairedCount, err
 	}
+	utils.Log.Info("Feed sync completed. No changes.")
 	return 0, 0, nil
 }
 
