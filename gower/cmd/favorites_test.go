@@ -168,14 +168,16 @@ func TestFavoritesExportAndImport(t *testing.T) {
 
 	output, err = executeCommand(rootCmd, "favorites", "import", "--file", newImportFile)
 	if err != nil {
-		t.Fatalf("Error executing favorites import (merge): %v", err)
+		t.Fatalf("Error executing favorites import: %v", err)
 	}
 	output, err = executeCommand(rootCmd, "favorites", "list")
 	if err != nil {
-		t.Fatalf("Error executing favorites list (after merge): %v", err)
+		t.Fatalf("Error executing favorites list (after import): %v", err)
 	}
-	if !strings.Contains(output, "ID: fav-id-1") || !strings.Contains(output, "ID: fav-id-2") ||
-		!strings.Contains(output, "ID: fav-id-3") || !strings.Contains(output, "ID: fav-id-4") {
-		t.Errorf("Expected all merged favorites, got: %s", output)
+	if !strings.Contains(output, "ID: fav-id-1") || !strings.Contains(output, "ID: fav-id-4") {
+		t.Errorf("Expected imported favorites, got: %s", output)
+	}
+	if strings.Contains(output, "ID: fav-id-3") {
+		t.Errorf("Expected fav-id-3 to be overwritten, but it is present")
 	}
 }

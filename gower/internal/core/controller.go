@@ -5,6 +5,8 @@ import (
 	"gower/internal/providers"
 	"gower/internal/utils"
 	"gower/pkg/models"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -253,4 +255,151 @@ func (c *Controller) AddWallpaperToFeed(wallpaper models.Wallpaper) error {
 // GetFeedWallpapers returns all wallpapers in the feed.
 func (c *Controller) GetFeedWallpapers() ([]models.Wallpaper, error) {
 	return c.loadFeed()
+}
+
+// GetWallpaper attempts to find a wallpaper by ID in the feed or favorites.
+func (c *Controller) GetWallpaper(id string) (*models.Wallpaper, error) {
+	// 1. Check Feed
+	feed, err := c.loadFeed()
+	if err == nil {
+		for _, wp := range feed {
+			if wp.ID == id {
+				return &wp, nil
+			}
+		}
+	}
+
+	// 2. Check Favorites
+	// We need to manually load favorites here since Controller doesn't manage them directly yet,
+	// or we can assume the caller handles it. However, for convenience:
+	favPath := filepath.Join(filepath.Dir(filepath.Dir(filepath.Dir(c.getFeedPathString()))), "favorites.json")
+	var favorites []struct {
+		models.Wallpaper
+		Notes string `json:"notes,omitempty"`
+	}
+	if err := c.feedManager.ReadJSON(favPath, &favorites); err == nil {
+		for _, fav := range favorites {
+			if fav.ID == id {
+				return &fav.Wallpaper, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("wallpaper with ID %s not found", id)
+}
+
+// Helper to get path string (ignoring error for internal use)
+func (c *Controller) getFeedPathString() string {
+	p, _ := c.getFeedPath()
+	return p
+}
+
+// GetWallpaperLocalPath returns the expected local path for a wallpaper without downloading it.
+func (c *Controller) GetWallpaperLocalPath(wp models.Wallpaper) (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	cacheDir := filepath.Join(homeDir, ".gower", "cache", "wallpapers")
+
+	// Determine filename
+	ext := filepath.Ext(wp.URL)
+	if ext == "" {
+		ext = ".jpg"
+	}
+	safeID := strings.ReplaceAll(wp.ID, "/", "_")
+	filename := fmt.Sprintf("%s%s", safeID, ext)
+	return filepath.Join(cacheDir, filename), nil
+}
+
+// DownloadWallpaper downloads the wallpaper image to the cache directory and returns the local path.
+func (c *Controller) DownloadWallpaper(wp models.Wallpaper) (string, error) {
+	filePath, err := c.GetWallpaperLocalPath(wp)
+	if err != nil {
+		return "", err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
+		return "", err
+	}
+
+	// Check if already exists
+	if _, err := os.Stat(filePath); err == nil {
+		return filePath, nil
+	}
+
+	// Download
+	resp, err := http.Get(wp.URL)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to download wallpaper: status %d", resp.StatusCode)
+	}
+
+	out, err := os.Create(filePath)
+	if err != nil {
+		return "", err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	return filePath, nil
+}
+
+// GetCachedWallpapers retrieves wallpapers from feed (and optionally favorites) that are locally cached.
+func (c *Controller) GetCachedWallpapers(includeFavorites bool, theme string) ([]models.Wallpaper, error) {
+	var candidates []models.Wallpaper
+
+	// Load Feed
+	feed, err := c.loadFeed()
+	if err == nil {
+		candidates = append(candidates, feed...)
+	}
+
+	// Load Favorites if requested
+	if includeFavorites {
+		favPath := filepath.Join(filepath.Dir(filepath.Dir(filepath.Dir(c.getFeedPathString()))), "favorites.json")
+		var favorites []struct {
+			models.Wallpaper
+			Notes string `json:"notes,omitempty"`
+		}
+		if err := c.feedManager.ReadJSON(favPath, &favorites); err == nil {
+			for _, f := range favorites {
+				candidates = append(candidates, f.Wallpaper)
+			}
+		}
+	}
+
+	// Filter
+	var result []models.Wallpaper
+	seen := make(map[string]bool)
+
+	for _, wp := range candidates {
+		if seen[wp.ID] {
+			continue
+		}
+		seen[wp.ID] = true
+
+		// Theme check
+		if theme != "" && theme != "auto" && strings.ToLower(wp.Theme) != strings.ToLower(theme) {
+			continue
+		}
+
+		// Cache check
+		path, err := c.GetWallpaperLocalPath(wp)
+		if err != nil {
+			continue
+		}
+		if _, err := os.Stat(path); err == nil {
+			result = append(result, wp)
+		}
+	}
+	return result, nil
 }

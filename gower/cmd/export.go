@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"archive/zip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -11,6 +13,11 @@ import (
 	"gower/internal/core"
 
 	"github.com/spf13/cobra"
+)
+
+var (
+	exportFile          string
+	exportIncludeImages bool
 )
 
 var exportCmd = &cobra.Command{
@@ -22,10 +29,22 @@ var exportCmd = &cobra.Command{
 var exportAllCmd = &cobra.Command{
 	Use:   "all [destination_dir]",
 	Short: "Export all application data",
-	Args:  cobra.MaximumNArgs(1),
+	Long:  `Export all data. Use --file to export to a ZIP archive, or provide a directory argument for folder export.`,
+	Args:  cobra.MaximumNArgs(1), // Keep arg for directory mode backward compatibility
 	Run: func(cmd *cobra.Command, args []string) {
 		ensureConfig()
 
+		// ZIP MODE
+		if exportFile != "" {
+			if err := exportAllToZip(exportFile, exportIncludeImages); err != nil {
+				fmt.Printf("Error creating zip export: %v\n", err)
+				return
+			}
+			fmt.Printf("All data exported to: %s\n", exportFile)
+			return
+		}
+
+		// DIRECTORY MODE
 		destDir := fmt.Sprintf("gower_export_%s", time.Now().Format("20060102_150405"))
 		if len(args) > 0 {
 			destDir = args[0]
@@ -91,9 +110,9 @@ var exportAllCmd = &cobra.Command{
 }
 
 var exportConfigCmd = &cobra.Command{
-	Use:   "config [file]",
+	Use:   "config",
 	Short: "Export configuration",
-	Args:  cobra.MaximumNArgs(1),
+	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		ensureConfig()
 		configPath, _ := getConfigPath()
@@ -103,12 +122,12 @@ var exportConfigCmd = &cobra.Command{
 			return
 		}
 
-		if len(args) > 0 {
-			if err := ioutil.WriteFile(args[0], data, 0644); err != nil {
-				fmt.Printf("Error exporting config to %s: %v\n", args[0], err)
+		if exportFile != "" {
+			if err := ioutil.WriteFile(exportFile, data, 0644); err != nil {
+				fmt.Printf("Error exporting config to %s: %v\n", exportFile, err)
 				return
 			}
-			fmt.Printf("Configuration exported to: %s\n", args[0])
+			fmt.Printf("Configuration exported to: %s\n", exportFile)
 		} else {
 			fmt.Println(string(data))
 		}
@@ -116,9 +135,9 @@ var exportConfigCmd = &cobra.Command{
 }
 
 var exportFeedCmd = &cobra.Command{
-	Use:   "feed [file]",
+	Use:   "feed",
 	Short: "Export wallpaper feed/history",
-	Args:  cobra.MaximumNArgs(1),
+	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		ensureConfig()
 		cfg, err := loadConfig()
@@ -139,16 +158,90 @@ var exportFeedCmd = &cobra.Command{
 			return
 		}
 
-		if len(args) > 0 {
-			if err := ioutil.WriteFile(args[0], data, 0644); err != nil {
-				fmt.Printf("Error exporting feed to %s: %v\n", args[0], err)
+		if exportFile != "" {
+			if err := ioutil.WriteFile(exportFile, data, 0644); err != nil {
+				fmt.Printf("Error exporting feed to %s: %v\n", exportFile, err)
 				return
 			}
-			fmt.Printf("Feed exported to: %s\n", args[0])
+			fmt.Printf("Feed exported to: %s\n", exportFile)
 		} else {
 			fmt.Println(string(data))
 		}
 	},
+}
+
+func exportAllToZip(filename string, includeImages bool) error {
+	f, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	w := zip.NewWriter(f)
+	defer w.Close()
+
+	// Helper to add file
+	addFile := func(srcPath, zipName string) {
+		if srcPath == "" {
+			return
+		}
+		data, err := ioutil.ReadFile(srcPath)
+		if err != nil {
+			fmt.Printf("Warning: Could not read %s for zip: %v\n", srcPath, err)
+			return
+		}
+		zf, err := w.Create(zipName)
+		if err != nil {
+			fmt.Printf("Warning: Could not create zip entry %s: %v\n", zipName, err)
+			return
+		}
+		zf.Write(data)
+	}
+
+	// Config
+	p, _ := getConfigPath()
+	addFile(p, "config.json")
+
+	// Favorites
+	p, _ = getFavoritesPath()
+	addFile(p, "favorites.json")
+
+	// Feed
+	p, _ = getFeedPath()
+	addFile(p, "feed.json")
+
+	// Images
+	if includeImages {
+		home, _ := os.UserHomeDir()
+		cacheDir := filepath.Join(home, ".gower", "cache", "wallpapers")
+		filepath.Walk(cacheDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil || info.IsDir() {
+				return nil
+			}
+			rel, err := filepath.Rel(cacheDir, path)
+			if err != nil {
+				return nil
+			}
+
+			// Open file
+			srcFile, err := os.Open(path)
+			if err != nil {
+				return nil
+			}
+			defer srcFile.Close()
+
+			// Create zip entry
+			zipPath := filepath.Join("images", rel)
+			zf, err := w.Create(zipPath)
+			if err != nil {
+				return nil
+			}
+			io.Copy(zf, srcFile)
+			return nil
+		})
+	}
+
+	return nil
 }
 
 func init() {
@@ -157,4 +250,10 @@ func init() {
 	exportCmd.AddCommand(exportAllCmd)
 	exportCmd.AddCommand(exportConfigCmd)
 	exportCmd.AddCommand(exportFeedCmd)
+
+	exportAllCmd.Flags().StringVar(&exportFile, "file", "", "Output zip file path")
+	exportAllCmd.Flags().BoolVar(&exportIncludeImages, "include-images", false, "Include downloaded images in export")
+
+	exportConfigCmd.Flags().StringVar(&exportFile, "file", "", "Output file path")
+	exportFeedCmd.Flags().StringVar(&exportFile, "file", "", "Output file path")
 }

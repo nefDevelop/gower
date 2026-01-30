@@ -1,0 +1,85 @@
+package cmd
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestStatusAll(t *testing.T) {
+	tmpDir := setupTestHome(t)
+	defer os.RemoveAll(tmpDir)
+
+	executeCommand(rootCmd, "config", "init")
+
+	output, err := executeCommand(rootCmd, "status")
+	if err != nil {
+		t.Fatalf("Error executing status: %v", err)
+	}
+
+	if !strings.Contains(output, "--- System ---") {
+		t.Errorf("Expected System section")
+	}
+	if !strings.Contains(output, "--- Daemon ---") {
+		t.Errorf("Expected Daemon section")
+	}
+	if !strings.Contains(output, "--- Providers ---") {
+		t.Errorf("Expected Providers section")
+	}
+	if !strings.Contains(output, "--- Storage ---") {
+		t.Errorf("Expected Storage section")
+	}
+}
+
+func TestStatusJSON(t *testing.T) {
+	tmpDir := setupTestHome(t)
+	defer os.RemoveAll(tmpDir)
+
+	executeCommand(rootCmd, "config", "init")
+
+	output, err := executeCommand(rootCmd, "status", "--json")
+	if err != nil {
+		t.Fatalf("Error executing status --json: %v", err)
+	}
+
+	if !strings.Contains(output, "\"system\":") {
+		t.Errorf("Expected JSON output containing 'system'")
+	}
+	if !strings.Contains(output, "\"os\":") {
+		t.Errorf("Expected JSON output containing 'os'")
+	}
+}
+
+func TestStatusFlags(t *testing.T) {
+	tmpDir := setupTestHome(t)
+	defer os.RemoveAll(tmpDir)
+
+	executeCommand(rootCmd, "config", "init")
+
+	// Test --providers
+	output, err := executeCommand(rootCmd, "status", "--providers")
+	if err != nil {
+		t.Fatalf("Error executing status --providers: %v", err)
+	}
+	if !strings.Contains(output, "--- Providers ---") {
+		t.Errorf("Expected Providers section")
+	}
+	if strings.Contains(output, "--- System ---") {
+		t.Errorf("Did not expect System section")
+	}
+
+	// Test --storage
+	// Create some dummy file to check size
+	cacheDir := filepath.Join(tmpDir, ".gower", "cache")
+	os.MkdirAll(cacheDir, 0755)
+	os.WriteFile(filepath.Join(cacheDir, "test"), []byte("test"), 0644)
+
+	output, err = executeCommand(rootCmd, "status", "--storage")
+	if err != nil {
+		t.Fatalf("Error executing status --storage: %v", err)
+	}
+	if !strings.Contains(output, "--- Storage ---") {
+		t.Errorf("Expected Storage section")
+	}
+}

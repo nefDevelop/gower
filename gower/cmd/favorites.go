@@ -80,18 +80,6 @@ var favoritesAddCmd = &cobra.Command{
 		ensureConfig()
 		wallpaperID := args[0]
 
-		// In a real scenario, you would fetch the wallpaper details using its ID
-		// from the original provider. For now, we'll create a dummy wallpaper.
-		// This part needs to be integrated with the explore/download logic.
-		dummyWallpaper := FavoriteWallpaper{
-			Wallpaper: models.Wallpaper{
-				ID:     wallpaperID,
-				URL:    fmt.Sprintf("http://example.com/wallpaper/%s", wallpaperID),
-				Source: "unknown",
-			},
-			Notes: favNotes,
-		}
-
 		favorites, err := loadFavorites()
 		if err != nil {
 			fmt.Printf("Error loading favorites: %v\n", err)
@@ -105,12 +93,48 @@ var favoritesAddCmd = &cobra.Command{
 			}
 		}
 
-		favorites = append(favorites, dummyWallpaper)
+		// Check if wallpaper exists in feed
+		var wallpaperToAdd models.Wallpaper
+		feedPath, _ := getFeedPath()
+		var feed []models.Wallpaper
+		manager := utils.NewSecureJSONManager()
+
+		// Try to read feed, ignore error if not exists
+		_ = manager.ReadJSON(feedPath, &feed)
+
+		foundInFeed := false
+		for i, wp := range feed {
+			if wp.ID == wallpaperID {
+				wallpaperToAdd = wp
+				// Remove from feed
+				feed = append(feed[:i], feed[i+1:]...)
+				foundInFeed = true
+				break
+			}
+		}
+
+		if foundInFeed {
+			if err := manager.WriteJSON(feedPath, feed); err != nil {
+				fmt.Printf("Warning: Could not update feed: %v\n", err)
+			}
+			fmt.Printf("Moved wallpaper %s from feed to favorites.\n", wallpaperID)
+		} else {
+			// Fallback to dummy
+			wallpaperToAdd = models.Wallpaper{
+				ID:     wallpaperID,
+				URL:    fmt.Sprintf("http://example.com/wallpaper/%s", wallpaperID),
+				Source: "unknown",
+			}
+		}
+
+		newFav := FavoriteWallpaper{Wallpaper: wallpaperToAdd, Notes: favNotes}
+		favorites = append(favorites, newFav)
+
 		if err := saveFavorites(favorites); err != nil {
 			fmt.Printf("Error saving favorites: %v\n", err)
 			return
 		}
-		fmt.Printf("Wallpaper %s added to favorites.\n", wallpaperID)
+		fmt.Printf("Wallpaper %s added to favorites list.\n", wallpaperID)
 	},
 }
 
@@ -207,34 +231,11 @@ var favoritesImportCmd = &cobra.Command{
 			return
 		}
 
-		// Load existing favorites to merge
-		existingFavorites, err := loadFavorites()
-		if err != nil {
-			fmt.Printf("Error loading existing favorites: %v\n", err)
+		if err := saveFavorites(importedFavorites); err != nil {
+			fmt.Printf("Error saving favorites: %v\n", err)
 			return
 		}
-
-		// Simple merge: add new ones, overwrite if ID exists (or skip if we want to avoid duplicates)
-		// For simplicity, let's just append and then deduplicate.
-		// A more robust solution would involve a map for faster lookups.
-		mergedFavorites := make(map[string]FavoriteWallpaper)
-		for _, fav := range existingFavorites {
-			mergedFavorites[fav.ID] = fav
-		}
-		for _, fav := range importedFavorites {
-			mergedFavorites[fav.ID] = fav // Overwrite if ID exists, or add new
-		}
-
-		finalFavorites := []FavoriteWallpaper{}
-		for _, fav := range mergedFavorites {
-			finalFavorites = append(finalFavorites, fav)
-		}
-
-		if err := saveFavorites(finalFavorites); err != nil {
-			fmt.Printf("Error saving merged favorites: %v\n", err)
-			return
-		}
-		fmt.Printf("Favorites imported successfully from %s. Total favorites: %d\n", filePath, len(finalFavorites))
+		fmt.Printf("Favorites imported successfully from %s. Total favorites: %d\n", filePath, len(importedFavorites))
 	},
 }
 
@@ -244,6 +245,14 @@ func getFavoritesPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(homeDir, ".gower", "data", "favorites.json"), nil
+}
+
+func getFeedPath() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(homeDir, ".gower", "data", "feed.json"), nil
 }
 
 func loadFavorites() ([]FavoriteWallpaper, error) {

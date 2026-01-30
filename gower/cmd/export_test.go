@@ -20,7 +20,7 @@ func TestExportConfig(t *testing.T) {
 	executeCommand(rootCmd, "config", "set", "behavior.theme=light")
 
 	exportFile := filepath.Join(tmpDir, "exported_config.json")
-	output, err := executeCommand(rootCmd, "export", "config", exportFile)
+	output, err := executeCommand(rootCmd, "export", "config", "--file", exportFile)
 	if err != nil {
 		t.Fatalf("Error executing export config: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestExportFeed(t *testing.T) {
 	controller.AddWallpaperToFeed(models.Wallpaper{ID: "feed-2", URL: "url-2", Source: "test", Theme: "light"})
 
 	exportFile := filepath.Join(tmpDir, "exported_feed.json")
-	output, err := executeCommand(rootCmd, "export", "feed", exportFile)
+	output, err := executeCommand(rootCmd, "export", "feed", "--file", exportFile)
 	if err != nil {
 		t.Fatalf("Error executing export feed: %v", err)
 	}
@@ -78,6 +78,30 @@ func TestExportFeed(t *testing.T) {
 	}
 	if exportedFeed[0].ID != "feed-1" || exportedFeed[1].ID != "feed-2" {
 		t.Errorf("Exported feed content mismatch")
+	}
+}
+
+func TestExportAllZip(t *testing.T) {
+	tmpDir := setupTestHome(t)
+	defer os.RemoveAll(tmpDir)
+
+	executeCommand(rootCmd, "config", "init")
+
+	// Create dummy cache file to test image inclusion
+	cacheDir := filepath.Join(tmpDir, ".gower", "cache", "wallpapers")
+	os.MkdirAll(cacheDir, 0755)
+	os.WriteFile(filepath.Join(cacheDir, "test_img.jpg"), []byte("fake image"), 0644)
+
+	exportFile := filepath.Join(tmpDir, "export.zip")
+	output, err := executeCommand(rootCmd, "export", "all", "--file", exportFile, "--include-images")
+	if err != nil {
+		t.Fatalf("Error executing export all zip: %v", err)
+	}
+	if !strings.Contains(output, "All data exported to:") {
+		t.Errorf("Expected 'All data exported to:', got: %s", output)
+	}
+	if _, err := os.Stat(exportFile); os.IsNotExist(err) {
+		t.Errorf("Export zip file was not created")
 	}
 }
 
