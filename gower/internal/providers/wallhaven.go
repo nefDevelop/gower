@@ -1,37 +1,100 @@
 package providers
 
 import (
+	"encoding/json"
 	"fmt"
 	"gower/pkg/models"
+	"net/http"
+	"net/url"
+	"strconv"
 )
 
-// WallhavenProvider is the provider for wallhaven.cc.
-type WallhavenProvider struct {}
+// WallhavenProvider implements the Provider interface for Wallhaven.cc.
+type WallhavenProvider struct {
+	APIKey string
+}
 
-// GetName returns the name of the provider.
 func (p *WallhavenProvider) GetName() string {
 	return "wallhaven"
 }
 
-// Search searches for wallpapers on wallhaven.cc.
-func (p *WallhavenProvider) Search(query string, options SearchOptions) ([]models.Wallpaper, error) {
-	fmt.Printf("Searching wallhaven for: %s\n", query)
-	fmt.Printf("Options: %+v\n", options)
+func (p *WallhavenProvider) Search(query string, opts SearchOptions) ([]models.Wallpaper, error) {
+	baseURL := "https://wallhaven.cc/api/v1/search"
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return nil, err
+	}
 
-	// This is a dummy implementation.
-	// In a real implementation, we would make an HTTP request to the wallhaven API.
-	return []models.Wallpaper{
-		{
-			ID:        "wh-123",
-			URL:       "https://wallhaven.cc/w/123",
-			Source:    "wallhaven",
-			Dimension: "1920x1080",
-		},
-		{
-			ID:        "wh-456",
-			URL:       "https://wallhaven.cc/w/456",
-			Source:    "wallhaven",
-			Dimension: "3840x2160",
-		},
-	}, nil
+	q := u.Query()
+	if query != "" {
+		q.Set("q", query)
+	}
+	if opts.Page > 0 {
+		q.Set("page", strconv.Itoa(opts.Page))
+	}
+	if opts.Category != "" {
+		q.Set("categories", opts.Category)
+	}
+	if opts.Sort != "" {
+		q.Set("sorting", opts.Sort)
+	}
+	if opts.MinWidth > 0 || opts.MinHeight > 0 {
+		w := opts.MinWidth
+		h := opts.MinHeight
+		if w <= 0 {
+			w = 1
+		}
+		if h <= 0 {
+			h = 1
+		}
+		q.Set("atleast", fmt.Sprintf("%dx%d", w, h))
+	}
+	if opts.AspectRatio != "" {
+		q.Set("ratios", opts.AspectRatio)
+	}
+	if opts.Color != "" {
+		q.Set("colors", opts.Color)
+	}
+	if p.APIKey != "" {
+		q.Set("apikey", p.APIKey)
+	}
+
+	u.RawQuery = q.Encode()
+
+	resp, err := http.Get(u.String())
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("wallhaven api returned status: %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Data []struct {
+			ID         string   `json:"id"`
+			Path       string   `json:"path"`
+			Resolution string   `json:"resolution"`
+			Category   string   `json:"category"`
+			Colors     []string `json:"colors"`
+		} `json:"data"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	var wallpapers []models.Wallpaper
+	for _, item := range result.Data {
+		wp := models.Wallpaper{
+			ID:     "wh_" + item.ID,
+			URL:    item.Path,
+			Source: "wallhaven",
+			Theme:  "auto",
+		}
+		wallpapers = append(wallpapers, wp)
+	}
+
+	return wallpapers, nil
 }

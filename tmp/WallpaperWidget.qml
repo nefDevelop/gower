@@ -41,6 +41,7 @@ PluginComponent {
     property string currentWallpaper: ""
     property string nextWallpaper: ""
     property var lastSaveTime: 0
+    property string wallpaperSetter: "dms"
 
     // Icono basado en el modo
     property string displayIcon: "image"
@@ -65,6 +66,7 @@ PluginComponent {
         console.warn("WallpaperWidget: List Script: " + root.listScriptPath);
         // Retrasamos un poco el inicio para asegurar que todo esté cargado
         startupTimer.start();
+        detectSetterProcess.running = true;
     }
 
     Timer {
@@ -72,6 +74,18 @@ PluginComponent {
         interval: 1000
         repeat: false
         onTriggered: readConfigProcess.running = true
+    }
+
+    // Proceso para detectar el setter (swww, awww, dms)
+    Process {
+        id: detectSetterProcess
+        command: ["sh", "-c", "if command -v swww >/dev/null; then echo swww; elif command -v awww >/dev/null; then echo awww; elif command -v dms >/dev/null; then echo dms; fi"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var res = text.trim();
+                if (res) root.wallpaperSetter = res;
+            }
+        }
     }
 
     // Proceso para leer la configuración
@@ -227,7 +241,7 @@ PluginComponent {
             if (root.wallpaperList.length === 0) return;
             root.currentIndex = (root.currentIndex + 1) % root.wallpaperList.length;
             root.updateWallpapers();
-            awwwProcess.command = ["dms", "ipc", "call", "wallpaper", "set", root.currentWallpaper];
+            root.setWallpaper();
             awwwProcess.running = true;
         } else if (cmd === "set-config") {
             try {
@@ -255,9 +269,22 @@ PluginComponent {
             }
         } else if (cmd === "set") {
             if (root.currentWallpaper) {
-                awwwProcess.command = ["dms", "ipc", "call", "wallpaper", "set", root.currentWallpaper];
+                root.setWallpaper();
                 awwwProcess.running = true;
             }
+        }
+    }
+
+    function setWallpaper() {
+        if (root.wallpaperSetter === "swww") {
+            // swww img <path> --transition-type grow --transition-pos 0.85,0.95
+            awwwProcess.command = ["swww", "img", root.currentWallpaper, "--transition-type", "grow", "--transition-pos", "0.85,0.95", "--transition-step", "90", "--transition-fps", "60"];
+        } else if (root.wallpaperSetter === "awww") {
+            // Asumimos awww <path>
+            awwwProcess.command = ["awww", root.currentWallpaper];
+        } else {
+            // dms
+            awwwProcess.command = ["dms", "ipc", "call", "wallpaper", "set", root.currentWallpaper];
         }
     }
 

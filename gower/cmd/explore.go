@@ -119,6 +119,14 @@ func runExplore(cmd *cobra.Command, args []string) {
 			}
 			continue
 		}
+
+		// Save to parser cache
+		if err := controller.SaveParserSearch(p.GetName(), term, results); err != nil {
+			if !config.Quiet {
+				fmt.Printf("Warning: Failed to save parser cache for %s: %v\n", p.GetName(), err)
+			}
+		}
+
 		allWallpapers = append(allWallpapers, results...)
 	}
 
