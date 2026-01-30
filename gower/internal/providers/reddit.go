@@ -3,6 +3,7 @@ package providers
 import (
 	"encoding/json"
 	"fmt"
+	"gower/internal/utils"
 	"gower/pkg/models"
 	"math/rand"
 	"net/http"
@@ -112,6 +113,7 @@ func (p *RedditProvider) searchMixed(subreddit string, limit int, excludeIDs map
 }
 
 func (p *RedditProvider) fetchFromReddit(url string, limit int, excludeIDs map[string]bool) ([]models.Wallpaper, error) {
+	utils.Log.Debug("Reddit fetching: %s", url)
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {

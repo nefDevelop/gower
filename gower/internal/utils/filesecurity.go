@@ -31,7 +31,7 @@ func (m *SecureJSONManager) WriteJSON(filePath string, data interface{}) error {
 	// 2. Manage Backup of existing file
 	if err := m.manageBackup(filePath); err != nil {
 		// Log warning but proceed with write, as saving current work is priority
-		fmt.Printf("Warning: Failed to create backup for %s: %v\n", filePath, err)
+		Log.Error("Failed to create backup for %s: %v", filePath, err)
 	}
 
 	// 3. Atomic Write
@@ -48,14 +48,14 @@ func (m *SecureJSONManager) ReadJSON(filePath string, v interface{}) error {
 
 	// If main file fails, try backup
 	backupPath := filePath + ".bak"
-	fmt.Printf("Warning: Failed to read %s (%v). Attempting backup %s...\n", filePath, err, backupPath)
+	Log.Error("Failed to read %s (%v). Attempting backup %s...", filePath, err, backupPath)
 
 	if err := m.readAndUnmarshal(backupPath, v); err != nil {
 		return fmt.Errorf("failed to read file and backup: %w", err)
 	}
 
 	// Restore main file from backup since main is corrupt
-	fmt.Printf("Restoring %s from backup...\n", filePath)
+	Log.Info("Restoring %s from backup...", filePath)
 	if data, err := os.ReadFile(backupPath); err == nil {
 		_ = m.atomicWrite(filePath, data)
 	}

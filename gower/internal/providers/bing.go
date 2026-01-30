@@ -3,6 +3,7 @@ package providers
 import (
 	"encoding/json"
 	"fmt"
+	"gower/internal/utils"
 	"gower/pkg/models"
 	"net/http"
 )
@@ -34,6 +35,8 @@ func (p *BingProvider) Search(query string, opts SearchOptions) ([]models.Wallpa
 
 	url := fmt.Sprintf("https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=%d&mkt=%s", limit, p.Market)
 
+	utils.Log.Debug("Bing fetching: %s", url)
+
 	resp, err := http.Get(url)
 	if err != nil {
 		return nil, err
@@ -60,7 +63,7 @@ func (p *BingProvider) Search(query string, opts SearchOptions) ([]models.Wallpa
 	var wallpapers []models.Wallpaper
 	for _, img := range result.Images {
 		fullURL := "https://www.bing.com" + img.Url
-		
+
 		id := "bg_" + img.Startdate
 		if opts.ExcludeIDs != nil && opts.ExcludeIDs[id] {
 			continue

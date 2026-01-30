@@ -3,6 +3,7 @@ package providers
 import (
 	"encoding/json"
 	"fmt"
+	"gower/internal/utils"
 	"gower/pkg/models"
 	"net/http"
 	"net/url"
@@ -45,6 +46,8 @@ func (p *NasaProvider) fetchAPOD(limit int, excludeIDs map[string]bool) ([]model
 		apiKey = "DEMO_KEY"
 	}
 	apiURL := fmt.Sprintf("https://api.nasa.gov/planetary/apod?api_key=%s&count=%d", apiKey, count)
+
+	utils.Log.Debug("NASA APOD fetching: %s", apiURL)
 
 	resp, err := http.Get(apiURL)
 	if err != nil {
@@ -110,6 +113,8 @@ func (p *NasaProvider) searchImageLibrary(query string, limit int, excludeIDs ma
 	q.Set("q", query)
 	q.Set("media_type", "image")
 	u.RawQuery = q.Encode()
+
+	utils.Log.Debug("NASA Image Library fetching: %s", u.String())
 
 	resp, err := http.Get(u.String())
 	if err != nil {
