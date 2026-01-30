@@ -33,7 +33,7 @@ func TestFavoritesAddAndList(t *testing.T) {
 	executeCommand(rootCmd, "config", "init")
 
 	// Add a favorite
-	output, err := executeCommand(rootCmd, "favorites", "add", "test-id-1")
+	output, err := executeCommand(rootCmd, "favorites", "add", "test-id-1", "--notes", "My cool wallpaper")
 	if err != nil {
 		t.Fatalf("Error executing favorites add: %v", err)
 	}
@@ -48,6 +48,9 @@ func TestFavoritesAddAndList(t *testing.T) {
 	}
 	if !strings.Contains(output, "ID: test-id-1") {
 		t.Errorf("Expected 'ID: test-id-1' in list output, got: %s", output)
+	}
+	if !strings.Contains(output, "Notes: My cool wallpaper") {
+		t.Errorf("Expected notes in list output, got: %s", output)
 	}
 
 	// Try adding the same favorite again
@@ -97,6 +100,15 @@ func TestFavoritesRemove(t *testing.T) {
 	if !strings.Contains(output, "Wallpaper non-existent-id not found in favorites.") {
 		t.Errorf("Expected 'Wallpaper non-existent-id not found in favorites.', got: %s", output)
 	}
+
+	// Try removing with force
+	output, err = executeCommand(rootCmd, "favorites", "remove", "non-existent-id", "--force")
+	if err != nil {
+		t.Fatalf("Error executing favorites remove with force: %v", err)
+	}
+	if strings.Contains(output, "not found") {
+		t.Errorf("Expected no output with force, got: %s", output)
+	}
 }
 
 func TestFavoritesExportAndImport(t *testing.T) {
@@ -110,7 +122,7 @@ func TestFavoritesExportAndImport(t *testing.T) {
 	exportFile := filepath.Join(tmpDir, "favorites_backup.json")
 
 	// Export favorites
-	output, err := executeCommand(rootCmd, "favorites", "export", exportFile)
+	output, err := executeCommand(rootCmd, "favorites", "export", "--file", exportFile)
 	if err != nil {
 		t.Fatalf("Error executing favorites export: %v", err)
 	}
@@ -126,7 +138,7 @@ func TestFavoritesExportAndImport(t *testing.T) {
 	executeCommand(rootCmd, "favorites", "remove", "fav-id-2")
 
 	// Import favorites
-	output, err = executeCommand(rootCmd, "favorites", "import", exportFile)
+	output, err = executeCommand(rootCmd, "favorites", "import", "--file", exportFile)
 	if err != nil {
 		t.Fatalf("Error executing favorites import: %v", err)
 	}
@@ -146,15 +158,15 @@ func TestFavoritesExportAndImport(t *testing.T) {
 	// Test import with existing favorites and a new one
 	executeCommand(rootCmd, "favorites", "add", "fav-id-3") // Add a new one
 	// Create a new import file with fav-id-1 and fav-id-4
-	newImportFavs := []models.Wallpaper{
-		{ID: "fav-id-1", URL: "url-1", Source: "src-1"},
-		{ID: "fav-id-4", URL: "url-4", Source: "src-4"},
+	newImportFavs := []FavoriteWallpaper{
+		{Wallpaper: models.Wallpaper{ID: "fav-id-1", URL: "url-1", Source: "src-1"}},
+		{Wallpaper: models.Wallpaper{ID: "fav-id-4", URL: "url-4", Source: "src-4"}},
 	}
 	newImportFile := filepath.Join(tmpDir, "favorites_new_import.json")
 	data, _ := json.MarshalIndent(newImportFavs, "", "  ")
 	os.WriteFile(newImportFile, data, 0644)
 
-	output, err = executeCommand(rootCmd, "favorites", "import", newImportFile)
+	output, err = executeCommand(rootCmd, "favorites", "import", "--file", newImportFile)
 	if err != nil {
 		t.Fatalf("Error executing favorites import (merge): %v", err)
 	}

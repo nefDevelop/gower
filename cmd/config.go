@@ -330,6 +330,7 @@ func createConfigStructure() error {
 	dirs := []string{
 		baseDir,
 		filepath.Join(baseDir, "data"),
+		filepath.Join(baseDir, "data", "parser"),
 		filepath.Join(baseDir, "cache", "thumbs"),
 		filepath.Join(baseDir, "cache", "wallpapers"),
 		filepath.Join(baseDir, "logs"),

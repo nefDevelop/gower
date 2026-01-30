@@ -1,18 +1,24 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"gower/internal/core"
 	"gower/internal/providers"
+	"gower/pkg/models"
 
 	"github.com/spf13/cobra"
 )
 
 var (
-	exploreProvider string
-	exploreAll      bool
-	exploreMinWidth int
-	exploreColor    string
+	exploreProvider    string
+	exploreAll         bool
+	exploreMinWidth    int
+	exploreMinHeight   int
+	exploreAspectRatio string
+	exploreColor       string
+	explorePage        int
+	exploreForceUpdate bool
 )
 
 var exploreCmd = &cobra.Command{
@@ -27,8 +33,12 @@ func init() {
 
 	exploreCmd.Flags().StringVar(&exploreProvider, "provider", "", "Proveedor específico")
 	exploreCmd.Flags().BoolVar(&exploreAll, "all", false, "Búsqueda en todos los proveedores habilitados")
-	exploreCmd.Flags().IntVar(&exploreMinWidth, "min-width", 0, "Filtro de resolución mínima (ancho)")
+	exploreCmd.Flags().IntVar(&exploreMinWidth, "min-width", 0, "Filtro de resolución mínima")
+	exploreCmd.Flags().IntVar(&exploreMinHeight, "min-height", 0, "Altura mínima")
+	exploreCmd.Flags().StringVar(&exploreAspectRatio, "aspect-ratio", "", "Proporción (16:9, 21:9, etc.)")
 	exploreCmd.Flags().StringVar(&exploreColor, "color", "", "Buscar por color (hex)")
+	exploreCmd.Flags().IntVarP(&explorePage, "page", "p", 1, "Paginación")
+	exploreCmd.Flags().BoolVar(&exploreForceUpdate, "force-update", false, "Forzar actualización")
 }
 
 func runExplore(cmd *cobra.Command, args []string) {
@@ -41,7 +51,7 @@ func runExplore(cmd *cobra.Command, args []string) {
 
 	cfg, err := loadConfig()
 	if err != nil {
-		fmt.Printf("Error cargando configuración: %v\n", err)
+		fmt.Printf("Error loading config: %v\n", err)
 		return
 	}
 
@@ -67,38 +77,64 @@ func runExplore(cmd *cobra.Command, args []string) {
 	}
 
 	if len(selectedProviders) == 0 {
-		fmt.Println("No hay proveedores habilitados o seleccionados.")
+		fmt.Println("No enabled providers found or selected.")
 		return
 	}
 
-	fmt.Printf("Explorando: '%s'\n", term)
-	if exploreMinWidth > 0 {
-		fmt.Printf("Filtro Min-Width: %dpx\n", exploreMinWidth)
-	}
-	if exploreColor != "" {
-		fmt.Printf("Filtro Color: %s\n", exploreColor)
+	if !config.Quiet && !config.JSONOutput {
+		fmt.Printf("Exploring: '%s'\n", term)
+		if exploreMinWidth > 0 {
+			fmt.Printf("Filter Min-Width: %dpx\n", exploreMinWidth)
+		}
+		if exploreMinHeight > 0 {
+			fmt.Printf("Filter Min-Height: %dpx\n", exploreMinHeight)
+		}
+		if exploreAspectRatio != "" {
+			fmt.Printf("Filter Aspect-Ratio: %s\n", exploreAspectRatio)
+		}
+		if exploreColor != "" {
+			fmt.Printf("Filter Color: %s\n", exploreColor)
+		}
 	}
 
 	searchOpts := providers.SearchOptions{
-		MinWidth: exploreMinWidth,
-		Color:    exploreColor,
+		MinWidth:    exploreMinWidth,
+		MinHeight:   exploreMinHeight,
+		AspectRatio: exploreAspectRatio,
+		Color:       exploreColor,
+		Page:        explorePage,
+		ForceUpdate: exploreForceUpdate,
 	}
 
+	var allWallpapers []models.Wallpaper
+
 	for _, p := range selectedProviders {
-		fmt.Printf("Consultando proveedor: %s...\n", p.GetName())
+		if !config.Quiet && !config.JSONOutput {
+			fmt.Printf("Querying provider: %s...\n", p.GetName())
+		}
 		results, err := p.Search(term, searchOpts)
 		if err != nil {
-			fmt.Printf("Error buscando en %s: %v\n", p.GetName(), err)
+			if !config.Quiet {
+				fmt.Printf("Error searching %s: %v\n", p.GetName(), err)
+			}
 			continue
 		}
+		allWallpapers = append(allWallpapers, results...)
+	}
 
-		if len(results) == 0 {
-			fmt.Printf("No se encontraron resultados en %s.\n", p.GetName())
-			continue
+	if len(allWallpapers) == 0 {
+		if !config.Quiet && !config.JSONOutput {
+			fmt.Println("No results found.")
 		}
+		return
+	}
 
-		for _, wallpaper := range results {
-			fmt.Printf("  - ID: %s, URL: %s, Dim: %s\n", wallpaper.ID, wallpaper.URL, wallpaper.Dimension)
+	if config.JSONOutput {
+		data, _ := json.MarshalIndent(allWallpapers, "", "  ")
+		fmt.Println(string(data))
+	} else {
+		for _, w := range allWallpapers {
+			fmt.Printf("  - ID: %s | Res: %s | Source: %s | URL: %s\n", w.ID, w.Dimension, w.Source, w.URL)
 		}
 	}
 }

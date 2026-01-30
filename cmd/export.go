@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"gower/internal/core"
-	"gower/pkg/models"
 
 	"github.com/spf13/cobra"
 )

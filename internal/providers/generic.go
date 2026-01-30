@@ -1,12 +1,16 @@
 package providers
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"gower/pkg/models"
+
 	"github.com/tidwall/gjson"
 )
 
@@ -46,18 +50,31 @@ func (p *GenericProvider) Search(query string, options SearchOptions) ([]models.
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
+	// Load parser mapping from file
+	homeDir, _ := os.UserHomeDir()
+	mappingFile := filepath.Join(homeDir, ".gower", "data", "parser", p.Config.Name+".json")
+
+	var mapping models.ResponseMapping
+	mappingData, err := ioutil.ReadFile(mappingFile)
+	if err == nil {
+		json.Unmarshal(mappingData, &mapping)
+	} else {
+		// Fallback to config if file missing (backward compatibility)
+		mapping = p.Config.ResponseMapping
+	}
+
 	// Parse JSON response
 	var wallpapers []models.Wallpaper
-	results := gjson.Get(string(body), p.Config.ResponseMapping.ResultsPath)
+	results := gjson.Get(string(body), mapping.ResultsPath)
 
 	if !results.Exists() {
-		return nil, fmt.Errorf("results path not found in response: %s", p.Config.ResponseMapping.ResultsPath)
+		return nil, fmt.Errorf("results path not found in response: %s", mapping.ResultsPath)
 	}
 
 	results.ForEach(func(key, value gjson.Result) bool {
-		id := gjson.Get(value.Raw, p.Config.ResponseMapping.IDPath).String()
-		imageURL := gjson.Get(value.Raw, p.Config.ResponseMapping.URLPath).String()
-		dimension := gjson.Get(value.Raw, p.Config.ResponseMapping.DimensionPath).String()
+		id := gjson.Get(value.Raw, mapping.IDPath).String()
+		imageURL := gjson.Get(value.Raw, mapping.URLPath).String()
+		dimension := gjson.Get(value.Raw, mapping.DimensionPath).String()
 
 		if id != "" && imageURL != "" {
 			wallpapers = append(wallpapers, models.Wallpaper{

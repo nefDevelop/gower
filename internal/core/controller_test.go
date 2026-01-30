@@ -1,0 +1,135 @@
+package core
+
+import (
+	"gower/pkg/models"
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func setupTestHome(t *testing.T) string {
+	tmpDir, err := os.MkdirTemp("", "gower-core-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", tmpDir)
+	t.Setenv("USERPROFILE", tmpDir) // Windows
+
+	// Create data directory
+	if err := os.MkdirAll(filepath.Join(tmpDir, ".gower", "data"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	return tmpDir
+}
+
+func TestController_AddAndGetFeed(t *testing.T) {
+	tmpDir := setupTestHome(t)
+	defer os.RemoveAll(tmpDir)
+
+	cfg := &models.Config{}
+	ctrl := NewController(cfg)
+
+	wp1 := models.Wallpaper{ID: "1", Theme: "dark", Source: "test"}
+	wp2 := models.Wallpaper{ID: "2", Theme: "light", Source: "test"}
+
+	if err := ctrl.AddWallpaperToFeed(wp1); err != nil {
+		t.Fatalf("Failed to add wp1: %v", err)
+	}
+	if err := ctrl.AddWallpaperToFeed(wp2); err != nil {
+		t.Fatalf("Failed to add wp2: %v", err)
+	}
+
+	// Test GetFeed with pagination
+	feed, err := ctrl.GetFeed(1, 10, "", "", "")
+	if err != nil {
+		t.Fatalf("GetFeed failed: %v", err)
+	}
+	if len(feed) != 2 {
+		t.Errorf("Expected 2 wallpapers, got %d", len(feed))
+	}
+
+	// Test GetFeed with theme filter
+	feedDark, err := ctrl.GetFeed(1, 10, "", "dark", "")
+	if err != nil {
+		t.Fatalf("GetFeed dark failed: %v", err)
+	}
+	if len(feedDark) != 1 || feedDark[0].ID != "1" {
+		t.Errorf("Expected 1 dark wallpaper (ID 1), got %v", feedDark)
+	}
+}
+
+func TestController_PurgeFeed(t *testing.T) {
+	tmpDir := setupTestHome(t)
+	defer os.RemoveAll(tmpDir)
+
+	cfg := &models.Config{}
+	ctrl := NewController(cfg)
+
+	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "1"})
+
+	if err := ctrl.PurgeFeed(); err != nil {
+		t.Fatalf("PurgeFeed failed: %v", err)
+	}
+
+	feed, _ := ctrl.GetFeed(1, 10, "", "", "")
+	if len(feed) != 0 {
+		t.Errorf("Feed not empty after purge")
+	}
+}
+
+func TestController_GetFeedStats(t *testing.T) {
+	tmpDir := setupTestHome(t)
+	defer os.RemoveAll(tmpDir)
+
+	cfg := &models.Config{}
+	ctrl := NewController(cfg)
+
+	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "1", Theme: "dark"})
+	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "2", Theme: "light"})
+	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "3", Theme: "dark"})
+
+	stats, err := ctrl.GetFeedStats()
+	if err != nil {
+		t.Fatalf("GetFeedStats failed: %v", err)
+	}
+
+	if stats.Total != 3 {
+		t.Errorf("Expected total 3, got %d", stats.Total)
+	}
+	if stats.DarkCount != 2 {
+		t.Errorf("Expected dark 2, got %d", stats.DarkCount)
+	}
+	if stats.LightCount != 1 {
+		t.Errorf("Expected light 1, got %d", stats.LightCount)
+	}
+}
+
+func TestController_Blacklist(t *testing.T) {
+	tmpDir := setupTestHome(t)
+	defer os.RemoveAll(tmpDir)
+
+	cfg := &models.Config{}
+	ctrl := NewController(cfg)
+
+	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "1"})
+	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "2"})
+
+	// Manually write blacklist file
+	blacklistPath := filepath.Join(tmpDir, ".gower", "data", "blacklist.json")
+	if err := os.WriteFile(blacklistPath, []byte(`["1"]`), 0644); err != nil {
+		t.Fatalf("Failed to write blacklist: %v", err)
+	}
+
+	feed, err := ctrl.GetFeed(1, 10, "", "", "")
+	if err != nil {
+		t.Fatalf("GetFeed failed: %v", err)
+	}
+
+	if len(feed) != 1 {
+		t.Errorf("Expected 1 wallpaper after blacklist, got %d", len(feed))
+	}
+	if len(feed) > 0 && feed[0].ID != "2" {
+		t.Errorf("Expected ID 2, got %s", feed[0].ID)
+	}
+}
