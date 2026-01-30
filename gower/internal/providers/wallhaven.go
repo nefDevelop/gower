@@ -76,8 +76,14 @@ func (p *WallhavenProvider) Search(query string, opts SearchOptions) ([]models.W
 			ID         string   `json:"id"`
 			Path       string   `json:"path"`
 			Resolution string   `json:"resolution"`
+			Ratio      string   `json:"ratio"`
 			Category   string   `json:"category"`
 			Colors     []string `json:"colors"`
+			Thumbs     struct {
+				Large    string `json:"large"`
+				Original string `json:"original"`
+				Small    string `json:"small"`
+			} `json:"thumbs"`
 		} `json:"data"`
 	}
 
@@ -88,10 +94,14 @@ func (p *WallhavenProvider) Search(query string, opts SearchOptions) ([]models.W
 	var wallpapers []models.Wallpaper
 	for _, item := range result.Data {
 		wp := models.Wallpaper{
-			ID:     "wh_" + item.ID,
-			URL:    item.Path,
-			Source: "wallhaven",
-			Theme:  "auto",
+			ID:        "wh_" + item.ID,
+			URL:       item.Path,
+			Thumbnail: item.Thumbs.Large, // Usamos 'large' para el thumbnail
+			Source:    "wallhaven",
+			Dimension: item.Resolution,
+			Ratio:     item.Ratio,
+			Category:  item.Category,
+			// Theme se deja vacío para que omitempty lo oculte hasta que se analice
 		}
 		wallpapers = append(wallpapers, wp)
 	}

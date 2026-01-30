@@ -1,16 +1,17 @@
 package models
 
-// Wallpaper represents a wallpaper's metadata.
+// Wallpaper represents a wallpaper image and its metadata.
 type Wallpaper struct {
 	ID        string `json:"id"`
 	URL       string `json:"url"`
-	Path      string `json:"path"` // Local path after download
-	Purity    string `json:"purity"`
-	Category  string `json:"category"`
-	Dimension string `json:"dimension"`
-	Resolution string `json:"resolution"` // Added for clarity
-	Ratio     string `json:"ratio"`
-	Source    string `json:"source"` // e.g., wallhaven, reddit, nasa
-	Theme     string `json:"theme"`  // e.g., dark, light
-	// Add other relevant fields like tags, colors, uploader, etc.
+	Thumbnail string `json:"thumbnail,omitempty"`
+	Path      string `json:"path,omitempty"` // Local path, empty if not downloaded
+	Source    string `json:"source"`
+
+	// Metadata
+	Category  string `json:"category,omitempty"`
+	Dimension string `json:"dimension,omitempty"` // Resolution (e.g. 1920x1080)
+	Ratio     string `json:"ratio,omitempty"`
+	Theme     string `json:"theme,omitempty"` // Analyzed color theme
+	Color     string `json:"color,omitempty"` // Dominant color hex
 }
