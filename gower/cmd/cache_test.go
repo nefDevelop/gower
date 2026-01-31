@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"bytes"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,7 +32,10 @@ func TestCacheCleanCmd(t *testing.T) {
 	dummyFile.Close()
 
 	// Execute the command
-	cacheCleanCmd.Run(cacheCleanCmd, []string{})
+	_, err = executeCommand(rootCmd, "cache", "clean")
+	if err != nil {
+		t.Fatalf("Command failed: %v", err)
+	}
 
 	// Check if the dummy file is gone
 	_, err = os.Stat(filepath.Join(wallpapersDir, "dummy.jpg"))
@@ -81,16 +82,15 @@ func TestCacheSizeCmd(t *testing.T) {
 	}
 	dummyFile.Close()
 
-	// Capture the output
-	var buf bytes.Buffer
-	cacheSizeCmd.SetOut(&buf)
-
 	// Execute the command
-	cacheSizeCmd.Run(cacheSizeCmd, []string{})
+	output, err := executeCommand(rootCmd, "cache", "size")
+	if err != nil {
+		t.Fatalf("Command failed: %v", err)
+	}
 
 	// Check the output
 	expectedSize := "Cache size: 1.00 MB"
-	if !strings.Contains(buf.String(), expectedSize) {
-		t.Errorf("Expected output to contain '%s', but got '%s'", expectedSize, buf.String())
+	if !strings.Contains(output, expectedSize) {
+		t.Errorf("Expected output to contain '%s', but got '%s'", expectedSize, output)
 	}
 }

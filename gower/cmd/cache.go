@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -25,7 +24,7 @@ var cacheCleanCmd = &cobra.Command{
 		// Remove all contents
 		err := os.RemoveAll(cacheDir)
 		if err != nil {
-			fmt.Printf("Error cleaning cache: %v\n", err)
+			cmd.Printf("Error cleaning cache: %v\n", err)
 			utils.Log.Error("Cache clean failed: %v", err)
 			return
 		}
@@ -33,7 +32,7 @@ var cacheCleanCmd = &cobra.Command{
 		os.MkdirAll(filepath.Join(cacheDir, "wallpapers"), 0755)
 		os.MkdirAll(filepath.Join(cacheDir, "thumbs"), 0755)
 
-		fmt.Println("Cache cleaned successfully.")
+		cmd.Println("Cache cleaned successfully.")
 		utils.Log.Info("Cache cleaned successfully")
 	},
 }
@@ -57,11 +56,11 @@ var cacheSizeCmd = &cobra.Command{
 		})
 
 		if err != nil {
-			fmt.Printf("Error calculating cache size: %v\n", err)
+			cmd.Printf("Error calculating cache size: %v\n", err)
 			return
 		}
 
-		fmt.Printf("Cache size: %.2f MB\n", float64(size)/1024/1024)
+		cmd.Printf("Cache size: %.2f MB\n", float64(size)/1024/1024)
 	},
 }
 

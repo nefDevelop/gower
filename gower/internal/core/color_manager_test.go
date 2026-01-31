@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-func createDummyImage(t *testing.T, path string, width, height int, c color.Color) {
+func createDummyImageWithColor(t *testing.T, path string, width, height int, c color.Color) {
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
 	for y := 0; y < height; y++ {
 		for x := 0; x < width; x++ {
@@ -65,7 +65,7 @@ func TestColorManager_GenerateThumbnail_Local(t *testing.T) {
 
 	srcPath := filepath.Join(tmpDir, "src.png")
 	destPath := filepath.Join(tmpDir, "thumb.jpg")
-	createDummyImage(t, srcPath, 600, 400, color.RGBA{R: 255, A: 255})
+	createDummyImageWithColor(t, srcPath, 600, 400, color.RGBA{R: 255, A: 255})
 
 	cm := NewColorManager()
 	w, h, err := cm.GenerateThumbnail(srcPath, destPath)
@@ -102,7 +102,7 @@ func TestColorManager_GenerateThumbnail_URL(t *testing.T) {
 
 	// Create a dummy image and serve it
 	srcPath := filepath.Join(tmpDir, "src.png")
-	createDummyImage(t, srcPath, 600, 400, color.RGBA{R: 255, A: 255})
+	createDummyImageWithColor(t, srcPath, 600, 400, color.RGBA{R: 255, A: 255})
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, srcPath)
@@ -130,7 +130,7 @@ func TestColorManager_AnalyzeColor(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	imgPath := filepath.Join(tmpDir, "red.png")
-	createDummyImage(t, imgPath, 100, 100, color.RGBA{R: 255, A: 255})
+	createDummyImageWithColor(t, imgPath, 100, 100, color.RGBA{R: 255, A: 255})
 
 	cm := NewColorManager()
 	hex, err := cm.AnalyzeColor(imgPath)

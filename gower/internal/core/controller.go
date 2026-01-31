@@ -142,7 +142,7 @@ func (c *Controller) GetFeed(page, limit int, search, theme, color string) ([]mo
 		}
 
 		matchesTheme := true
-		if theme != "" && strings.ToLower(wp.Theme) != strings.ToLower(theme) {
+		if theme != "" && !strings.EqualFold(wp.Theme, theme) {
 			matchesTheme = false
 		}
 
@@ -309,7 +309,7 @@ func (c *Controller) GetRandomFromFeed(theme string) (models.Wallpaper, error) {
 		if blacklistMap[wp.ID] {
 			continue
 		}
-		if theme == "" || strings.ToLower(wp.Theme) == strings.ToLower(theme) {
+		if theme == "" || strings.EqualFold(wp.Theme, theme) {
 			filteredFeed = append(filteredFeed, wp)
 		}
 	}
@@ -628,7 +628,7 @@ func (c *Controller) GetCachedWallpapers(includeFavorites bool, theme string) ([
 		seen[wp.ID] = true
 
 		// Theme check
-		if theme != "" && theme != "auto" && strings.ToLower(wp.Theme) != strings.ToLower(theme) {
+		if theme != "" && theme != "auto" && !strings.EqualFold(wp.Theme, theme) {
 			continue
 		}
 
