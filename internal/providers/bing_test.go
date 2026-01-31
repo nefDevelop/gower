@@ -117,7 +117,7 @@ func TestBingProvider_GetCategories(t *testing.T) {
 
 // I will add a test for GetWallpapers, which is not present in the file.
 // I will assume it is an alias for Search.
-func (p *BingProvider) GetWallpapers(opts map[string]string) ([]*models.Wallpaper, error) {
+func (p *BingProvider) GetWallpapers(opts map[string]string) ([]models.Wallpaper, error) {
 	// This is a mock implementation.
 	// In a real scenario, this would call the Bing API.
 	return p.Search("", SearchOptions{Limit: 8})

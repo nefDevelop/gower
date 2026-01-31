@@ -4,7 +4,6 @@ package cmd
 import (
 	"fmt"
 	"math/rand"
-	"os"
 	"time"
 
 	"gower/internal/core"
@@ -28,7 +27,7 @@ var setCmd = &cobra.Command{
 	Use:   "set [id|url|random]",
 	Short: "Set wallpaper",
 	Args:  cobra.MaximumNArgs(1),
-	Run:   runSet,
+	RunE:  runSet,
 }
 
 func init() {
@@ -53,19 +52,20 @@ func init() {
 	setCmd.AddCommand(&cobra.Command{
 		Use:   "random",
 		Short: "Set random wallpaper",
-		Run:   runSetRandom,
+		RunE:  runSetRandom,
 	})
 
 	rootCmd.AddCommand(setCmd)
 }
 
-func runSet(cmd *cobra.Command, args []string) {
-	ensureConfig()
+func runSet(cmd *cobra.Command, args []string) error {
+	if err := ensureConfig(); err != nil {
+		return err
+	}
 
 	cfg, err := loadConfig()
 	if err != nil {
-		fmt.Printf("Error loading config: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error loading config: %w", err)
 	}
 	controller := core.NewController(cfg)
 
@@ -85,8 +85,7 @@ func runSet(cmd *cobra.Command, args []string) {
 			// Assume ID
 			wp, err := controller.GetWallpaper(input)
 			if err != nil {
-				fmt.Printf("Error: %v\n", err)
-				os.Exit(1)
+				return fmt.Errorf("error: %w", err)
 			}
 			wallpaper = wp
 		}
@@ -99,25 +98,24 @@ func runSet(cmd *cobra.Command, args []string) {
 	} else if setID != "" {
 		wp, err := controller.GetWallpaper(setID)
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("error: %w", err)
 		}
 		wallpaper = wp
 	} else {
-		cmd.Help()
-		return
+		return cmd.Help()
 	}
 
-	applyWallpaper(controller, *wallpaper)
+	return applyWallpaper(controller, *wallpaper)
 }
 
-func runSetRandom(cmd *cobra.Command, args []string) {
-	ensureConfig()
+func runSetRandom(cmd *cobra.Command, args []string) error {
+	if err := ensureConfig(); err != nil {
+		return err
+	}
 
 	cfg, err := loadConfig()
 	if err != nil {
-		fmt.Printf("Error loading config: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error loading config: %w", err)
 	}
 	controller := core.NewController(cfg)
 
@@ -126,12 +124,10 @@ func runSetRandom(cmd *cobra.Command, args []string) {
 	if setFromFavorites {
 		favorites, err := loadFavorites()
 		if err != nil {
-			fmt.Printf("Error loading favorites: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("error loading favorites: %w", err)
 		}
 		if len(favorites) == 0 {
-			fmt.Println("No favorites found.")
-			os.Exit(1)
+			return fmt.Errorf("no favorites found")
 		}
 		rand.Seed(time.Now().UnixNano())
 		fav := favorites[rand.Intn(len(favorites))]
@@ -140,15 +136,14 @@ func runSetRandom(cmd *cobra.Command, args []string) {
 		var err error
 		wallpaper, err = controller.GetRandomFromFeed(setTheme)
 		if err != nil {
-			fmt.Printf("Error getting random wallpaper: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("error getting random wallpaper: %w", err)
 		}
 	}
 
-	applyWallpaper(controller, wallpaper)
+	return applyWallpaper(controller, wallpaper)
 }
 
-func applyWallpaper(controller *core.Controller, wp models.Wallpaper) {
+func applyWallpaper(controller *core.Controller, wp models.Wallpaper) error {
 	fmt.Printf("Setting wallpaper: %s (Source: %s)\n", wp.ID, wp.Source)
 
 	localPath := ""
@@ -156,8 +151,7 @@ func applyWallpaper(controller *core.Controller, wp models.Wallpaper) {
 		var err error
 		localPath, err = controller.DownloadWallpaper(wp)
 		if err != nil {
-			fmt.Printf("Error downloading wallpaper: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("error downloading wallpaper: %w", err)
 		}
 	} else {
 		// If no download, we assume URL is a local path or we can't do much
@@ -179,9 +173,9 @@ func applyWallpaper(controller *core.Controller, wp models.Wallpaper) {
 	}
 
 	if err := changer.SetWallpaper(localPath, mmMode); err != nil {
-		fmt.Printf("Error setting wallpaper: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error setting wallpaper: %w", err)
 	}
 
 	fmt.Println("Wallpaper set successfully.")
+	return nil
 }

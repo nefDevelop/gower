@@ -75,11 +75,12 @@ func TestRedditProvider_fetchFromReddit_WithMockServer(t *testing.T) {
 func TestRedditProvider_searchMixed_WithMockServer(t *testing.T) {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		var response string
-		if r.URL.Path == "/hot.json" {
+		switch r.URL.Path {
+		case "/hot.json":
 			response = `{"data": {"children": [{"data": {"id": "hot1", "post_hint": "image"}}]}}`
-		} else if r.URL.Path == "/new.json" {
+		case "/new.json":
 			response = `{"data": {"children": [{"data": {"id": "new1", "post_hint": "image"}}]}}`
-		} else if r.URL.Path == "/top.json" {
+		case "/top.json":
 			response = `{"data": {"children": [{"data": {"id": "top1", "post_hint": "image"}}]}}`
 		}
 		fmt.Fprintln(w, response)

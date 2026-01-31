@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bytes"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -37,25 +36,23 @@ func TestStorageVerifyCmd_AllGood(t *testing.T) {
 		}
 	}
 
-	var buf bytes.Buffer
-	storageVerifyCmd.SetOut(&buf)
-	storageVerifyCmd.Run(storageVerifyCmd, []string{})
-
-	output := buf.String()
+	output, err := executeCommand(rootCmd, "storage", "verify")
+	if err != nil {
+		t.Fatalf("Command failed: %v", err)
+	}
 	if !strings.Contains(output, "All storage files are valid.") {
 		t.Errorf("Expected 'All storage files are valid.', got '%s'", output)
 	}
 }
 
 func TestStorageVerifyCmd_MissingFile(t *testing.T) {
-	tmpDir, cleanup := setupStorageTest(t)
+	_, cleanup := setupStorageTest(t)
 	defer cleanup()
 
-	var buf bytes.Buffer
-	storageVerifyCmd.SetOut(&buf)
-	storageVerifyCmd.Run(storageVerifyCmd, []string{})
-
-	output := buf.String()
+	output, err := executeCommand(rootCmd, "storage", "verify")
+	if err != nil {
+		t.Fatalf("Command failed: %v", err)
+	}
 	if !strings.Contains(output, "MISSING: config.json") {
 		t.Errorf("Expected 'MISSING: config.json', got '%s'", output)
 	}
@@ -71,11 +68,10 @@ func TestStorageVerifyCmd_CorruptFile(t *testing.T) {
 		t.Fatalf("Failed to write test file: %v", err)
 	}
 
-	var buf bytes.Buffer
-	storageVerifyCmd.SetOut(&buf)
-	storageVerifyCmd.Run(storageVerifyCmd, []string{})
-
-	output := buf.String()
+	output, err := executeCommand(rootCmd, "storage", "verify")
+	if err != nil {
+		t.Fatalf("Command failed: %v", err)
+	}
 	if !strings.Contains(output, "CORRUPT: config.json is not valid JSON") {
 		t.Errorf("Expected 'CORRUPT: config.json is not valid JSON', got '%s'", output)
 	}
@@ -97,11 +93,10 @@ func TestStorageRepairCmd_FromBackup(t *testing.T) {
 		t.Fatalf("Failed to write backup file: %v", err)
 	}
 
-	var buf bytes.Buffer
-	storageRepairCmd.SetOut(&buf)
-	storageRepairCmd.Run(storageRepairCmd, []string{})
-
-	output := buf.String()
+	output, err := executeCommand(rootCmd, "storage", "repair")
+	if err != nil {
+		t.Fatalf("Command failed: %v", err)
+	}
 	if !strings.Contains(output, "Successfully repaired config.json") {
 		t.Errorf("Expected 'Successfully repaired config.json', got '%s'", output)
 	}
@@ -128,11 +123,10 @@ func TestStorageRepairCmd_NoBackup(t *testing.T) {
 		t.Fatalf("Failed to write corrupt file: %v", err)
 	}
 
-	var buf bytes.Buffer
-	storageRepairCmd.SetOut(&buf)
-	storageRepairCmd.Run(storageRepairCmd, []string{})
-
-	output := buf.String()
+	output, err := executeCommand(rootCmd, "storage", "repair")
+	if err != nil {
+		t.Fatalf("Command failed: %v", err)
+	}
 	if !strings.Contains(output, "No backup found for config.json. Cannot repair.") {
 		t.Errorf("Expected 'No backup found for config.json. Cannot repair.', got '%s'", output)
 	}

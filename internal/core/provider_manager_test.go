@@ -1,6 +1,7 @@
 package core
 
 import (
+	"gower/internal/providers"
 	"gower/pkg/models"
 	"testing"
 )
@@ -14,7 +15,7 @@ func (m *MockProvider) GetName() string {
 	return m.name
 }
 
-func (m *MockProvider) GetWallpapers(options map[string]string) ([]*models.Wallpaper, error) {
+func (m *MockProvider) Search(query string, options providers.SearchOptions) ([]models.Wallpaper, error) {
 	return nil, nil
 }
 

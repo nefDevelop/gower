@@ -50,23 +50,8 @@ func TestSetByID(t *testing.T) {
 	// For this integration test, we expect it to try downloading and then fail at setting if no DE.
 	// But we can check the output up to that point.
 
-	// To avoid actual execution failure exiting the test process (os.Exit),
-	// we might need to refactor runSet to return error instead of os.Exit.
-	// However, since we can't easily refactor the whole app structure now,
-	// we will rely on the fact that executeCommand captures output.
-	// If os.Exit is called, the test framework might panic or stop.
-	// Cobra's Execute() usually handles errors, but os.Exit(1) kills the test.
-	// *Correction*: os.Exit(1) inside the command will kill the test runner.
-	// We should avoid testing paths that lead to os.Exit(1) if possible, or refactor code.
-	// Given the constraints, I'll assume the environment might allow "feh" or similar check to fail gracefully
-	// or I will mock the download part which is what we added.
-
-	// Actually, let's just test that it finds the wallpaper.
-	// The `applyWallpaper` function calls `changer.SetWallpaper`.
-	// If `changer` fails, it calls `os.Exit(1)`.
-	// This makes testing hard without refactoring.
-	// I will skip the actual execution test that leads to os.Exit and focus on logic that doesn't.
-	// Or I can use `setNoDownload` to skip download, but `SetWallpaper` is still called.
+	// Note: runSet and applyWallpaper have been refactored to return errors instead of os.Exit(1).
+	// This allows us to test failure scenarios without killing the test runner.
 
 	// For the purpose of this task, I will verify the logic flow by checking if it fails *correctly*
 	// (e.g. "Error setting wallpaper") which implies it passed the previous steps.
