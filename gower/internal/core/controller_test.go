@@ -247,3 +247,58 @@ func TestController_SyncFeed(t *testing.T) {
 		t.Error("Expected colors.json to contain #FF0000")
 	}
 }
+
+func TestController_GetWallpaper(t *testing.T) {
+	tmpDir := setupTestHome(t)
+	defer os.RemoveAll(tmpDir)
+
+	cfg := &models.Config{}
+	ctrl := NewController(cfg)
+
+	// 1. Setup mock data files
+	feedPath := filepath.Join(tmpDir, ".gower", "data", "feed.json")
+	favPath := filepath.Join(tmpDir, ".gower", "data", "favorites.json")
+
+	feedWallpapers := []models.Wallpaper{{ID: "feed_wall", URL: "http://example.com/feed.jpg"}}
+	favWallpapers := []struct {
+		models.Wallpaper
+		Notes string `json:"notes,omitempty"`
+	}{{Wallpaper: models.Wallpaper{ID: "fav_wall", URL: "http://example.com/fav.jpg"}}}
+
+	feedData, _ := json.Marshal(feedWallpapers)
+	favData, _ := json.Marshal(favWallpapers)
+
+	os.WriteFile(feedPath, feedData, 0644)
+	os.WriteFile(favPath, favData, 0644)
+
+	// 2. Run tests
+	t.Run("finds wallpaper in feed", func(t *testing.T) {
+		wp, err := ctrl.GetWallpaper("feed_wall")
+		if err != nil {
+			t.Fatalf("Expected to find wallpaper, but got error: %v", err)
+		}
+		if wp.ID != "feed_wall" {
+			t.Errorf("Expected ID 'feed_wall', got '%s'", wp.ID)
+		}
+	})
+
+	t.Run("finds wallpaper in favorites", func(t *testing.T) {
+		wp, err := ctrl.GetWallpaper("fav_wall")
+		if err != nil {
+			t.Fatalf("Expected to find wallpaper, but got error: %v", err)
+		}
+		if wp.ID != "fav_wall" {
+			t.Errorf("Expected ID 'fav_wall', got '%s'", wp.ID)
+		}
+	})
+
+	t.Run("returns error when not found", func(t *testing.T) {
+		_, err := ctrl.GetWallpaper("not_found_wall")
+		if err == nil {
+			t.Fatal("Expected an error for a wallpaper that does not exist, but got nil")
+		}
+		if !strings.Contains(err.Error(), "not found") {
+			t.Errorf("Expected error message to contain 'not found', got '%v'", err)
+		}
+	})
+}

@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -17,7 +18,15 @@ type Logger struct {
 	debug  bool
 }
 
-// InitLogger initializes the global logger
+// NewLogger creates a new Logger instance that writes to the provided io.Writer.
+func NewLogger(writer io.Writer, debug bool) *Logger {
+	return &Logger{
+		logger: log.New(writer, "", log.LstdFlags|log.Lmicroseconds),
+		debug:  debug,
+	}
+}
+
+// InitLogger initializes the global logger to write to a file.
 func InitLogger(debug bool) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -37,10 +46,7 @@ func InitLogger(debug bool) error {
 		return err
 	}
 
-	Log = &Logger{
-		logger: log.New(file, "", log.LstdFlags|log.Lmicroseconds),
-		debug:  debug,
-	}
+	Log = NewLogger(file, debug)
 	return nil
 }
 
