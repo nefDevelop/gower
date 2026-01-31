@@ -17,12 +17,18 @@ type ProvidersConfig struct {
 	Reddit    RedditConfig    `json:"reddit"`
 	Nasa      NasaConfig      `json:"nasa"`
 	Bing      BingConfig      `json:"bing"`
+	Unsplash  UnsplashConfig  `json:"unsplash"`
 }
 
 type WallhavenConfig struct {
 	Enabled   bool            `json:"enabled"`
 	APIKey    string          `json:"api_key"`
 	RateLimit RateLimitConfig `json:"rate_limit"`
+}
+
+type UnsplashConfig struct {
+	Enabled bool   `json:"enabled"`
+	APIKey  string `json:"api_key"`
 }
 
 type RedditConfig struct {

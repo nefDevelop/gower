@@ -1,13 +1,47 @@
 package cmd
 
 import (
-	"gower/internal/core"
-	"gower/pkg/models"
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
+
+	"gower/internal/core"
+	"gower/pkg/models"
+
+	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
 )
+
+// executeCommand is a helper to capture the output of a cobra command.
+func executeCommand(root *cobra.Command, args ...string) (string, error) {
+	buf := new(bytes.Buffer)
+	root.SetOut(buf)
+	root.SetErr(buf)
+	root.SetArgs(args)
+
+	err := root.Execute()
+	return buf.String(), err
+}
+
+// setupTestHome creates a temporary home directory for testing.
+func setupTestHome(t *testing.T) string {
+	tempDir, err := os.MkdirTemp("", "gower-test-home-")
+	assert.NoError(t, err)
+
+	originalHome := os.Getenv("HOME")
+	os.Setenv("HOME", tempDir)
+
+	// Restore original HOME env var after test
+	t.Cleanup(func() {
+		os.Setenv("HOME", originalHome)
+	})
+
+	return tempDir
+}
 
 func resetSetFlags() {
 	setID = ""
@@ -20,12 +54,40 @@ func resetSetFlags() {
 	setNoDownload = false
 }
 
-func TestSetByID(t *testing.T) {
-	resetSetFlags()
+func TestController_GetWallpaperAndDownload(t *testing.T) {
 	tmpDir := setupTestHome(t)
 	defer os.RemoveAll(tmpDir)
 
-	executeCommand(rootCmd, "config", "init")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("image"))
+	}))
+	defer server.Close()
+
+	cfg := &models.Config{}
+	ctrl := core.NewController(cfg)
+	wp := models.Wallpaper{ID: "test-1", URL: server.URL + "/img.jpg"}
+	ctrl.AddWallpaperToFeed(wp)
+
+	// Test GetWallpaper
+	got, err := ctrl.GetWallpaper("test-1")
+	assert.NoError(t, err)
+	assert.Equal(t, wp.URL, got.URL)
+
+	// Test DownloadWallpaper
+	path, err := ctrl.DownloadWallpaper(*got)
+	assert.NoError(t, err)
+	_, err = os.Stat(path)
+	assert.NoError(t, err, "Downloaded file should exist at %s", path)
+}
+
+func TestSetUndoCommand(t *testing.T) {
+	resetSetFlags()
+	tmpDir, cleanup := setupTestHomeWithState(t, &State{
+		CurrentWallpaperID:  "current-wp",
+		PreviousWallpaperID: "previous-wp",
+	})
+	defer cleanup()
 
 	// Mock server for image download
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -34,69 +96,69 @@ func TestSetByID(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Populate feed
+	// Populate feed with the wallpaper we expect to be set
 	cfg, _ := loadConfig()
 	ctrl := core.NewController(cfg)
 	ctrl.AddWallpaperToFeed(models.Wallpaper{
-		ID:     "test-wp-1",
+		ID:     "previous-wp",
 		URL:    server.URL + "/image.jpg",
 		Source: "test",
 	})
 
-	// We need to mock the WallpaperChanger or accept that it might fail on CI/headless
-	// Since SetWallpaper executes a command, it will likely fail or do nothing in test env.
-	// However, we can check if the command output contains "Setting wallpaper".
-	// Note: In a real test environment, we should mock the exec.Command or the Changer interface.
-	// For this integration test, we expect it to try downloading and then fail at setting if no DE.
-	// But we can check the output up to that point.
+	// Execute the undo command and capture output
+	// We need to re-initialize the root command for each test run to avoid state leakage
+	testRootCmd, _, _ := newTestRootCmd()
+	output, err := executeCommand(testRootCmd, "set", "undo")
 
-	// Note: runSet and applyWallpaper have been refactored to return errors instead of os.Exit(1).
-	// This allows us to test failure scenarios without killing the test runner.
-
-	// For the purpose of this task, I will verify the logic flow by checking if it fails *correctly*
-	// (e.g. "Error setting wallpaper") which implies it passed the previous steps.
-	// But `os.Exit` is problematic.
-	// I will modify `cmd/set.go` to NOT use `os.Exit` but return, or just accept I can't fully test the end of it.
-	// Wait, I can't modify `cmd/set.go` to remove `os.Exit` if I just added it.
-	// I should have used `return` or `cmd.PrintErr`.
-	// Let's assume I can't change `cmd/set.go` anymore in this turn (I already provided the diff).
-	// I will write a test that sets up a scenario where it *might* succeed or fail with a specific message
-	// captured by a subprocess test pattern if needed, but that's complex.
-
-	// Alternative: Test `runSetRandom` logic via `feed` population.
+	assert.NoError(t, err)
+	assert.Contains(t, output, "Setting wallpaper: previous-wp")
+	assert.Contains(t, output, "Wallpaper set successfully")
 }
 
-// Since testing os.Exit is tricky, I'll test the helper functions I added to Controller.
-func TestController_GetWallpaperAndDownload(t *testing.T) {
-	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+// setupTestHomeWithState is a helper for tests that need a pre-configured state.json
+func setupTestHomeWithState(t *testing.T, state *State) (string, func()) {
+	tempDir, err := os.MkdirTemp("", "gower-test-home-")
+	assert.NoError(t, err)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("image")) // Revert to "image" content
-	}))
-	defer server.Close()
+	originalHome := os.Getenv("HOME")
+	os.Setenv("HOME", tempDir)
 
-	cfg := &models.Config{}
-	ctrl := core.NewController(cfg)
-	wp := models.Wallpaper{ID: "test-1", URL: server.URL + "/img.jpg"} // Revert to .jpg
-	ctrl.AddWallpaperToFeed(wp)
+	// Create .gower dir and write state
+	gowerDir := filepath.Join(tempDir, ".gower")
+	err = os.MkdirAll(gowerDir, 0755)
+	assert.NoError(t, err)
 
-	// Test GetWallpaper
-	got, err := ctrl.GetWallpaper("test-1")
-	if err != nil {
-		t.Fatalf("GetWallpaper failed: %v", err)
-	}
-	if got.URL != wp.URL {
-		t.Errorf("URL mismatch")
+	statePath := filepath.Join(gowerDir, "state.json")
+	stateData, err := json.Marshal(state)
+	assert.NoError(t, err)
+	err = os.WriteFile(statePath, stateData, 0644)
+	assert.NoError(t, err)
+
+	// Create a dummy config to satisfy ensureConfig
+	configPath := filepath.Join(gowerDir, "config.json")
+	err = os.WriteFile(configPath, []byte("{}"), 0644)
+	assert.NoError(t, err)
+
+	cleanup := func() {
+		os.Setenv("HOME", originalHome)
+		os.RemoveAll(tempDir)
 	}
 
-	// Test DownloadWallpaper
-	path, err := ctrl.DownloadWallpaper(*got)
-	if err != nil {
-		t.Fatalf("DownloadWallpaper failed: %v", err)
-	}
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		t.Errorf("Downloaded file does not exist at %s", path)
-	}
+	return tempDir, cleanup
+}
+
+// newTestRootCmd creates a fresh instance of the root command for isolated testing.
+func newTestRootCmd() (*cobra.Command, *CLIConfig, *bytes.Buffer) {
+	rootCmd := &cobra.Command{Use: "gower"}
+	var cfg CLIConfig
+	var out bytes.Buffer
+	rootCmd.SetOut(&out)
+	rootCmd.SetErr(&out)
+
+	// Add all commands to the new root
+	rootCmd.AddCommand(setCmd)
+	// Re-initialize flags for subcommands if necessary
+	// This is a simplified setup. A full setup would re-run all init() functions
+	// or use a factory pattern for commands.
+	return rootCmd, &cfg, &out
 }

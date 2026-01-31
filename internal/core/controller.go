@@ -42,6 +42,9 @@ func NewController(config *models.Config) *Controller {
 	if config.Providers.Bing.Enabled {
 		providerManager.RegisterProvider(providers.NewBingProvider(config.Providers.Bing.Market))
 	}
+	if config.Providers.Unsplash.Enabled {
+		providerManager.RegisterProvider(providers.NewUnsplashProvider(config.Providers.Unsplash.APIKey))
+	}
 	// Register other native providers here...
 
 	// Register generic providers

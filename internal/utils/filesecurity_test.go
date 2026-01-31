@@ -126,3 +126,38 @@ func TestSecureJSONManager_RestoreFromBackup(t *testing.T) {
 		t.Errorf("Main file was not repaired")
 	}
 }
+
+func TestSecureJSONManager_CorruptBackup(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "gower-utils-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	manager := NewSecureJSONManager()
+	filePath := filepath.Join(tmpDir, "test.json")
+	backupPath := filePath + ".bak"
+
+	// Create a valid main file
+	validData := TestData{Name: "main", Value: 111}
+	jsonData, _ := json.Marshal(validData)
+	if err := os.WriteFile(filePath, jsonData, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a corrupt backup file
+	if err := os.WriteFile(backupPath, []byte("{invalid-json"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Try to read. It should succeed by reading the main file and not error out
+	// due to the corrupt backup.
+	var result TestData
+	if err := manager.ReadJSON(filePath, &result); err != nil {
+		t.Fatalf("ReadJSON should have succeeded but failed: %v", err)
+	}
+
+	if result.Name != "main" {
+		t.Errorf("Read incorrect data: expected 'main', got '%s'", result.Name)
+	}
+}
