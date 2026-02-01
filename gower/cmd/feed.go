@@ -2,6 +2,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"math/rand"
 	"time"
 
@@ -28,7 +29,9 @@ var feedCmd = &cobra.Command{
 	Short: "Manage wallpaper feed/history",
 	Long:  `View, search and manage your wallpaper history feed`,
 	Run: func(cmd *cobra.Command, args []string) {
-		cmd.Println("Ejecutando el comando 'feed'...")
+		if !config.JSONOutput {
+			cmd.Println("Ejecutando el comando 'feed'...")
+		}
 		cmd.Help()
 	},
 }
@@ -44,7 +47,7 @@ var feedShowCmd = &cobra.Command{
 		}
 		controller := core.NewController(cfg)
 
-		if feedRefresh {
+		if feedRefresh && !config.JSONOutput {
 			cmd.Println("Refreshing feed view...")
 		}
 
@@ -282,8 +285,12 @@ func displayWallpaper(cmd *cobra.Command, wallpaper interface{}, noColor bool) {
 }
 
 func displayJSON(cmd *cobra.Command, data interface{}) {
-	// Placeholder: Implementar lógica de visualización JSON
-	cmd.Printf("Displaying JSON: %+v\n", data)
+	jsonData, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		cmd.PrintErrf("Error marshalling JSON: %v\n", err)
+		return
+	}
+	cmd.Println(string(jsonData))
 }
 
 func displayTable(cmd *cobra.Command, wallpapers interface{}, noColor bool) {
