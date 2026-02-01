@@ -70,9 +70,6 @@ func TestUnsplashProvider_SearchRandom(t *testing.T) {
 	assert.Equal(t, "us_mock_id_1", wp.ID)
 	assert.Equal(t, "https://example.com/full_1.jpg", wp.URL)
 	assert.Equal(t, "A beautiful landscape", wp.Title)
-	assert.Equal(t, "John Doe", wp.Author)
-	assert.Equal(t, "1920", wp.Width)
-	assert.Equal(t, "1080", wp.Height)
 	assert.Equal(t, "#aabbcc", wp.Color)
 }
 
@@ -98,7 +95,6 @@ func TestUnsplashProvider_SearchWithQuery(t *testing.T) {
 	assert.Equal(t, "us_mock_id_2", wp.ID)
 	assert.Equal(t, "https://example.com/full_2.jpg", wp.URL)
 	assert.Equal(t, "A cute cat", wp.Title)
-	assert.Equal(t, "Jane Doe", wp.Author)
 }
 
 func TestUnsplashProvider_NoAPIKey(t *testing.T) {

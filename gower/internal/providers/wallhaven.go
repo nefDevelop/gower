@@ -10,6 +10,8 @@ import (
 	"strconv"
 )
 
+var WallhavenBaseURL = "https://wallhaven.cc/api/v1/search"
+
 // WallhavenProvider implements the Provider interface for Wallhaven.cc.
 type WallhavenProvider struct {
 	APIKey string
@@ -20,8 +22,7 @@ func (p *WallhavenProvider) GetName() string {
 }
 
 func (p *WallhavenProvider) Search(query string, opts SearchOptions) ([]models.Wallpaper, error) {
-	baseURL := "https://wallhaven.cc/api/v1/search"
-	u, err := url.Parse(baseURL)
+	u, err := url.Parse(WallhavenBaseURL)
 	if err != nil {
 		return nil, err
 	}

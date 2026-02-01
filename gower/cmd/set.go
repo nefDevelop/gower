@@ -119,7 +119,7 @@ func runSet(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	}
 
-	return applyWallpaper(controller, *wallpaper)
+	return applyWallpaper(cmd, controller, *wallpaper)
 }
 
 func runSetRandom(cmd *cobra.Command, args []string) error {
@@ -154,7 +154,7 @@ func runSetRandom(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	return applyWallpaper(controller, wallpaper)
+	return applyWallpaper(cmd, controller, wallpaper)
 }
 
 func runSetUndo(cmd *cobra.Command, args []string) error {
@@ -186,11 +186,11 @@ func runSetUndo(cmd *cobra.Command, args []string) error {
 	// so we call a slightly different application function or pass a flag.
 	// For simplicity, we'll just apply it without a state change.
 	// A more robust implementation might swap current and previous.
-	return applyWallpaper(controller, *wp)
+	return applyWallpaper(cmd, controller, *wp)
 }
 
-func applyWallpaper(controller *core.Controller, wp models.Wallpaper) error {
-	fmt.Printf("Setting wallpaper: %s (Source: %s)\n", wp.ID, wp.Source)
+func applyWallpaper(cmd *cobra.Command, controller *core.Controller, wp models.Wallpaper) error {
+	cmd.Printf("Setting wallpaper: %s (Source: %s)\n", wp.ID, wp.Source)
 
 	localPath := ""
 	if !setNoDownload {
@@ -223,18 +223,18 @@ func applyWallpaper(controller *core.Controller, wp models.Wallpaper) error {
 	state, err := loadState()
 	if err != nil {
 		// Log the error but don't fail the whole operation
-		fmt.Printf("Warning: could not load state to update it: %v\n", err)
+		cmd.Printf("Warning: could not load state to update it: %v\n", err)
 	} else {
 		// Don't update state if we are just setting the same wallpaper again
 		if state.CurrentWallpaperID != wp.ID {
 			state.PreviousWallpaperID = state.CurrentWallpaperID
 			state.CurrentWallpaperID = wp.ID
 			if err := state.saveState(); err != nil {
-				fmt.Printf("Warning: could not save state: %v\n", err)
+				cmd.Printf("Warning: could not save state: %v\n", err)
 			}
 		}
 	}
 
-	fmt.Println("Wallpaper set successfully.")
+	cmd.Println("Wallpaper set successfully.")
 	return nil
 }

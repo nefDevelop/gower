@@ -500,7 +500,7 @@ func (c *Controller) GetWallpaper(id string) (*models.Wallpaper, error) {
 	// 2. Check Favorites
 	// We need to manually load favorites here since Controller doesn't manage them directly yet,
 	// or we can assume the caller handles it. However, for convenience:
-	favPath := filepath.Join(filepath.Dir(filepath.Dir(filepath.Dir(c.getFeedPathString()))), "favorites.json")
+	favPath := filepath.Join(filepath.Dir(c.getFeedPathString()), "favorites.json")
 	var favorites []struct {
 		models.Wallpaper
 		Notes string `json:"notes,omitempty"`
@@ -608,7 +608,7 @@ func (c *Controller) GetCachedWallpapers(includeFavorites bool, theme string) ([
 
 	// Load Favorites if requested
 	if includeFavorites {
-		favPath := filepath.Join(filepath.Dir(filepath.Dir(filepath.Dir(c.getFeedPathString()))), "favorites.json")
+		favPath := filepath.Join(filepath.Dir(c.getFeedPathString()), "favorites.json")
 		var favorites []struct {
 			models.Wallpaper
 			Notes string `json:"notes,omitempty"`

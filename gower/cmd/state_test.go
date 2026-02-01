@@ -76,7 +76,7 @@ func TestLoadState_NonExistent(t *testing.T) {
 }
 
 func TestLoadState_Corrupt(t *testing.T) {
-	tempDir, cleanup := setupStateTest(t)
+	_, cleanup := setupStateTest(t)
 	defer cleanup()
 
 	// Create a corrupt state file

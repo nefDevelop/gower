@@ -5,13 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 
 	"gower/internal/utils"
 	"gower/pkg/models"
 )
 
-const unsplashAPIBaseURL = "https://api.unsplash.com"
+var unsplashAPIBaseURL = "https://api.unsplash.com"
 
 // UnsplashProvider implements the Provider interface for Unsplash.
 type UnsplashProvider struct {
@@ -123,9 +122,6 @@ func (p *UnsplashProvider) mapResultsToWallpapers(results []unsplashPhoto) []mod
 			Thumbnail: photo.Urls.Thumb,
 			Source:    p.GetName(),
 			Title:     p.formatTitle(photo),
-			Author:    photo.User.Name,
-			Width:     strconv.Itoa(photo.Width),
-			Height:    strconv.Itoa(photo.Height),
 			Color:     photo.Color,
 		})
 	}

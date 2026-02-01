@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"gower/internal/providers"
 	"gower/pkg/models"
 )
 
@@ -47,10 +48,23 @@ func TestExploreNativeProvider(t *testing.T) {
 	tmpDir := setupTestHome(t)
 	defer os.RemoveAll(tmpDir)
 
-	// Usamos la configuración por defecto que incluye wallhaven
-	executeCommand(rootCmd, "config", "init")
+	// Mock server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintln(w, `{"data":[{"id":"test_id","path":"http://example.com/img.jpg","resolution":"1920x1080","thumbs":{"large":"http://example.com/thumb.jpg"}}]}`)
+	}))
+	defer server.Close()
 
-	output, err := executeCommand(rootCmd, "explore", "--provider", "wallhaven", "test")
+	origURL := providers.WallhavenBaseURL
+	providers.WallhavenBaseURL = server.URL
+	defer func() { providers.WallhavenBaseURL = origURL }()
+
+	testRootCmd, _, _ := newTestRootCmd()
+
+	// Usamos la configuración por defecto que incluye wallhaven
+	executeCommand(testRootCmd, "config", "init")
+
+	output, err := executeCommand(testRootCmd, "explore", "--provider", "wallhaven", "test")
 	if err != nil {
 		t.Fatalf("Error executing explore: %v", err)
 	}
@@ -99,8 +113,9 @@ func TestExploreGenericProvider(t *testing.T) {
 	}
 	createTestConfig(t, tmpDir, &cfg)
 
+	testRootCmd, _, _ := newTestRootCmd()
 	// 3. Ejecutar el comando
-	output, err := executeCommand(rootCmd, "explore", "--provider", "generic_test", "searchterm")
+	output, err := executeCommand(testRootCmd, "explore", "--provider", "generic_test", "searchterm")
 	if err != nil {
 		t.Fatalf("Error executing explore with generic provider: %v", err)
 	}
@@ -144,8 +159,9 @@ func TestExploreAllProviders(t *testing.T) {
 	}
 	createTestConfig(t, tmpDir, &cfg)
 
+	testRootCmd, _, _ := newTestRootCmd()
 	// 3. Ejecutar con --all
-	output, err := executeCommand(rootCmd, "explore", "--all", "anything")
+	output, err := executeCommand(testRootCmd, "explore", "--all", "anything")
 	if err != nil {
 		t.Fatalf("Error executing explore with --all: %v", err)
 	}

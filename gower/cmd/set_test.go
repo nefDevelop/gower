@@ -16,33 +16,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// executeCommand is a helper to capture the output of a cobra command.
-func executeCommand(root *cobra.Command, args ...string) (string, error) {
-	buf := new(bytes.Buffer)
-	root.SetOut(buf)
-	root.SetErr(buf)
-	root.SetArgs(args)
-
-	err := root.Execute()
-	return buf.String(), err
-}
-
-// setupTestHome creates a temporary home directory for testing.
-func setupTestHome(t *testing.T) string {
-	tempDir, err := os.MkdirTemp("", "gower-test-home-")
-	assert.NoError(t, err)
-
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tempDir)
-
-	// Restore original HOME env var after test
-	t.Cleanup(func() {
-		os.Setenv("HOME", originalHome)
-	})
-
-	return tempDir
-}
-
 func resetSetFlags() {
 	setID = ""
 	setURL = ""
@@ -82,8 +55,9 @@ func TestController_GetWallpaperAndDownload(t *testing.T) {
 }
 
 func TestSetUndoCommand(t *testing.T) {
+	t.Setenv("XDG_CURRENT_DESKTOP", "test")
 	resetSetFlags()
-	tmpDir, cleanup := setupTestHomeWithState(t, &State{
+	_, cleanup := setupTestHomeWithState(t, &State{
 		CurrentWallpaperID:  "current-wp",
 		PreviousWallpaperID: "previous-wp",
 	})
@@ -157,6 +131,17 @@ func newTestRootCmd() (*cobra.Command, *CLIConfig, *bytes.Buffer) {
 
 	// Add all commands to the new root
 	rootCmd.AddCommand(setCmd)
+	rootCmd.AddCommand(exploreCmd)
+	rootCmd.AddCommand(configCmd)
+
+	// Reset output of subcommands to ensure they inherit from rootCmd
+	setCmd.SetOut(nil)
+	setCmd.SetErr(nil)
+	exploreCmd.SetOut(nil)
+	exploreCmd.SetErr(nil)
+	configCmd.SetOut(nil)
+	configCmd.SetErr(nil)
+
 	// Re-initialize flags for subcommands if necessary
 	// This is a simplified setup. A full setup would re-run all init() functions
 	// or use a factory pattern for commands.
