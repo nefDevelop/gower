@@ -16,7 +16,7 @@ type State struct {
 }
 
 // stateFilePath returns the path to the state file.
-func stateFilePath() (string, error) {
+var stateFilePath = func() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
@@ -50,7 +50,7 @@ func loadState() (*State, error) {
 	}
 
 	if err := json.Unmarshal(data, state); err != nil {
-		utils.Log.Warn("State file is corrupt, starting with a fresh state. Error: %v", err)
+		utils.Log.Error("State file is corrupt, starting with a fresh state. Error: %v", err)
 		// Return a fresh state if unmarshalling fails
 		return &State{}, nil
 	}

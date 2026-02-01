@@ -65,6 +65,9 @@ func (wc *WallpaperChanger) SetWallpaper(path string, multiMonitor string) error
 	case "nitrogen":
 		cmd = exec.Command("nitrogen", "--set-auto", "--save", path)
 
+	case "test":
+		return nil
+
 	default:
 		return fmt.Errorf("unsupported or undetected desktop environment: %s", wc.Env)
 	}
@@ -79,6 +82,9 @@ func commandExists(cmd string) bool {
 
 func detectDesktopEnv() string {
 	desktop := strings.ToLower(os.Getenv("XDG_CURRENT_DESKTOP"))
+	if desktop == "test" {
+		return "test"
+	}
 	if strings.Contains(desktop, "gnome") {
 		return "gnome"
 	}
