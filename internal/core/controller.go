@@ -509,6 +509,38 @@ func (c *Controller) AddToBlacklist(id string) error {
 	return nil
 }
 
+// RemoveFromBlacklist removes an ID from the blacklist.
+func (c *Controller) RemoveFromBlacklist(id string) error {
+	blacklist, err := c.loadBlacklist()
+	if err != nil {
+		return err
+	}
+
+	newBlacklist := make([]string, 0, len(blacklist))
+	found := false
+	for _, existing := range blacklist {
+		if existing == id {
+			found = true
+			continue
+		}
+		newBlacklist = append(newBlacklist, existing)
+	}
+
+	if !found {
+		return fmt.Errorf("ID %s not found in blacklist", id)
+	}
+
+	path, err := c.getBlacklistPath()
+	if err != nil {
+		return err
+	}
+	if err := c.feedManager.WriteJSON(path, newBlacklist); err != nil {
+		return err
+	}
+	utils.Log.Info("Removed wallpaper %s from blacklist", id)
+	return nil
+}
+
 // GetBlacklist returns the current blacklist.
 func (c *Controller) GetBlacklist() ([]string, error) {
 	return c.loadBlacklist()

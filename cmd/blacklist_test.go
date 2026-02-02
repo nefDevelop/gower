@@ -14,7 +14,7 @@ func TestBlacklistAdd(t *testing.T) {
 	executeCommand(rootCmd, "config", "init")
 
 	// Add to blacklist
-	output, err := executeCommand(rootCmd, "blacklist", "bad-id")
+	output, err := executeCommand(rootCmd, "blacklist", "add", "bad-id")
 	if err != nil {
 		t.Fatalf("Error executing blacklist: %v", err)
 	}
