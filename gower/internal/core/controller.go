@@ -195,11 +195,12 @@ func (c *Controller) PurgeFeed() error {
 }
 
 // AnalyzeFeed analyzes the feed items, regenerates thumbnails/colors if needed, and rebuilds the color index.
-func (c *Controller) AnalyzeFeed(all bool) error {
+func (c *Controller) AnalyzeFeed(all bool, force bool) error {
 	feed, err := c.loadFeed()
 	if err != nil {
 		return err
 	}
+	utils.Log.Info("Analyzing feed: %d items found", len(feed))
 
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -208,8 +209,9 @@ func (c *Controller) AnalyzeFeed(all bool) error {
 	thumbDir := filepath.Join(homeDir, ".gower", "cache", "thumbs")
 
 	type job struct {
-		Index int
-		Wp    models.Wallpaper
+		Index  int
+		Wp     models.Wallpaper
+		Delete bool
 	}
 
 	jobs := make(chan job, len(feed))
@@ -227,17 +229,39 @@ func (c *Controller) AnalyzeFeed(all bool) error {
 				changed := false
 				thumbPath := filepath.Join(thumbDir, wp.ID+".jpg")
 
-				_, errStat := os.Stat(thumbPath)
-				thumbExists := errStat == nil
+				// 1. Validar dimensiones por metadatos (si existen) para limpiar items de baja resolución
+				if !c.isValidDimension(wp.Dimension) {
+					utils.Log.Info("Removing invalid item %s (dimension %s)", wp.ID, wp.Dimension)
+					os.Remove(thumbPath)
+					results <- job{Index: j.Index, Delete: true}
+					continue
+				}
 
-				// If thumbnail is missing, we must generate it to analyze color
-				if !thumbExists {
+				info, errStat := os.Stat(thumbPath)
+				thumbExists := errStat == nil && info.Size() > 0
+
+				// If thumbnail is missing, or if we are forcing a full regeneration (force+all), generate it
+				if !thumbExists || (force && all) {
+					utils.Log.Info("Generating thumbnail for %s", wp.ID)
 					src := wp.Thumbnail
-					if src == "" {
+					checkResolution := false
+					if src == "" || src == wp.URL {
 						src = wp.URL
+						checkResolution = true
 					}
 					w, h, err := c.ColorManager.GenerateThumbnail(src, thumbPath)
 					if err == nil {
+						// Check validity immediately after generation
+						if !c.isValidImage(w, h, checkResolution) {
+							utils.Log.Info("Removing invalid item %s (ratio %dx%d)", wp.ID, w, h)
+							os.Remove(thumbPath)
+							results <- job{Index: j.Index, Delete: true}
+							continue
+						}
+
+						utils.Log.Info("Successfully generated thumbnail for %s", wp.ID)
+						wp.Extension = ".jpg"
+						changed = true
 						// If we generated it, we can set ratio if missing
 						if wp.Ratio == "" && w > 0 && h > 0 {
 							wp.Ratio = calculateRatio(w, h)
@@ -251,15 +275,38 @@ func (c *Controller) AnalyzeFeed(all bool) error {
 					} else {
 						utils.Log.Error("Failed to generate thumbnail for %s: %v", wp.ID, err)
 					}
-				} else if all || wp.Color == "" {
-					// Thumbnail exists, just re-analyze color
-					if color, err := c.ColorManager.AnalyzeColor(thumbPath); err == nil {
-						if wp.Color != color {
-							wp.Color = color
+				} else {
+					// Thumbnail exists, verify it matches current criteria (prune invalid items)
+					w, h, err := c.ColorManager.GetImageDimensions(thumbPath)
+					if err == nil {
+						checkResolution := false
+						if wp.Thumbnail == "" || wp.Thumbnail == wp.URL {
+							checkResolution = true
+						}
+
+						if !c.isValidImage(w, h, checkResolution) {
+							utils.Log.Info("Removing invalid item %s (ratio %dx%d)", wp.ID, w, h)
+							os.Remove(thumbPath)
+							results <- job{Index: j.Index, Delete: true}
+							continue
+						}
+
+						if wp.Extension == "" {
+							wp.Extension = ".jpg"
 							changed = true
 						}
-					} else {
-						utils.Log.Error("Failed to analyze color for %s: %v", wp.ID, err)
+					}
+
+					// Re-analyze color if requested or missing
+					if all || wp.Color == "" {
+						if color, err := c.ColorManager.AnalyzeColor(thumbPath); err == nil {
+							if wp.Color != color {
+								wp.Color = color
+								changed = true
+							}
+						} else {
+							utils.Log.Error("Failed to analyze color for %s: %v", wp.ID, err)
+						}
 					}
 				}
 
@@ -279,8 +326,23 @@ func (c *Controller) AnalyzeFeed(all bool) error {
 
 	updatedCount := 0
 	for res := range results {
-		feed[res.Index] = res.Wp
+		if res.Delete {
+			feed[res.Index].ID = "" // Mark for deletion
+		} else {
+			feed[res.Index] = res.Wp
+		}
 		updatedCount++
+	}
+
+	// Filter out deleted items
+	if updatedCount > 0 {
+		newFeed := make([]models.Wallpaper, 0, len(feed))
+		for _, wp := range feed {
+			if wp.ID != "" {
+				newFeed = append(newFeed, wp)
+			}
+		}
+		feed = newFeed
 	}
 
 	// Always rebuild index to ensure it matches current feed colors
@@ -793,22 +855,32 @@ func (c *Controller) SyncFeed() (int, int, error) {
 		go func() {
 			defer wg.Done()
 			for wp := range jobs {
+				// Filtrar por metadatos antes de intentar descargar nada
+				if !c.isValidDimension(wp.Dimension) {
+					continue
+				}
+
 				thumbPath := filepath.Join(thumbDir, wp.ID+".jpg")
 
 				// Usar thumbnail URL si existe para ahorrar ancho de banda
 				src := wp.Thumbnail
-				if src == "" {
+				checkResolution := false
+				if src == "" || src == wp.URL {
 					src = wp.URL
+					checkResolution = true
 				}
 
 				// Generar thumbnail y analizar color
 				width, height, err := c.ColorManager.GenerateThumbnail(src, thumbPath)
 				if err == nil {
 					// Validar Ratio antes de continuar
-					if !c.matchesAspectRatio(width, height) {
+					if !c.isValidImage(width, height, checkResolution) {
+						utils.Log.Info("Rejected item %s: dimensions %dx%d do not match criteria. Removing thumbnail.", wp.ID, width, height)
 						os.Remove(thumbPath) // Limpiar thumbnail generado
 						continue
 					}
+
+					wp.Extension = ".jpg"
 
 					// Calcular Ratio si falta
 					if wp.Ratio == "" && width > 0 && height > 0 {
@@ -823,6 +895,8 @@ func (c *Controller) SyncFeed() (int, int, error) {
 					wp.Seen = false
 
 					results <- wp
+				} else {
+					utils.Log.Info("Failed to download/generate thumbnail for %s: %v", wp.ID, err)
 				}
 				// Si falla la descarga, no lo agregamos al feed (o podríamos agregarlo sin color)
 			}
@@ -916,8 +990,19 @@ func (c *Controller) rebuildColorsIndex(feed []models.Wallpaper) error {
 	return c.feedManager.WriteJSON(path, colors)
 }
 
-func (c *Controller) matchesAspectRatio(width, height int) bool {
-	if c.Config == nil || c.Config.Search.AspectRatio == "" {
+func (c *Controller) isValidImage(width, height int, checkResolution bool) bool {
+	if c.Config == nil {
+		return true
+	}
+
+	if checkResolution && c.Config.Search.MinWidth > 0 && width < c.Config.Search.MinWidth {
+		return false
+	}
+	if checkResolution && c.Config.Search.MinHeight > 0 && height < c.Config.Search.MinHeight {
+		return false
+	}
+
+	if c.Config.Search.AspectRatio == "" {
 		return true
 	}
 
@@ -948,6 +1033,29 @@ func (c *Controller) matchesAspectRatio(width, height int) bool {
 	}
 
 	return diff <= c.Config.Search.Tolerance
+}
+
+func (c *Controller) isValidDimension(dimension string) bool {
+	if c.Config == nil || dimension == "" {
+		return true // Si no hay datos, asumimos válido (ej. NASA a veces)
+	}
+	parts := strings.Split(dimension, "x")
+	if len(parts) != 2 {
+		return true
+	}
+	w, err1 := strconv.Atoi(strings.TrimSpace(parts[0]))
+	h, err2 := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err1 != nil || err2 != nil {
+		return true
+	}
+
+	if c.Config.Search.MinWidth > 0 && w < c.Config.Search.MinWidth {
+		return false
+	}
+	if c.Config.Search.MinHeight > 0 && h < c.Config.Search.MinHeight {
+		return false
+	}
+	return true
 }
 
 // GetLastProviderUpdateTime returns the modification time of the most recently updated provider cache file.

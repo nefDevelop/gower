@@ -122,7 +122,7 @@ var feedAnalyzeCmd = &cobra.Command{
 		controller := core.NewController(cfg)
 
 		cmd.Println("Analyzing feed items...")
-		if err := controller.AnalyzeFeed(feedAll); err != nil {
+		if err := controller.AnalyzeFeed(feedAll, feedForce); err != nil {
 			cmd.Printf("Error analyzing feed: %v\n", err)
 			return
 		}
@@ -248,6 +248,7 @@ func init() {
 	feedStatsCmd.Flags().BoolVar(&feedDetailed, "detailed", false, "Show detailed statistics")
 
 	feedAnalyzeCmd.Flags().BoolVar(&feedAll, "all", false, "Analyze all items, not just new ones")
+	feedAnalyzeCmd.Flags().BoolVar(&feedForce, "force", false, "Force regeneration of thumbnails")
 
 	feedRandomCmd.Flags().StringVar(&feedTheme, "theme", "", "Filter by theme [dark|light]")
 	feedRandomCmd.Flags().BoolVar(&feedFromFavorites, "from-favorites", false, "Pick from favorites instead of feed")
