@@ -302,3 +302,54 @@ func TestController_GetWallpaper(t *testing.T) {
 		}
 	})
 }
+
+func TestController_AnalyzeFeed(t *testing.T) {
+	tmpDir := setupTestHome(t)
+	defer os.RemoveAll(tmpDir)
+
+	cfg := &models.Config{}
+	ctrl := NewController(cfg)
+
+	// 1. Create a dummy source image
+	srcImgPath := filepath.Join(tmpDir, "source.png")
+	createDummyImage(t, srcImgPath)
+
+	// 2. Add item to feed
+	wpID := "test_analyze"
+	wp := models.Wallpaper{
+		ID:        wpID,
+		URL:       srcImgPath,
+		Thumbnail: srcImgPath,
+		Theme:     "dark",
+	}
+	if err := ctrl.AddWallpaperToFeed(wp); err != nil {
+		t.Fatalf("Failed to add wallpaper: %v", err)
+	}
+
+	// 3. Ensure thumbnail does NOT exist initially
+	thumbPath := filepath.Join(tmpDir, ".gower", "cache", "thumbs", wpID+".jpg")
+
+	// Case 1: AnalyzeFeed(false, false) - Should generate missing thumbnail
+	if err := ctrl.AnalyzeFeed(false, false); err != nil {
+		t.Fatalf("AnalyzeFeed(false, false) failed: %v", err)
+	}
+
+	info1, err := os.Stat(thumbPath)
+	if os.IsNotExist(err) {
+		t.Fatal("Thumbnail should have been generated")
+	}
+
+	// Case 2: AnalyzeFeed(true, true) - Force regeneration
+	time.Sleep(50 * time.Millisecond) // Ensure fs timestamp difference
+	if err := ctrl.AnalyzeFeed(true, true); err != nil {
+		t.Fatalf("AnalyzeFeed(true, true) failed: %v", err)
+	}
+
+	info2, err := os.Stat(thumbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info2.ModTime().After(info1.ModTime()) {
+		t.Error("Thumbnail should have been regenerated with force=true and all=true")
+	}
+}

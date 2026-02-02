@@ -44,7 +44,7 @@ func (p *RedditProvider) Search(query string, opts SearchOptions) ([]models.Wall
 
 	// Estrategia MIX: Combinar Hot, New y Top
 	if query == "" && sort == "mix" {
-		return p.searchMixed(subreddit, limit, opts.ExcludeIDs)
+		return p.searchMixed(subreddit, limit, opts)
 	}
 
 	// Pedimos más items a la API (hasta 100) para compensar el filtrado posterior
@@ -68,10 +68,10 @@ func (p *RedditProvider) Search(query string, opts SearchOptions) ([]models.Wall
 		url = fmt.Sprintf("https://www.reddit.com/r/%s/%s.json?limit=%d%s", subreddit, sort, apiLimit, timeParam)
 	}
 
-	return p.fetchFromReddit(url, limit, opts.ExcludeIDs)
+	return p.fetchFromReddit(url, limit, opts)
 }
 
-func (p *RedditProvider) searchMixed(subreddit string, limit int, excludeIDs map[string]bool) ([]models.Wallpaper, error) {
+func (p *RedditProvider) searchMixed(subreddit string, limit int, opts SearchOptions) ([]models.Wallpaper, error) {
 	// Dividimos el esfuerzo, pero pedimos suficiente de cada uno
 	apiLimit := 40
 
@@ -80,9 +80,9 @@ func (p *RedditProvider) searchMixed(subreddit string, limit int, excludeIDs map
 	urlTop := fmt.Sprintf("https://www.reddit.com/r/%s/top.json?limit=%d&t=month", subreddit, apiLimit) // Top del mes para variar
 
 	// Hacemos las peticiones (secuenciales por simplicidad, podrían ser paralelas)
-	resHot, _ := p.fetchFromReddit(urlHot, limit, excludeIDs)
-	resNew, _ := p.fetchFromReddit(urlNew, limit, excludeIDs)
-	resTop, _ := p.fetchFromReddit(urlTop, limit, excludeIDs)
+	resHot, _ := p.fetchFromReddit(urlHot, limit, opts)
+	resNew, _ := p.fetchFromReddit(urlNew, limit, opts)
+	resTop, _ := p.fetchFromReddit(urlTop, limit, opts)
 
 	// Combinar y desduplicar
 	uniqueMap := make(map[string]models.Wallpaper)
@@ -112,7 +112,7 @@ func (p *RedditProvider) searchMixed(subreddit string, limit int, excludeIDs map
 	return combined, nil
 }
 
-func (p *RedditProvider) fetchFromReddit(url string, limit int, excludeIDs map[string]bool) ([]models.Wallpaper, error) {
+func (p *RedditProvider) fetchFromReddit(url string, limit int, opts SearchOptions) ([]models.Wallpaper, error) {
 	utils.Log.Debug("Reddit fetching: %s", url)
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", url, nil)
@@ -176,7 +176,7 @@ func (p *RedditProvider) fetchFromReddit(url string, limit int, excludeIDs map[s
 		}
 
 		id := "rd_" + data.ID
-		if excludeIDs != nil && excludeIDs[id] {
+		if opts.ExcludeIDs != nil && opts.ExcludeIDs[id] {
 			continue
 		}
 
@@ -219,9 +219,23 @@ func (p *RedditProvider) fetchFromReddit(url string, limit int, excludeIDs map[s
 
 		// Determinar dimensión
 		dimension := ""
+		width := 0
+		height := 0
 		if len(data.Preview.Images) > 0 {
 			src := data.Preview.Images[0].Source
 			dimension = fmt.Sprintf("%dx%d", src.Width, src.Height)
+			width = src.Width
+			height = src.Height
+		}
+
+		// Filtrar por resolución si está disponible
+		if width > 0 && height > 0 {
+			if opts.MinWidth > 0 && width < opts.MinWidth {
+				continue
+			}
+			if opts.MinHeight > 0 && height < opts.MinHeight {
+				continue
+			}
 		}
 
 		wallpapers = append(wallpapers, models.Wallpaper{

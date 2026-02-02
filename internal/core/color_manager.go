@@ -3,6 +3,7 @@ package core
 import (
 	"fmt"
 	"image"
+	_ "image/gif" // Support GIF decoding
 	"image/jpeg"
 	_ "image/png" // Support PNG decoding
 	"math"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 )
 
 // ColorManager handles image processing tasks such as thumbnail generation and color analysis.
@@ -48,9 +50,21 @@ func (cm *ColorManager) GenerateThumbnail(src, destPath string) (int, int, error
 
 	// Check if src is URL or local path
 	if len(src) > 4 && src[:4] == "http" {
-		resp, err := http.Get(src)
-		if err != nil {
-			return 0, 0, err
+		client := &http.Client{Timeout: 15 * time.Second}
+		var resp *http.Response
+		var errGet error
+
+		// Retry up to 3 times for network glitches
+		for i := 0; i < 3; i++ {
+			resp, errGet = client.Get(src)
+			if errGet == nil {
+				break
+			}
+			time.Sleep(1 * time.Second)
+		}
+
+		if errGet != nil {
+			return 0, 0, errGet
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
@@ -58,17 +72,17 @@ func (cm *ColorManager) GenerateThumbnail(src, destPath string) (int, int, error
 		}
 		img, _, err = image.Decode(resp.Body)
 	} else {
-		file, err := os.Open(src)
-		if err != nil {
-			return 0, 0, err
+		file, errOpen := os.Open(src)
+		if errOpen != nil {
+			return 0, 0, errOpen
 		}
 		defer file.Close()
 		img, _, err = image.Decode(file)
 	}
 
-	// if err != nil {
-	// 	return 0, 0, fmt.Errorf("failed to decode image: %w", err)
-	// }
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to decode image: %w", err)
+	}
 	if img == nil {
 		return 0, 0, fmt.Errorf("image.Decode returned nil image for %s", src) // Explicit check
 	}
@@ -100,6 +114,21 @@ func (cm *ColorManager) GenerateThumbnail(src, destPath string) (int, int, error
 	defer out.Close()
 
 	return bounds.Dx(), bounds.Dy(), jpeg.Encode(out, dst, &jpeg.Options{Quality: 80})
+}
+
+// GetImageDimensions returns the width and height of an image file without decoding the whole file.
+func (cm *ColorManager) GetImageDimensions(path string) (int, int, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer file.Close()
+
+	cfg, _, err := image.DecodeConfig(file)
+	if err != nil {
+		return 0, 0, err
+	}
+	return cfg.Width, cfg.Height, nil
 }
 
 // AnalyzeColor determines the dominant color of the image.
