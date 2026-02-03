@@ -54,6 +54,12 @@ func (wc *WallpaperChanger) SetWallpaper(path string, multiMonitor string) error
 		exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri).Run()
 		cmd = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri-dark", uri)
 
+	case "sway":
+		// swaybg is a good generic for sway-like compositors (like niri)
+		// Using -m fill to replicate --bg-fill behavior from feh
+		// Note: swaybg forks, so we don't wait for it to exit.
+		cmd = exec.Command("swaybg", "-i", path, "-m", "fill")
+
 	case "feh":
 		args := []string{"--bg-fill", path}
 		if multiMonitor == "distinct" {
@@ -64,6 +70,15 @@ func (wc *WallpaperChanger) SetWallpaper(path string, multiMonitor string) error
 
 	case "nitrogen":
 		cmd = exec.Command("nitrogen", "--set-auto", "--save", path)
+
+	case "dms":
+		cmd = exec.Command("dms", "ipc", "call", "wallpaper", "set", path)
+
+	case "swww":
+		cmd = exec.Command("swww", "img", path)
+
+	case "awww":
+		cmd = exec.Command("awww", path)
 
 	case "test":
 		return nil
@@ -91,11 +106,30 @@ func detectDesktopEnv() string {
 	if strings.Contains(desktop, "kde") {
 		return "kde"
 	}
+	// Check for sway/niri before falling back to generic X11 tools
+	if (strings.Contains(desktop, "sway") || strings.Contains(desktop, "niri")) && commandExists("swaybg") {
+		return "sway"
+	}
+	// Other popular Wayland wallpaper tools
+	if commandExists("swww") {
+		return "swww"
+	}
+	if commandExists("awww") {
+		return "awww"
+	}
+
+	if commandExists("dms") {
+		return "dms"
+	}
 	if commandExists("feh") {
 		return "feh"
 	}
 	if commandExists("nitrogen") {
 		return "nitrogen"
+	}
+	// Last resort check for swaybg
+	if commandExists("swaybg") {
+		return "sway"
 	}
 	return "unknown"
 }
