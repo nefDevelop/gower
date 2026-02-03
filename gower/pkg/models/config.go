@@ -53,7 +53,7 @@ type GenericProviderConfig struct {
 	Enabled         bool            `json:"enabled"`
 	APIURL          string          `json:"api_url,omitempty"`
 	APIKey          string          `json:"api_key,omitempty"`
-	ResponseMapping ResponseMapping `json:"response_mapping,omitempty"`
+	ResponseMapping ResponseMapping `json:"-"`
 }
 
 type ResponseMapping struct {
