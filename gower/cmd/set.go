@@ -4,6 +4,8 @@ package cmd
 import (
 	"fmt"
 	"math/rand"
+	"os/exec"
+	"strings"
 	"time"
 
 	"gower/internal/core"
@@ -119,7 +121,7 @@ func runSet(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	}
 
-	return applyWallpaper(cmd, controller, *wallpaper)
+	return applyWallpaper(cmd, controller, *wallpaper, cfg)
 }
 
 func runSetRandom(cmd *cobra.Command, args []string) error {
@@ -154,7 +156,7 @@ func runSetRandom(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	return applyWallpaper(cmd, controller, wallpaper)
+	return applyWallpaper(cmd, controller, wallpaper, cfg)
 }
 
 func runSetUndo(cmd *cobra.Command, args []string) error {
@@ -185,11 +187,10 @@ func runSetUndo(cmd *cobra.Command, args []string) error {
 	// When we undo, we don't want to update the state again in the same way,
 	// so we call a slightly different application function or pass a flag.
 	// For simplicity, we'll just apply it without a state change.
-	// A more robust implementation might swap current and previous.
-	return applyWallpaper(cmd, controller, *wp)
+	return applyWallpaper(cmd, controller, *wp, cfg)
 }
 
-func applyWallpaper(cmd *cobra.Command, controller *core.Controller, wp models.Wallpaper) error {
+func applyWallpaper(cmd *cobra.Command, controller *core.Controller, wp models.Wallpaper, cfg *models.Config) error {
 	cmd.Printf("Setting wallpaper: %s (Source: %s)\n", wp.ID, wp.Source)
 
 	localPath := ""
@@ -204,21 +205,35 @@ func applyWallpaper(cmd *cobra.Command, controller *core.Controller, wp models.W
 		localPath = wp.URL
 	}
 
-	// Determine desktop environment (simple detection or config)
-	// For now, we rely on core.NewWallpaperChanger auto-detection
-	changer := core.NewWallpaperChanger("")
-
-	// Override multi-monitor if flag set
-	mmMode := setMultiMonitor
-	if mmMode == "" {
-		// Fallback to config if available, otherwise default
-		mmMode = "clone"
+	// Determine command to run, prioritizing the flag, then config, then auto-detection.
+	customCmdTpl := setCommand
+	if customCmdTpl == "" && cfg != nil && cfg.Behavior.WallpaperCommand != "" {
+		customCmdTpl = cfg.Behavior.WallpaperCommand
 	}
 
-	if err := changer.SetWallpaper(localPath, mmMode); err != nil {
-		return fmt.Errorf("error setting wallpaper: %w", err)
-	}
+	if customCmdTpl != "" {
+		// Use custom command. Running through a shell to handle paths with spaces correctly.
+		finalCmd := strings.Replace(customCmdTpl, "%s", localPath, -1)
+		if !config.Quiet {
+			cmd.Printf("Running custom command: %s\n", finalCmd)
+		}
+		err := exec.Command("sh", "-c", finalCmd).Run()
+		if err != nil {
+			return fmt.Errorf("error running custom wallpaper command: %w", err)
+		}
+	} else {
+		// Fallback to existing auto-detection logic
+		changer := core.NewWallpaperChanger("")
 
+		mmMode := setMultiMonitor
+		if mmMode == "" && cfg != nil {
+			mmMode = cfg.Behavior.MultiMonitor
+		}
+
+		if err := changer.SetWallpaper(localPath, mmMode); err != nil {
+			return fmt.Errorf("error setting wallpaper: %w", err)
+		}
+	}
 	// Update state
 	state, err := loadState()
 	if err != nil {

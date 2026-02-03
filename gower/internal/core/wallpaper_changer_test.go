@@ -56,7 +56,7 @@ func TestSetWallpaper(t *testing.T) {
 	defer os.Remove(tmpfile.Name())
 	tmpfile.Close()
 
-	testCases := []string{"kde", "gnome", "feh", "nitrogen", "unsupported"}
+	testCases := []string{"kde", "gnome", "feh", "nitrogen", "sway", "dms", "swww", "awww", "unsupported"}
 
 	for _, tc := range testCases {
 		t.Run(tc, func(t *testing.T) {
