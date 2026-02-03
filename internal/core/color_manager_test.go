@@ -31,12 +31,12 @@ func createDummyImageWithColor(t *testing.T, path string, width, height int, c c
 }
 
 func TestHexToRGB(t *testing.T) {
-	r, g, b := hexToRGB("#FF0000")
+	r, g, b := HexToRGB("#FF0000")
 	if r != 255 || g != 0 || b != 0 {
 		t.Errorf("Expected (255, 0, 0), got (%d, %d, %d)", r, g, b)
 	}
 
-	r, g, b = hexToRGB("00FF00")
+	r, g, b = HexToRGB("00FF00")
 	if r != 0 || g != 255 || b != 0 {
 		t.Errorf("Expected (0, 255, 0), got (%d, %d, %d)", r, g, b)
 	}
@@ -44,13 +44,13 @@ func TestHexToRGB(t *testing.T) {
 
 func TestFindNearestColor(t *testing.T) {
 	// Test with a color that is in the palette
-	nearest := findNearestColor(255, 0, 0)
+	nearest := FindNearestColor(255, 0, 0)
 	if nearest != "#FF0000" {
 		t.Errorf("Expected #FF0000, got %s", nearest)
 	}
 
 	// Test with a color that is close to a palette color
-	nearest = findNearestColor(250, 5, 5)
+	nearest = FindNearestColor(250, 5, 5)
 	if nearest != "#FF0000" {
 		t.Errorf("Expected #FF0000, got %s", nearest)
 	}

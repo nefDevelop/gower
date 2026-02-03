@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"syscall"
 
@@ -59,10 +60,10 @@ type DaemonStatus struct {
 }
 
 type ProvidersStatus struct {
-	Wallhaven bool     `json:"wallhaven"`
-	Reddit    bool     `json:"reddit"`
-	Nasa      bool     `json:"nasa"`
-	Generic   []string `json:"generic"`
+	Wallhaven bool            `json:"wallhaven"`
+	Reddit    bool            `json:"reddit"`
+	Nasa      bool            `json:"nasa"`
+	Generic   map[string]bool `json:"generic"`
 }
 
 type StorageStatus struct {
@@ -129,9 +130,14 @@ func runStatus(cmd *cobra.Command, args []string) {
 		cmd.Printf("Reddit: %v\n", output.Providers.Reddit)
 		cmd.Printf("Nasa: %v\n", output.Providers.Nasa)
 		if len(output.Providers.Generic) > 0 {
-			cmd.Println("Generic:")
-			for _, p := range output.Providers.Generic {
-				cmd.Printf("  %s\n", p)
+			cmd.Println("Manual Providers:")
+			keys := make([]string, 0, len(output.Providers.Generic))
+			for k := range output.Providers.Generic {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, name := range keys {
+				cmd.Printf("  %s: %v\n", name, output.Providers.Generic[name])
 			}
 		}
 		cmd.Println()
@@ -194,11 +200,9 @@ func getProvidersStatus() *ProvidersStatus {
 		return nil
 	}
 
-	generic := []string{}
+	generic := make(map[string]bool)
 	for _, p := range cfg.GenericProviders {
-		if p.Enabled {
-			generic = append(generic, p.Name)
-		}
+		generic[p.Name] = p.Enabled
 	}
 
 	return &ProvidersStatus{

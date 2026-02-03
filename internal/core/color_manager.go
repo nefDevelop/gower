@@ -167,15 +167,15 @@ func (cm *ColorManager) AnalyzeColor(path string) (string, error) {
 	b = (b / count) >> 8
 
 	// Find nearest color in palette
-	return findNearestColor(int(r), int(g), int(b)), nil
+	return FindNearestColor(int(r), int(g), int(b)), nil
 }
 
-func findNearestColor(r, g, b int) string {
+func FindNearestColor(r, g, b int) string {
 	minDist := math.MaxFloat64
 	nearest := "#000000"
 
 	for _, hex := range StandardPalette {
-		pr, pg, pb := hexToRGB(hex)
+		pr, pg, pb := HexToRGB(hex)
 		// Euclidean distance
 		dist := math.Sqrt(math.Pow(float64(r-pr), 2) + math.Pow(float64(g-pg), 2) + math.Pow(float64(b-pb), 2))
 		if dist < minDist {
@@ -186,7 +186,7 @@ func findNearestColor(r, g, b int) string {
 	return nearest
 }
 
-func hexToRGB(hex string) (int, int, int) {
+func HexToRGB(hex string) (int, int, int) {
 	if len(hex) > 0 && hex[0] == '#' {
 		hex = hex[1:]
 	}
