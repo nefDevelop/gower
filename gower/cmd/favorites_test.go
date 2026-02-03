@@ -10,7 +10,17 @@ import (
 	"gower/pkg/models"
 )
 
+func resetFavoritesFlags() {
+	favPage = 1
+	favLimit = 10
+	favNotes = ""
+	favColor = ""
+	favForce = false
+	favFile = ""
+}
+
 func TestFavoritesListEmpty(t *testing.T) {
+	resetFavoritesFlags()
 	tmpDir := setupTestHome(t)
 	defer os.RemoveAll(tmpDir)
 
@@ -27,6 +37,7 @@ func TestFavoritesListEmpty(t *testing.T) {
 }
 
 func TestFavoritesAddAndList(t *testing.T) {
+	resetFavoritesFlags()
 	tmpDir := setupTestHome(t)
 	defer os.RemoveAll(tmpDir)
 
@@ -64,6 +75,7 @@ func TestFavoritesAddAndList(t *testing.T) {
 }
 
 func TestFavoritesRemove(t *testing.T) {
+	resetFavoritesFlags()
 	tmpDir := setupTestHome(t)
 	defer os.RemoveAll(tmpDir)
 
@@ -112,6 +124,7 @@ func TestFavoritesRemove(t *testing.T) {
 }
 
 func TestFavoritesExportAndImport(t *testing.T) {
+	resetFavoritesFlags()
 	tmpDir := setupTestHome(t)
 	defer os.RemoveAll(tmpDir)
 
@@ -179,5 +192,35 @@ func TestFavoritesExportAndImport(t *testing.T) {
 	}
 	if strings.Contains(output, "ID: fav-id-3") {
 		t.Errorf("Expected fav-id-3 to be overwritten, but it is present")
+	}
+}
+
+func TestFavoritesListColor(t *testing.T) {
+	resetFavoritesFlags()
+	tmpDir := setupTestHome(t)
+	defer os.RemoveAll(tmpDir)
+
+	executeCommand(rootCmd, "config", "init")
+
+	// Manually save favorites with colors to test filtering
+	favs := []FavoriteWallpaper{
+		{Wallpaper: models.Wallpaper{ID: "red-wp", Color: "#FF0000"}, Notes: "Red"},
+		{Wallpaper: models.Wallpaper{ID: "blue-wp", Color: "#0000FF"}, Notes: "Blue"},
+	}
+	if err := saveFavorites(favs); err != nil {
+		t.Fatalf("Failed to save favorites: %v", err)
+	}
+
+	// Filter by Red
+	output, err := executeCommand(rootCmd, "favorites", "list", "--color", "FF0000")
+	if err != nil {
+		t.Fatalf("Error executing favorites list --color: %v", err)
+	}
+
+	if !strings.Contains(output, "ID: red-wp") {
+		t.Errorf("Expected red-wp in output, got: %s", output)
+	}
+	if strings.Contains(output, "ID: blue-wp") {
+		t.Errorf("Did not expect blue-wp in output, got: %s", output)
 	}
 }

@@ -359,12 +359,17 @@ func createConfigStructure(cmd *cobra.Command) error {
 	}
 
 	// Create empty json files in data/
-	emptyFiles := []string{"feed.json", "favorites.json", "blacklist.json", "colors.json"}
+	emptyFiles := []string{"feed.json", "favorites.json", "blacklist.json"}
 	for _, f := range emptyFiles {
 		path := filepath.Join(baseDir, "data", f)
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			ioutil.WriteFile(path, []byte("[]"), 0644)
 		}
+	}
+
+	colorsPath := filepath.Join(baseDir, "data", "colors.json")
+	if _, err := os.Stat(colorsPath); os.IsNotExist(err) {
+		ioutil.WriteFile(colorsPath, []byte(`{"feed":[],"favorites":[]}`), 0644)
 	}
 
 	configFile := filepath.Join(baseDir, "config.json")

@@ -151,13 +151,12 @@ func (c *Controller) GetFeed(page, limit int, search, theme, color string) ([]mo
 
 		matchesColor := true
 		if color != "" {
-			// Simple check: if any color in palette contains the requested hex
-			// Assuming wp.Palette exists (based on documentation) or we skip if not available
-			// Since models.Wallpaper definition isn't fully visible, we assume it might have Colors or Palette
-			// For now, if we can't check, we might ignore or fail.
-			// Let's assume strict filtering: if we can't find it, it doesn't match.
-			// Implementation detail: This depends on models.Wallpaper having a color field.
-			// If not present in struct, this block is a placeholder.
+			r, g, b := HexToRGB(color)
+			targetColor := FindNearestColor(r, g, b)
+			utils.Log.Debug("Filtering color: input=%s -> target=%s. Item %s color=%s", color, targetColor, wp.ID, wp.Color)
+			if !strings.EqualFold(wp.Color, targetColor) {
+				matchesColor = false
+			}
 		}
 
 		if blacklistMap[wp.ID] {
@@ -996,6 +995,15 @@ func calculateRatio(w, h int) string {
 	return fmt.Sprintf("%d:%d", w/d, h/d)
 }
 
+// RebuildColorIndex rebuilds the colors.json file based on current feed and favorites.
+func (c *Controller) RebuildColorIndex() error {
+	feed, err := c.loadFeed()
+	if err != nil {
+		return err
+	}
+	return c.rebuildColorsIndex(feed)
+}
+
 func (c *Controller) rebuildColorsIndex(feed []models.Wallpaper) error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -1009,17 +1017,44 @@ func (c *Controller) rebuildColorsIndex(feed []models.Wallpaper) error {
 		paletteMap[color] = true
 	}
 
-	uniqueColors := make(map[string]bool)
-	var colors []string
-
+	// Feed Colors
+	uniqueFeedColors := make(map[string]bool)
+	feedColors := []string{}
 	for _, wp := range feed {
-		if wp.Color != "" && paletteMap[wp.Color] && !uniqueColors[wp.Color] {
-			uniqueColors[wp.Color] = true
-			colors = append(colors, wp.Color)
+		if wp.Color != "" && paletteMap[wp.Color] && !uniqueFeedColors[wp.Color] {
+			uniqueFeedColors[wp.Color] = true
+			feedColors = append(feedColors, wp.Color)
 		}
 	}
 
-	return c.feedManager.WriteJSON(path, colors)
+	// Favorites Colors
+	favPath := filepath.Join(homeDir, ".gower", "data", "favorites.json")
+	var favorites []struct {
+		models.Wallpaper
+		Notes string `json:"notes,omitempty"`
+	}
+
+	uniqueFavColors := make(map[string]bool)
+	favColors := []string{}
+
+	if err := c.feedManager.ReadJSON(favPath, &favorites); err == nil {
+		for _, fav := range favorites {
+			if fav.Color != "" && paletteMap[fav.Color] && !uniqueFavColors[fav.Color] {
+				uniqueFavColors[fav.Color] = true
+				favColors = append(favColors, fav.Color)
+			}
+		}
+	}
+
+	output := struct {
+		Feed      []string `json:"feed"`
+		Favorites []string `json:"favorites"`
+	}{
+		Feed:      feedColors,
+		Favorites: favColors,
+	}
+
+	return c.feedManager.WriteJSON(path, output)
 }
 
 func (c *Controller) isValidImage(width, height int, checkResolution bool) bool {

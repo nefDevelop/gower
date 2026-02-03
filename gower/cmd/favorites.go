@@ -6,9 +6,9 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 
-	// "strings"
-
+	"gower/internal/core"
 	"gower/internal/utils"
 	"gower/pkg/models"
 
@@ -24,6 +24,7 @@ var (
 	favPage  int
 	favLimit int
 	favNotes string
+	favColor string
 	favForce bool
 	favFile  string
 )
@@ -44,8 +45,24 @@ var favoritesListCmd = &cobra.Command{
 			return
 		}
 
+		if favColor != "" {
+			r, g, b := core.HexToRGB(favColor)
+			targetColor := core.FindNearestColor(r, g, b)
+			var filtered []FavoriteWallpaper
+			for _, fav := range favorites {
+				if strings.EqualFold(fav.Color, targetColor) {
+					filtered = append(filtered, fav)
+				}
+			}
+			favorites = filtered
+		}
+
 		if len(favorites) == 0 {
-			cmd.Println("No favorite wallpapers yet.")
+			msg := "No favorite wallpapers yet."
+			if favColor != "" {
+				msg = "No favorite wallpapers found matching the color."
+			}
+			cmd.Println(msg)
 			return
 		}
 
@@ -134,6 +151,11 @@ var favoritesAddCmd = &cobra.Command{
 			cmd.Printf("Error saving favorites: %v\n", err)
 			return
 		}
+
+		if cfg, err := loadConfig(); err == nil {
+			core.NewController(cfg).RebuildColorIndex()
+		}
+
 		cmd.Printf("Wallpaper %s added to favorites list.\n", wallpaperID)
 	},
 }
@@ -173,6 +195,11 @@ var favoritesRemoveCmd = &cobra.Command{
 			cmd.Printf("Error saving favorites: %v\n", err)
 			return
 		}
+
+		if cfg, err := loadConfig(); err == nil {
+			core.NewController(cfg).RebuildColorIndex()
+		}
+
 		cmd.Printf("Wallpaper %s removed from favorites.\n", wallpaperID)
 	},
 }
@@ -235,6 +262,11 @@ var favoritesImportCmd = &cobra.Command{
 			cmd.Printf("Error saving favorites: %v\n", err)
 			return
 		}
+
+		if cfg, err := loadConfig(); err == nil {
+			core.NewController(cfg).RebuildColorIndex()
+		}
+
 		cmd.Printf("Favorites imported successfully from %s. Total favorites: %d\n", filePath, len(importedFavorites))
 	},
 }
@@ -294,6 +326,7 @@ func init() {
 
 	favoritesListCmd.Flags().IntVar(&favPage, "page", 1, "Page number")
 	favoritesListCmd.Flags().IntVar(&favLimit, "limit", 10, "Items per page")
+	favoritesListCmd.Flags().StringVar(&favColor, "color", "", "Filter by color (hex)")
 
 	favoritesAddCmd.Flags().StringVar(&favNotes, "notes", "", "Add notes to the favorite")
 
