@@ -50,8 +50,19 @@ func NewController(config *models.Config) *Controller {
 	// Register other native providers here...
 
 	// Register generic providers
+	jsonManager := utils.NewSecureJSONManager()
+	homeDir, _ := os.UserHomeDir()
+
 	for _, providerConfig := range config.GenericProviders {
 		if providerConfig.Enabled {
+			if homeDir != "" {
+				parserPath := filepath.Join(homeDir, ".gower", "data", "parser", providerConfig.Name+".json")
+				var mapping models.ResponseMapping
+				if err := jsonManager.ReadJSON(parserPath, &mapping); err == nil {
+					providerConfig.ResponseMapping = mapping
+				}
+			}
+
 			provider := &providers.GenericProvider{Config: providerConfig}
 			providerManager.RegisterProvider(provider)
 		}
@@ -705,6 +716,9 @@ func (c *Controller) AddWallpaperToFeed(wallpaper models.Wallpaper) error {
 		}
 	}
 
+	if wallpaper.Added == 0 {
+		wallpaper.Added = time.Now().Unix()
+	}
 	feed = append(feed, wallpaper)
 	if err := c.saveFeed(feed); err != nil {
 		return err
@@ -741,6 +755,9 @@ func (c *Controller) AddWallpapersToFeed(wallpapers []models.Wallpaper) (int, er
 			continue
 		}
 		if !existing[wp.ID] {
+			if wp.Added == 0 {
+				wp.Added = time.Now().Unix()
+			}
 			feed = append(feed, wp)
 			existing[wp.ID] = true
 			addedCount++
@@ -1259,12 +1276,14 @@ func (c *Controller) SyncFeed() (int, int, error) {
 			for i := range feed {
 				if feed[i].ID == wp.ID {
 					wp.Seen = feed[i].Seen // Preserve seen status
+					wp.Added = feed[i].Added // Preserve added time
 					feed[i] = wp
 					break
 				}
 			}
 			repairedCount++
 		} else {
+			wp.Added = time.Now().Unix()
 			feed = append(feed, wp)
 			addedCount++
 		}

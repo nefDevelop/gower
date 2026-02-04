@@ -213,7 +213,7 @@ func TestFavoritesListColor(t *testing.T) {
 
 	// Manually create a dynamic palette for the test
 	colorsPath := filepath.Join(tmpDir, ".gower", "data", "colors.json")
-	paletteJSON := `{"palette": ["#FF0000", "#0000FF"]}`
+	paletteJSON := `{"favorites_palette": ["#FF0000", "#0000FF"]}`
 	if err := os.WriteFile(colorsPath, []byte(paletteJSON), 0644); err != nil {
 		t.Fatalf("Failed to write colors.json for test: %v", err)
 	}

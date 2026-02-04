@@ -81,7 +81,6 @@ func (p *WallhavenProvider) Search(query string, opts SearchOptions) ([]models.W
 			Path       string   `json:"path"`
 			Resolution string   `json:"resolution"`
 			Ratio      string   `json:"ratio"`
-			Category   string   `json:"category"`
 			Colors     []string `json:"colors"`
 			Thumbs     struct {
 				Large    string `json:"large"`
@@ -104,7 +103,6 @@ func (p *WallhavenProvider) Search(query string, opts SearchOptions) ([]models.W
 			Source:    "wallhaven",
 			Dimension: item.Resolution,
 			Ratio:     item.Ratio,
-			Category:  item.Category,
 			// Theme se deja vacío para que omitempty lo oculte hasta que se analice
 		}
 		wallpapers = append(wallpapers, wp)
