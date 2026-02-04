@@ -211,6 +211,7 @@ Gestiona el historial local de fondos de pantalla (feed).
 - `gower feed analyze`: Analiza los ítems del feed para extraer metadatos y realizar mantenimiento de la caché. Repara nombres de archivo incorrectos y elimina ítems corruptos.
   - `--all`: Analiza todos los ítems, no solo los nuevos.
   - `--force`: Fuerza la regeneración de miniaturas y re-análisis de colores, incluso si ya existen.
+  - `--quiet`: Suprime la salida de progreso en consola.
 - `gower feed random`: Obtiene un fondo de pantalla aleatorio del feed o de favoritos.
   - `--theme <dark|light>`: Filtra por tema.
   - `--from-favorites`: Elige un fondo de pantalla aleatorio de la lista de favoritos en lugar del feed.
@@ -260,6 +261,7 @@ Gestiona la lista de fondos de pantalla favoritos.
 - `gower favorites analyze`: Analiza los favoritos para asegurar que las imágenes y miniaturas existen.
   - `--all`: Re-analiza todos los ítems.
   - `--force`: Fuerza la regeneración de miniaturas.
+  - `--quiet`: Suprime la salida de progreso en consola.
 
 #### `gower blacklist`
 

@@ -124,7 +124,13 @@ var feedAnalyzeCmd = &cobra.Command{
 		controller := core.NewController(cfg)
 
 		cmd.Println("Analyzing feed items...")
-		if err := controller.AnalyzeFeed(feedAll, feedForce); err != nil {
+		progress := func(msg string) {
+			if !config.Quiet {
+				cmd.Println(msg)
+			}
+		}
+
+		if err := controller.AnalyzeFeed(feedAll, feedForce, progress); err != nil {
 			cmd.Printf("Error analyzing feed: %v\n", err)
 			return
 		}
