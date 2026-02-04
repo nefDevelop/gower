@@ -6,7 +6,9 @@ import (
 	"gower/internal/utils"
 	"gower/pkg/models" // Import models package
 	"io"
+	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -137,6 +139,14 @@ func (c *Controller) GetFeed(page, limit int, search, theme, color string) ([]mo
 	}
 
 	var filteredFeed []models.Wallpaper
+
+	// Load dynamic palette for color filtering
+	var palette []string
+	if color != "" {
+		// For feed, we use the feed palette
+		palette, _, _ = c.LoadColorPalettes()
+	}
+
 	for _, wp := range feed {
 		matchesSearch := true
 		if search != "" && !strings.Contains(strings.ToLower(wp.ID), strings.ToLower(search)) &&
@@ -151,10 +161,13 @@ func (c *Controller) GetFeed(page, limit int, search, theme, color string) ([]mo
 
 		matchesColor := true
 		if color != "" {
-			r, g, b := HexToRGB(color)
-			targetColor := FindNearestColor(r, g, b)
-			utils.Log.Debug("Filtering color: input=%s -> target=%s. Item %s color=%s", color, targetColor, wp.ID, wp.Color)
-			if !strings.EqualFold(wp.Color, targetColor) {
+			// 1. Find which bucket the user selected (snap input to nearest palette color)
+			targetBucket := c.ColorManager.FindNearestColorInPalette(color, palette)
+
+			// 2. Find which bucket the wallpaper belongs to
+			wpBucket := c.ColorManager.FindNearestColorInPalette(wp.Color, palette)
+
+			if wpBucket != targetBucket {
 				matchesColor = false
 			}
 		}
@@ -168,18 +181,73 @@ func (c *Controller) GetFeed(page, limit int, search, theme, color string) ([]mo
 		}
 	}
 
-	// Apply pagination
+	// Algoritmo de Feed: 50% nuevos, orden aleatorio estable por 1 hora
+	var unseen []models.Wallpaper
+	var seen []models.Wallpaper
+
+	for _, wp := range filteredFeed {
+		if !wp.Seen {
+			unseen = append(unseen, wp)
+		} else {
+			seen = append(seen, wp)
+		}
+	}
+
+	seed := time.Now().Truncate(time.Hour).UnixNano()
+	r := rand.New(rand.NewSource(seed))
+
+	r.Shuffle(len(unseen), func(i, j int) { unseen[i], unseen[j] = unseen[j], unseen[i] })
+	r.Shuffle(len(seen), func(i, j int) { seen[i], seen[j] = seen[j], seen[i] })
+
+	var mixedFeed []models.Wallpaper
+	uIdx, sIdx := 0, 0
+	for uIdx < len(unseen) || sIdx < len(seen) {
+		if uIdx < len(unseen) {
+			mixedFeed = append(mixedFeed, unseen[uIdx])
+			uIdx++
+		}
+		if sIdx < len(seen) {
+			mixedFeed = append(mixedFeed, seen[sIdx])
+			sIdx++
+		}
+	}
+
 	start := (page - 1) * limit
 	end := start + limit
 
-	if start >= len(filteredFeed) {
+	if start >= len(mixedFeed) {
 		return []models.Wallpaper{}, nil
 	}
-	if end > len(filteredFeed) {
-		end = len(filteredFeed)
+	if end > len(mixedFeed) {
+		end = len(mixedFeed)
 	}
 
-	return filteredFeed[start:end], nil
+	result := mixedFeed[start:end]
+
+	// Marcar los ítems mostrados como vistos (seen = true)
+	changed := false
+	idsToMark := make(map[string]bool)
+
+	for i := range result {
+		if !result[i].Seen {
+			// No marcamos como visto en el objeto de retorno para que la UI pueda mostrar "[NEW]"
+			idsToMark[result[i].ID] = true
+			changed = true
+		}
+	}
+
+	if changed {
+		// Actualizar el feed original para guardar en disco
+		for i := range feed {
+			if idsToMark[feed[i].ID] {
+				feed[i].Seen = true
+			}
+		}
+		// Ignoramos error de guardado para no interrumpir la visualización
+		_ = c.saveFeed(feed)
+	}
+
+	return result, nil
 }
 
 // SearchFeed searches the feed for wallpapers matching a query.
@@ -208,9 +276,10 @@ func (c *Controller) AnalyzeFeed(all bool, force bool) error {
 	thumbDir := filepath.Join(homeDir, ".gower", "cache", "thumbs")
 
 	type job struct {
-		Index  int
-		Wp     models.Wallpaper
-		Delete bool
+		Controller *Controller
+		Index      int
+		Wp         models.Wallpaper
+		Delete     bool
 	}
 
 	jobs := make(chan job, len(feed))
@@ -225,6 +294,7 @@ func (c *Controller) AnalyzeFeed(all bool, force bool) error {
 			defer wg.Done()
 			for j := range jobs {
 				wp := j.Wp
+				ctrl := j.Controller
 				changed := false
 				thumbPath := filepath.Join(thumbDir, wp.ID+".jpg")
 
@@ -240,12 +310,14 @@ func (c *Controller) AnalyzeFeed(all bool, force bool) error {
 				thumbExists := errStat == nil && info.Size() > 0
 
 				// If thumbnail is missing, or if we are forcing a full regeneration (force+all), generate it
-				if !thumbExists || (force && all) {
+				if !thumbExists || force {
 					utils.Log.Info("Generating thumbnail for %s", wp.ID)
 					src := wp.Thumbnail
 					checkResolution := false
 					if src == "" || src == wp.URL {
-						src = wp.URL
+						if localPath, found := ctrl.findWallpaperCacheFile(wp); found {
+							src = localPath // Use local file if available, it's faster
+						}
 						checkResolution = true
 					}
 					w, h, err := c.ColorManager.GenerateThumbnail(src, thumbPath)
@@ -269,10 +341,17 @@ func (c *Controller) AnalyzeFeed(all bool, force bool) error {
 						// And we can analyze color
 						if color, err := c.ColorManager.AnalyzeColor(thumbPath); err == nil {
 							wp.Color = color
+							if c.ColorManager.IsDark(color) {
+								wp.Theme = "dark"
+							} else {
+								wp.Theme = "light"
+							}
 							changed = true
 						}
 					} else {
 						utils.Log.Error("Failed to generate thumbnail for %s: %v", wp.ID, err)
+						results <- job{Index: j.Index, Delete: true}
+						continue
 					}
 				} else {
 					// Thumbnail exists, verify it matches current criteria (prune invalid items)
@@ -301,10 +380,34 @@ func (c *Controller) AnalyzeFeed(all bool, force bool) error {
 						if color, err := c.ColorManager.AnalyzeColor(thumbPath); err == nil {
 							if wp.Color != color {
 								wp.Color = color
+								if c.ColorManager.IsDark(color) {
+									wp.Theme = "dark"
+								} else {
+									wp.Theme = "light"
+								}
 								changed = true
 							}
 						} else {
 							utils.Log.Error("Failed to analyze color for %s: %v", wp.ID, err)
+						}
+					}
+				}
+
+				// 4. Check and fix main wallpaper filename if it exists
+				expectedPath, err := ctrl.GetWallpaperLocalPath(wp)
+				if err == nil {
+					actualPath, found := ctrl.findWallpaperCacheFile(wp)
+					if found && actualPath != expectedPath {
+						// Check if expected path already exists to avoid overwrite error on rename
+						if _, err := os.Stat(expectedPath); os.IsNotExist(err) {
+							utils.Log.Info("Renaming cached wallpaper from %s to %s", filepath.Base(actualPath), filepath.Base(expectedPath))
+							if err := os.Rename(actualPath, expectedPath); err != nil {
+								utils.Log.Error("Failed to rename %s: %v", filepath.Base(actualPath), err)
+							}
+						} else if actualPath != expectedPath {
+							// Expected path exists, and it's not the same file. Remove the old one with the bad name.
+							utils.Log.Info("Warning: Found duplicate for %s. Removing old file with incorrect name: %s", wp.ID, filepath.Base(actualPath))
+							os.Remove(actualPath)
 						}
 					}
 				}
@@ -317,7 +420,7 @@ func (c *Controller) AnalyzeFeed(all bool, force bool) error {
 	}
 
 	for i, wp := range feed {
-		jobs <- job{Index: i, Wp: wp}
+		jobs <- job{Controller: c, Index: i, Wp: wp}
 	}
 	close(jobs)
 	wg.Wait()
@@ -624,10 +727,20 @@ func (c *Controller) GetWallpaperLocalPath(wp models.Wallpaper) (string, error) 
 	cacheDir := filepath.Join(homeDir, ".gower", "cache", "wallpapers")
 
 	// Determine filename
-	ext := filepath.Ext(wp.URL)
-	if ext == "" {
-		ext = ".jpg"
+	// Parse URL to safely get the extension from the path, ignoring query parameters.
+	parsedURL, err := url.Parse(wp.URL)
+	var ext string
+	if err == nil {
+		ext = filepath.Ext(parsedURL.Path)
+	} else {
+		// Fallback for invalid URLs, though less likely
+		ext = filepath.Ext(wp.URL)
 	}
+
+	if ext == "" {
+		ext = ".jpg" // Default extension
+	}
+
 	safeID := strings.ReplaceAll(wp.ID, "/", "_")
 	filename := fmt.Sprintf("%s%s", safeID, ext)
 	return filepath.Join(cacheDir, filename), nil
@@ -674,7 +787,7 @@ func (c *Controller) DownloadWallpaper(wp models.Wallpaper) (string, error) {
 	// Post-download processing
 	// 1. Generate Thumbnail
 	thumbDir := filepath.Join(filepath.Dir(filepath.Dir(filePath)), "thumbs")
-	thumbPath := filepath.Join(thumbDir, filepath.Base(filePath))
+	thumbPath := filepath.Join(thumbDir, wp.ID+".jpg")
 	if _, _, err := c.ColorManager.GenerateThumbnail(filePath, thumbPath); err != nil {
 		utils.Log.Error("Failed to generate thumbnail for %s: %v", wp.ID, err)
 	}
@@ -738,6 +851,30 @@ func (c *Controller) GetCachedWallpapers(includeFavorites bool, theme string) ([
 		}
 	}
 	return result, nil
+}
+
+// findWallpaperCacheFile finds the local cache file for a wallpaper, even if it has a bad name.
+// It returns the full path to the file and a boolean indicating if it was found.
+func (c *Controller) findWallpaperCacheFile(wp models.Wallpaper) (string, bool) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", false
+	}
+	wallpaperCacheDir := filepath.Join(homeDir, ".gower", "cache", "wallpapers")
+	safeID := strings.ReplaceAll(wp.ID, "/", "_")
+
+	// Glob for files starting with the safe ID
+	matches, err := filepath.Glob(filepath.Join(wallpaperCacheDir, safeID+"*"))
+	if err != nil || len(matches) == 0 {
+		// As a fallback, check if the URL is a local file path itself
+		if _, err := os.Stat(wp.URL); err == nil {
+			return wp.URL, true
+		}
+		return "", false
+	}
+
+	// Return the first match. This assumes one wallpaper ID doesn't have multiple cached files.
+	return matches[0], true
 }
 
 // ParserSearch represents a search session stored in the parser cache.
@@ -920,6 +1057,11 @@ func (c *Controller) SyncFeed() (int, int, error) {
 
 					if color, err := c.ColorManager.AnalyzeColor(thumbPath); err == nil {
 						wp.Color = color
+						if c.ColorManager.IsDark(color) {
+							wp.Theme = "dark"
+						} else {
+							wp.Theme = "light"
+						}
 					}
 
 					// Marcar como no visto
@@ -995,7 +1137,7 @@ func calculateRatio(w, h int) string {
 	return fmt.Sprintf("%d:%d", w/d, h/d)
 }
 
-// RebuildColorIndex rebuilds the colors.json file based on current feed and favorites.
+// RebuildColorIndex rebuilds the colors.json file generating a dynamic palette.
 func (c *Controller) RebuildColorIndex() error {
 	feed, err := c.loadFeed()
 	if err != nil {
@@ -1011,50 +1153,61 @@ func (c *Controller) rebuildColorsIndex(feed []models.Wallpaper) error {
 	}
 	path := filepath.Join(homeDir, ".gower", "data", "colors.json")
 
-	// Crear mapa de la paleta permitida para filtrado estricto
-	paletteMap := make(map[string]bool)
-	for _, color := range StandardPalette {
-		paletteMap[color] = true
-	}
-
-	// Feed Colors
-	uniqueFeedColors := make(map[string]bool)
-	feedColors := []string{}
+	// Collect Feed colors
+	var feedColors []string
 	for _, wp := range feed {
-		if wp.Color != "" && paletteMap[wp.Color] && !uniqueFeedColors[wp.Color] {
-			uniqueFeedColors[wp.Color] = true
+		if wp.Color != "" {
 			feedColors = append(feedColors, wp.Color)
 		}
 	}
 
-	// Favorites Colors
+	// Collect Favorites colors
 	favPath := filepath.Join(homeDir, ".gower", "data", "favorites.json")
 	var favorites []struct {
 		models.Wallpaper
 		Notes string `json:"notes,omitempty"`
 	}
-
-	uniqueFavColors := make(map[string]bool)
-	favColors := []string{}
-
+	var favColors []string
 	if err := c.feedManager.ReadJSON(favPath, &favorites); err == nil {
 		for _, fav := range favorites {
-			if fav.Color != "" && paletteMap[fav.Color] && !uniqueFavColors[fav.Color] {
-				uniqueFavColors[fav.Color] = true
+			if fav.Color != "" {
 				favColors = append(favColors, fav.Color)
 			}
 		}
 	}
 
+	// Generate separate palettes
+	feedPalette := c.ColorManager.GenerateDynamicPalette(feedColors, 16)
+	favPalette := c.ColorManager.GenerateDynamicPalette(favColors, 16)
+
 	output := struct {
-		Feed      []string `json:"feed"`
-		Favorites []string `json:"favorites"`
+		FeedPalette      []string `json:"feed_palette"`
+		FavoritesPalette []string `json:"favorites_palette"`
 	}{
-		Feed:      feedColors,
-		Favorites: favColors,
+		FeedPalette:      feedPalette,
+		FavoritesPalette: favPalette,
 	}
 
 	return c.feedManager.WriteJSON(path, output)
+}
+
+// LoadColorPalettes loads the generated palettes from colors.json
+func (c *Controller) LoadColorPalettes() ([]string, []string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, nil, err
+	}
+	path := filepath.Join(homeDir, ".gower", "data", "colors.json")
+
+	var data struct {
+		FeedPalette      []string `json:"feed_palette"`
+		FavoritesPalette []string `json:"favorites_palette"`
+	}
+
+	if err := c.feedManager.ReadJSON(path, &data); err != nil {
+		return nil, nil, err
+	}
+	return data.FeedPalette, data.FavoritesPalette, nil
 }
 
 func (c *Controller) isValidImage(width, height int, checkResolution bool) bool {

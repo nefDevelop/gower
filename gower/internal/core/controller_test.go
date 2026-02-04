@@ -353,3 +353,71 @@ func TestController_AnalyzeFeed(t *testing.T) {
 		t.Error("Thumbnail should have been regenerated with force=true and all=true")
 	}
 }
+
+func TestController_GetFeed_Algorithm(t *testing.T) {
+	tmpDir := setupTestHome(t)
+	defer os.RemoveAll(tmpDir)
+
+	cfg := &models.Config{}
+	ctrl := NewController(cfg)
+
+	// 1. Create a feed with mixed seen/unseen items
+	initialFeed := []models.Wallpaper{
+		{ID: "seen_1", Seen: true},
+		{ID: "unseen_1", Seen: false},
+		{ID: "seen_2", Seen: true},
+		{ID: "unseen_2", Seen: false},
+	}
+	if err := ctrl.saveFeed(initialFeed); err != nil {
+		t.Fatalf("Failed to save initial feed: %v", err)
+	}
+
+	// 2. Get the feed - first call
+	result1, err := ctrl.GetFeed(1, 4, "", "", "")
+	if err != nil {
+		t.Fatalf("GetFeed failed: %v", err)
+	}
+
+	if len(result1) != 4 {
+		t.Fatalf("Expected 4 items, got %d", len(result1))
+	}
+
+	// 3. Verify that the returned items have their original 'seen' status
+	unseenCount := 0
+	for _, wp := range result1 {
+		if !wp.Seen {
+			unseenCount++
+		}
+	}
+	if unseenCount != 2 {
+		t.Errorf("Expected 2 items with Seen:false in the result, got %d", unseenCount)
+	}
+
+	// Now check the file on disk to see if they were marked as seen
+	savedFeed, err := ctrl.loadFeed()
+	if err != nil {
+		t.Fatalf("Failed to load feed after GetFeed: %v", err)
+	}
+	for _, wp := range savedFeed {
+		if !wp.Seen {
+			t.Errorf("Expected all items to be marked as seen in the file, but %s is not", wp.ID)
+		}
+	}
+
+	// 4. Get the feed again to check for stable order
+	// First, reset the feed file to the initial state
+	if err := ctrl.saveFeed(initialFeed); err != nil {
+		t.Fatalf("Failed to reset feed: %v", err)
+	}
+	result2, err := ctrl.GetFeed(1, 4, "", "", "")
+	if err != nil {
+		t.Fatalf("Second GetFeed failed: %v", err)
+	}
+
+	// Check if orders are identical
+	for i := range result1 {
+		if result1[i].ID != result2[i].ID {
+			t.Errorf("Expected stable order, but it changed. Pos %d: %s vs %s", i, result1[i].ID, result2[i].ID)
+		}
+	}
+}

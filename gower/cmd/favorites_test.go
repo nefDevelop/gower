@@ -211,6 +211,13 @@ func TestFavoritesListColor(t *testing.T) {
 		t.Fatalf("Failed to save favorites: %v", err)
 	}
 
+	// Manually create a dynamic palette for the test
+	colorsPath := filepath.Join(tmpDir, ".gower", "data", "colors.json")
+	paletteJSON := `{"palette": ["#FF0000", "#0000FF"]}`
+	if err := os.WriteFile(colorsPath, []byte(paletteJSON), 0644); err != nil {
+		t.Fatalf("Failed to write colors.json for test: %v", err)
+	}
+
 	// Filter by Red
 	output, err := executeCommand(rootCmd, "favorites", "list", "--color", "FF0000")
 	if err != nil {
@@ -222,5 +229,18 @@ func TestFavoritesListColor(t *testing.T) {
 	}
 	if strings.Contains(output, "ID: blue-wp") {
 		t.Errorf("Did not expect blue-wp in output, got: %s", output)
+	}
+
+	// Filter by a color close to red
+	output, err = executeCommand(rootCmd, "favorites", "list", "--color", "EE1111")
+	if err != nil {
+		t.Fatalf("Error executing favorites list --color: %v", err)
+	}
+
+	if !strings.Contains(output, "ID: red-wp") {
+		t.Errorf("Expected red-wp in output when filtering by near-red, got: %s", output)
+	}
+	if strings.Contains(output, "ID: blue-wp") {
+		t.Errorf("Did not expect blue-wp in output when filtering by near-red, got: %s", output)
 	}
 }

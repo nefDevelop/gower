@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"gower/internal/core"
 	"gower/internal/utils"
@@ -45,16 +44,30 @@ var favoritesListCmd = &cobra.Command{
 			return
 		}
 
+		// Load controller to access color manager and palette
+		cfg, err := loadConfig()
+		if err != nil {
+			cmd.Printf("Error loading config: %v\n", err)
+			return
+		}
+		controller := core.NewController(cfg)
+
 		if favColor != "" {
-			r, g, b := core.HexToRGB(favColor)
-			targetColor := core.FindNearestColor(r, g, b)
-			var filtered []FavoriteWallpaper
-			for _, fav := range favorites {
-				if strings.EqualFold(fav.Color, targetColor) {
-					filtered = append(filtered, fav)
+			// Use favorites palette
+			_, palette, err := controller.LoadColorPalettes()
+			if err != nil {
+				cmd.Printf("Warning: could not load color palette: %v\n", err)
+			} else {
+				var filtered []FavoriteWallpaper
+				for _, fav := range favorites {
+					targetBucket := controller.ColorManager.FindNearestColorInPalette(favColor, palette)
+					favBucket := controller.ColorManager.FindNearestColorInPalette(fav.Color, palette)
+					if favBucket == targetBucket {
+						filtered = append(filtered, fav)
+					}
 				}
+				favorites = filtered
 			}
-			favorites = filtered
 		}
 
 		if len(favorites) == 0 {

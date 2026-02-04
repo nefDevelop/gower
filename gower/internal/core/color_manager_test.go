@@ -42,17 +42,20 @@ func TestHexToRGB(t *testing.T) {
 	}
 }
 
-func TestFindNearestColor(t *testing.T) {
+func TestColorManager_FindNearestColorInPalette(t *testing.T) {
+	cm := NewColorManager()
+	palette := []string{"#FF0000", "#0000FF", "#00FF00"}
+
 	// Test with a color that is in the palette
-	nearest := FindNearestColor(255, 0, 0)
+	nearest := cm.FindNearestColorInPalette("#FF0000", palette)
 	if nearest != "#FF0000" {
 		t.Errorf("Expected #FF0000, got %s", nearest)
 	}
 
-	// Test with a color that is close to a palette color
-	nearest = FindNearestColor(250, 5, 5)
+	// Test with a color that is close to a palette color (dark red)
+	nearest = cm.FindNearestColorInPalette("#E01010", palette)
 	if nearest != "#FF0000" {
-		t.Errorf("Expected #FF0000, got %s", nearest)
+		t.Errorf("Expected #FF0000 for dark red, got %s", nearest)
 	}
 }
 

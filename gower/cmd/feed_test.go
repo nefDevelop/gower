@@ -30,31 +30,52 @@ func TestFeedShow(t *testing.T) {
 	// Pre-populate feed
 	cfg, _ := loadConfig()
 	ctrl := core.NewController(cfg)
-	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "test-1", Theme: "dark"})
-	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "test-2", Theme: "light"})
+	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "test-seen", Theme: "dark", Seen: true})
+	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "test-unseen", Theme: "light", Seen: false})
 
-	// Test show all
+	// Test show all - first time
 	output, err := executeCommand(rootCmd, "feed", "show")
 	if err != nil {
 		t.Fatalf("Error executing feed show: %v", err)
 	}
-	if !strings.Contains(output, "Displaying table") {
-		t.Errorf("Expected table output, got: %s", output)
+
+	// The order is now randomized, so we can't check for a specific order.
+	// We just check that the header and the correct lines are present.
+	if !strings.Contains(output, "ID") || !strings.Contains(output, "SEEN") {
+		t.Errorf("Expected table header, got: %s", output)
 	}
-	// Note: displayTable prints the struct with %+v, so IDs should be visible
-	if !strings.Contains(output, "test-1") || !strings.Contains(output, "test-2") {
-		t.Errorf("Expected wallpapers in output, got: %s", output)
+	if !strings.Contains(output, "test-seen") || !strings.Contains(output, "true") {
+		t.Errorf("Expected seen wallpaper to be listed correctly, got: %s", output)
+	}
+	if !strings.Contains(output, "test-unseen") || !strings.Contains(output, "false") {
+		t.Errorf("Expected unseen wallpaper to be listed correctly, got: %s", output)
+	}
+
+	// Test show all - second time, the unseen should now be seen
+	output2, err := executeCommand(rootCmd, "feed", "show")
+	if err != nil {
+		t.Fatalf("Error executing feed show (2nd time): %v", err)
+	}
+
+	if strings.Contains(output2, "false") {
+		t.Errorf("Expected no unseen wallpapers on second run, but found some. Output:\n%s", output2)
 	}
 
 	// Test filter
 	resetFeedFlags()
+	ctrl.PurgeFeed()
+	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "test-dark", Theme: "dark", Seen: false})
+	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "test-light", Theme: "light", Seen: false})
+
 	output, err = executeCommand(rootCmd, "feed", "show", "--theme", "dark")
 	if err != nil {
 		t.Fatalf("Error executing feed show --theme: %v", err)
 	}
-	// We expect test-1 (dark) to be present.
-	if !strings.Contains(output, "test-1") {
-		t.Errorf("Expected test-1 in output")
+	if !strings.Contains(output, "test-dark") {
+		t.Errorf("Expected test-dark in output")
+	}
+	if strings.Contains(output, "test-light") {
+		t.Errorf("Did not expect test-light in output")
 	}
 }
 

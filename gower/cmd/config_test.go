@@ -87,10 +87,10 @@ func TestConfigReset(t *testing.T) {
 		t.Errorf("Salida inesperada: %s", output)
 	}
 
-	// Verificamos que volvió al valor por defecto (dark)
+	// Verificamos que volvió al valor por defecto (vacío)
 	output, _ = executeCommand(rootCmd, "config", "get", "behavior.theme")
-	if strings.TrimSpace(output) != "dark" {
-		t.Errorf("Se esperaba 'dark' después del reset, se obtuvo '%s'", output)
+	if strings.TrimSpace(output) != "" {
+		t.Errorf("Se esperaba '' después del reset, se obtuvo '%s'", output)
 	}
 }
 
@@ -131,7 +131,7 @@ func TestConfigExportAndImport(t *testing.T) {
 	}
 
 	output, _ := executeCommand(rootCmd, "config", "get", "behavior.theme")
-	if strings.TrimSpace(output) != "dark" {
-		t.Errorf("Se esperaba 'dark' después de importar, se obtuvo '%s'", output)
+	if strings.TrimSpace(output) != "" {
+		t.Errorf("Se esperaba '' después de importar, se obtuvo '%s'", output)
 	}
 }

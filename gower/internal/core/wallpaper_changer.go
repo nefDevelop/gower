@@ -10,10 +10,11 @@ import (
 )
 
 type WallpaperChanger struct {
-	Env string
+	Env             string
+	RespectDarkMode bool
 }
 
-func NewWallpaperChanger(desktopEnv string) *WallpaperChanger {
+func NewWallpaperChanger(desktopEnv string, respectDarkMode ...bool) *WallpaperChanger {
 	env := strings.ToLower(desktopEnv)
 	if env == "" {
 		env = detectDesktopEnv()
@@ -25,7 +26,11 @@ func NewWallpaperChanger(desktopEnv string) *WallpaperChanger {
 			env = "gnome"
 		}
 	}
-	return &WallpaperChanger{Env: env}
+	respect := true
+	if len(respectDarkMode) > 0 {
+		respect = respectDarkMode[0]
+	}
+	return &WallpaperChanger{Env: env, RespectDarkMode: respect}
 }
 
 func (wc *WallpaperChanger) SetWallpaper(path string, multiMonitor string) error {
@@ -51,8 +56,19 @@ func (wc *WallpaperChanger) SetWallpaper(path string, multiMonitor string) error
 	case "gnome":
 		uri := "file://" + path
 		// Establecer tanto para modo claro como oscuro en versiones modernas de Gnome
-		exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri).Run()
-		cmd = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri-dark", uri)
+		if wc.RespectDarkMode {
+			// Si respetamos el modo oscuro, solo establecemos la clave correspondiente al modo actual
+			// para no sobrescribir la configuración del otro modo.
+			if IsSystemInDarkMode() {
+				cmd = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri-dark", uri)
+			} else {
+				cmd = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri)
+			}
+		} else {
+			// Si NO respetamos el modo oscuro, forzamos ambos para asegurar que se vea
+			exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri).Run()
+			cmd = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri-dark", uri)
+		}
 
 	case "sway":
 		// swaybg is a good generic for sway-like compositors (like niri)
@@ -132,4 +148,15 @@ func detectDesktopEnv() string {
 		return "sway"
 	}
 	return "unknown"
+}
+
+func IsSystemInDarkMode() bool {
+	// Detección para GNOME
+	out, err := exec.Command("gsettings", "get", "org.gnome.desktop.interface", "color-scheme").Output()
+	if err == nil {
+		s := strings.TrimSpace(string(out))
+		s = strings.Trim(s, "'")
+		return s == "prefer-dark"
+	}
+	return false
 }
