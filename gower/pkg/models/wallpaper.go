@@ -17,4 +17,5 @@ type Wallpaper struct {
 	Permalink string `json:"permalink,omitempty"` // Permalink to the source (e.g., Reddit post)
 	Title     string `json:"title,omitempty"`     // Title of the wallpaper
 	Seen      bool   `json:"seen"`
+	Added     int64  `json:"added,omitempty"` // Timestamp when added to feed
 }

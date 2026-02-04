@@ -96,7 +96,6 @@ func (p *NasaProvider) fetchAPOD(limit int, excludeIDs map[string]bool) ([]model
 			Thumbnail: item.Url, // APOD no da thumbnail separado, usamos la URL estándar
 			Source:    "nasa",
 			Title:     item.Title,
-			Category:  "space",
 		})
 	}
 	return wallpapers, nil
@@ -189,7 +188,6 @@ func (p *NasaProvider) searchImageLibrary(query string, limit int, excludeIDs ma
 			Thumbnail: thumb,
 			Source:    "nasa",
 			Title:     data.Title,
-			Category:  "space",
 		})
 		count++
 	}

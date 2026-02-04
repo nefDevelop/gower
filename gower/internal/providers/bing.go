@@ -75,7 +75,6 @@ func (p *BingProvider) Search(query string, opts SearchOptions) ([]models.Wallpa
 			Thumbnail: fullURL,
 			Source:    "bing",
 			Title:     img.Title,
-			Category:  "daily",
 		})
 	}
 
