@@ -129,7 +129,8 @@ Un archivo de configuración de ejemplo podría ser:
     "wallpaper_command": "feh --bg-fill %s" // Comando específico para tu entorno
   },
   "paths": {
-    "wallpapers": "/home/user/Pictures/Wallpapers"
+    "wallpapers": "/home/user/Pictures/Wallpapers",
+    "index_wallpapers": true // Indexar imágenes de esta carpeta en el feed
   },
   "limits": {
     "feed_soft_limit": 200,
@@ -251,10 +252,14 @@ Gestiona la lista de fondos de pantalla favoritos.
   - `--limit <número>`: Ítems por página.
   - `--color <hex>`: Filtra por color.
 - `gower favorites add <ID>`: Añade un fondo de pantalla a favoritos.
+  - Si `behavior.save_favorites_to_folder` es `true`, la imagen se copiará a tu carpeta de wallpapers para persistencia.
   - `--notes <texto>`: Añade notas personales al favorito.
 - `gower favorites remove <ID>`: Elimina un fondo de pantalla de favoritos.
 - `gower favorites export --file <ruta>`: Exporta la lista de favoritos a un archivo JSON.
 - `gower favorites import --file <ruta>`: Importa favoritos desde un archivo JSON.
+- `gower favorites analyze`: Analiza los favoritos para asegurar que las imágenes y miniaturas existen.
+  - `--all`: Re-analiza todos los ítems.
+  - `--force`: Fuerza la regeneración de miniaturas.
 
 #### `gower blacklist`
 
