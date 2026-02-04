@@ -269,6 +269,13 @@ func (c *Controller) AnalyzeFeed(all bool, force bool) error {
 	}
 	utils.Log.Info("Analyzing feed: %d items found", len(feed))
 
+	// Index local wallpapers if enabled
+	if c.Config.Paths.IndexWallpapers && c.Config.Paths.Wallpapers != "" {
+		if err := c.indexLocalWallpapers(&feed); err != nil {
+			utils.Log.Error("Error indexing local wallpapers: %v", err)
+		}
+	}
+
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return err
@@ -295,125 +302,13 @@ func (c *Controller) AnalyzeFeed(all bool, force bool) error {
 			for j := range jobs {
 				wp := j.Wp
 				ctrl := j.Controller
-				changed := false
-				thumbPath := filepath.Join(thumbDir, wp.ID+".jpg")
 
-				// 1. Validar dimensiones por metadatos (si existen) para limpiar items de baja resolución
-				if !c.isValidDimension(wp.Dimension) {
-					utils.Log.Info("Removing invalid item %s (dimension %s)", wp.ID, wp.Dimension)
-					os.Remove(thumbPath)
+				newWp, changed, deleteItem := ctrl.processWallpaperItem(wp, force, all, thumbDir)
+
+				if deleteItem {
 					results <- job{Index: j.Index, Delete: true}
-					continue
-				}
-
-				info, errStat := os.Stat(thumbPath)
-				thumbExists := errStat == nil && info.Size() > 0
-
-				// If thumbnail is missing, or if we are forcing a full regeneration (force+all), generate it
-				if !thumbExists || force {
-					utils.Log.Info("Generating thumbnail for %s", wp.ID)
-					src := wp.Thumbnail
-					checkResolution := false
-					if src == "" || src == wp.URL {
-						if localPath, found := ctrl.findWallpaperCacheFile(wp); found {
-							src = localPath // Use local file if available, it's faster
-						}
-						checkResolution = true
-					}
-					w, h, err := c.ColorManager.GenerateThumbnail(src, thumbPath)
-					if err == nil {
-						// Check validity immediately after generation
-						if !c.isValidImage(w, h, checkResolution) {
-							utils.Log.Info("Removing invalid item %s (ratio %dx%d)", wp.ID, w, h)
-							os.Remove(thumbPath)
-							results <- job{Index: j.Index, Delete: true}
-							continue
-						}
-
-						utils.Log.Info("Successfully generated thumbnail for %s", wp.ID)
-						wp.Extension = ".jpg"
-						changed = true
-						// If we generated it, we can set ratio if missing
-						if wp.Ratio == "" && w > 0 && h > 0 {
-							wp.Ratio = calculateRatio(w, h)
-							changed = true
-						}
-						// And we can analyze color
-						if color, err := c.ColorManager.AnalyzeColor(thumbPath); err == nil {
-							wp.Color = color
-							if c.ColorManager.IsDark(color) {
-								wp.Theme = "dark"
-							} else {
-								wp.Theme = "light"
-							}
-							changed = true
-						}
-					} else {
-						utils.Log.Error("Failed to generate thumbnail for %s: %v", wp.ID, err)
-						results <- job{Index: j.Index, Delete: true}
-						continue
-					}
-				} else {
-					// Thumbnail exists, verify it matches current criteria (prune invalid items)
-					w, h, err := c.ColorManager.GetImageDimensions(thumbPath)
-					if err == nil {
-						checkResolution := false
-						if wp.Thumbnail == "" || wp.Thumbnail == wp.URL {
-							checkResolution = true
-						}
-
-						if !c.isValidImage(w, h, checkResolution) {
-							utils.Log.Info("Removing invalid item %s (ratio %dx%d)", wp.ID, w, h)
-							os.Remove(thumbPath)
-							results <- job{Index: j.Index, Delete: true}
-							continue
-						}
-
-						if wp.Extension == "" {
-							wp.Extension = ".jpg"
-							changed = true
-						}
-					}
-
-					// Re-analyze color if requested or missing
-					if all || wp.Color == "" {
-						if color, err := c.ColorManager.AnalyzeColor(thumbPath); err == nil {
-							if wp.Color != color {
-								wp.Color = color
-								if c.ColorManager.IsDark(color) {
-									wp.Theme = "dark"
-								} else {
-									wp.Theme = "light"
-								}
-								changed = true
-							}
-						} else {
-							utils.Log.Error("Failed to analyze color for %s: %v", wp.ID, err)
-						}
-					}
-				}
-
-				// 4. Check and fix main wallpaper filename if it exists
-				expectedPath, err := ctrl.GetWallpaperLocalPath(wp)
-				if err == nil {
-					actualPath, found := ctrl.findWallpaperCacheFile(wp)
-					if found && actualPath != expectedPath {
-						// Check if expected path already exists to avoid overwrite error on rename
-						if _, err := os.Stat(expectedPath); os.IsNotExist(err) {
-							utils.Log.Info("Renaming cached wallpaper from %s to %s", filepath.Base(actualPath), filepath.Base(expectedPath))
-							if err := os.Rename(actualPath, expectedPath); err != nil {
-								utils.Log.Error("Failed to rename %s: %v", filepath.Base(actualPath), err)
-							}
-						} else if actualPath != expectedPath {
-							// Expected path exists, and it's not the same file. Remove the old one with the bad name.
-							utils.Log.Info("Warning: Found duplicate for %s. Removing old file with incorrect name: %s", wp.ID, filepath.Base(actualPath))
-							os.Remove(actualPath)
-						}
-					}
-				}
-
-				if changed {
-					results <- job{Index: j.Index, Wp: wp}
+				} else if changed {
+					results <- job{Index: j.Index, Wp: newWp}
 				}
 			}
 		}()
@@ -456,6 +351,277 @@ func (c *Controller) AnalyzeFeed(all bool, force bool) error {
 		return c.saveFeed(feed)
 	}
 	return nil
+}
+
+// indexLocalWallpapers scans the configured wallpapers directory and updates the feed.
+func (c *Controller) indexLocalWallpapers(feed *[]models.Wallpaper) error {
+	localDir := c.Config.Paths.Wallpapers
+	files, err := os.ReadDir(localDir)
+	if err != nil {
+		return err
+	}
+
+	// Map existing local items in feed
+	localInFeed := make(map[string]int)
+	for i, wp := range *feed {
+		if wp.Source == "local" {
+			localInFeed[wp.ID] = i
+		}
+	}
+
+	// Track found files to detect deletions
+	foundFiles := make(map[string]bool)
+	addedCount := 0
+
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(file.Name()))
+		if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".webp" {
+			continue
+		}
+
+		// Generate ID: local_<filename_sanitized>
+		safeName := strings.ReplaceAll(file.Name(), " ", "_")
+		id := "local_" + safeName
+		foundFiles[id] = true
+
+		if _, exists := localInFeed[id]; !exists {
+			// Add new local wallpaper
+			fullPath := filepath.Join(localDir, file.Name())
+			newWp := models.Wallpaper{
+				ID:        id,
+				Source:    "local",
+				URL:       fullPath,
+				Thumbnail: fullPath, // Use original as source for thumb generation
+				Seen:      false,
+				Added:     time.Now().Unix(),
+			}
+			*feed = append(*feed, newWp)
+			addedCount++
+		}
+	}
+
+	// Remove local items from feed that no longer exist on disk
+	// We mark them with empty ID to be cleaned up by AnalyzeFeed's main loop
+	removedCount := 0
+	for id, idx := range localInFeed {
+		if !foundFiles[id] {
+			(*feed)[idx].ID = "" // Mark for deletion
+			removedCount++
+		}
+	}
+
+	utils.Log.Info("Local indexing: %d added, %d removed", addedCount, removedCount)
+	return nil
+}
+
+// AnalyzeFavorites analyzes the favorites items, regenerates thumbnails/colors if needed.
+func (c *Controller) AnalyzeFavorites(all bool, force bool) error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	favPath := filepath.Join(homeDir, ".gower", "data", "favorites.json")
+	thumbDir := filepath.Join(homeDir, ".gower", "cache", "thumbs")
+
+	// Define struct locally to match JSON
+	type Favorite struct {
+		models.Wallpaper
+		Notes string `json:"notes,omitempty"`
+	}
+
+	var favorites []Favorite
+	if err := c.feedManager.ReadJSON(favPath, &favorites); err != nil {
+		return err
+	}
+
+	utils.Log.Info("Analyzing favorites: %d items found", len(favorites))
+
+	type job struct {
+		Index  int
+		Fav    Favorite
+		Delete bool
+	}
+
+	jobs := make(chan job, len(favorites))
+	results := make(chan job, len(favorites))
+
+	workers := 5
+	var wg sync.WaitGroup
+
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := range jobs {
+				fav := j.Fav
+				// Process the embedded Wallpaper
+				newWp, changed, deleteItem := c.processWallpaperItem(fav.Wallpaper, force, all, thumbDir)
+
+				if deleteItem {
+					results <- job{Index: j.Index, Delete: true}
+				} else if changed {
+					fav.Wallpaper = newWp
+					results <- job{Index: j.Index, Fav: fav}
+				}
+			}
+		}()
+	}
+
+	for i, fav := range favorites {
+		jobs <- job{Index: i, Fav: fav}
+	}
+	close(jobs)
+	wg.Wait()
+	close(results)
+
+	updatedCount := 0
+	for res := range results {
+		if res.Delete {
+			// Mark for deletion (empty ID)
+			favorites[res.Index].ID = ""
+		} else {
+			favorites[res.Index] = res.Fav
+		}
+		updatedCount++
+	}
+
+	if updatedCount > 0 {
+		// Filter deleted
+		newFavorites := make([]Favorite, 0, len(favorites))
+		for _, fav := range favorites {
+			if fav.ID != "" {
+				newFavorites = append(newFavorites, fav)
+			}
+		}
+
+		if err := c.feedManager.WriteJSON(favPath, newFavorites); err != nil {
+			return err
+		}
+	}
+
+	// Rebuild index
+	return c.RebuildColorIndex()
+}
+
+// processWallpaperItem handles the analysis logic for a single wallpaper item
+func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, thumbDir string) (models.Wallpaper, bool, bool) {
+	changed := false
+	thumbPath := filepath.Join(thumbDir, wp.ID+".jpg")
+
+	// 1. Validar dimensiones por metadatos (si existen) para limpiar items de baja resolución
+	if !c.isValidDimension(wp.Dimension) {
+		utils.Log.Info("Removing invalid item %s (dimension %s)", wp.ID, wp.Dimension)
+		os.Remove(thumbPath)
+		return wp, false, true
+	}
+
+	info, errStat := os.Stat(thumbPath)
+	thumbExists := errStat == nil && info.Size() > 0
+
+	// If thumbnail is missing, or if we are forcing a full regeneration (force+all), generate it
+	if !thumbExists || force {
+		utils.Log.Info("Generating thumbnail for %s", wp.ID)
+		src := wp.Thumbnail
+		checkResolution := false
+		if src == "" || src == wp.URL {
+			if localPath, found := c.findWallpaperCacheFile(wp); found {
+				src = localPath // Use local file if available, it's faster
+			}
+			checkResolution = true
+		}
+		w, h, err := c.ColorManager.GenerateThumbnail(src, thumbPath)
+		if err == nil {
+			// Check validity immediately after generation
+			if !c.isValidImage(w, h, checkResolution) {
+				utils.Log.Info("Removing invalid item %s (ratio %dx%d)", wp.ID, w, h)
+				os.Remove(thumbPath)
+				return wp, false, true
+			}
+
+			utils.Log.Info("Successfully generated thumbnail for %s", wp.ID)
+			wp.Extension = ".jpg"
+			changed = true
+			// If we generated it, we can set ratio if missing
+			if wp.Ratio == "" && w > 0 && h > 0 {
+				wp.Ratio = calculateRatio(w, h)
+				changed = true
+			}
+			// And we can analyze color
+			if color, err := c.ColorManager.AnalyzeColor(thumbPath); err == nil {
+				wp.Color = color
+				if c.ColorManager.IsDark(color) {
+					wp.Theme = "dark"
+				} else {
+					wp.Theme = "light"
+				}
+				changed = true
+			}
+		} else {
+			utils.Log.Error("Failed to generate thumbnail for %s: %v", wp.ID, err)
+			return wp, false, true
+		}
+	} else {
+		// Thumbnail exists, verify it matches current criteria (prune invalid items)
+		w, h, err := c.ColorManager.GetImageDimensions(thumbPath)
+		if err == nil {
+			checkResolution := false
+			if wp.Thumbnail == "" || wp.Thumbnail == wp.URL {
+				checkResolution = true
+			}
+
+			if !c.isValidImage(w, h, checkResolution) {
+				utils.Log.Info("Removing invalid item %s (ratio %dx%d)", wp.ID, w, h)
+				os.Remove(thumbPath)
+				return wp, false, true
+			}
+
+			if wp.Extension == "" {
+				wp.Extension = ".jpg"
+				changed = true
+			}
+		}
+
+		// Re-analyze color if requested or missing
+		if all || wp.Color == "" {
+			if color, err := c.ColorManager.AnalyzeColor(thumbPath); err == nil {
+				if wp.Color != color {
+					wp.Color = color
+					if c.ColorManager.IsDark(color) {
+						wp.Theme = "dark"
+					} else {
+						wp.Theme = "light"
+					}
+					changed = true
+				}
+			} else {
+				utils.Log.Error("Failed to analyze color for %s: %v", wp.ID, err)
+			}
+		}
+	}
+
+	// 4. Check and fix main wallpaper filename if it exists
+	expectedPath, err := c.GetWallpaperLocalPath(wp)
+	if err == nil {
+		actualPath, found := c.findWallpaperCacheFile(wp)
+		if found && actualPath != expectedPath {
+			// Check if expected path already exists to avoid overwrite error on rename
+			if _, err := os.Stat(expectedPath); os.IsNotExist(err) {
+				utils.Log.Info("Renaming cached wallpaper from %s to %s", filepath.Base(actualPath), filepath.Base(expectedPath))
+				if err := os.Rename(actualPath, expectedPath); err != nil {
+					utils.Log.Error("Failed to rename %s: %v", filepath.Base(actualPath), err)
+				}
+			} else if actualPath != expectedPath {
+				// Expected path exists, and it's not the same file. Remove the old one with the bad name.
+				utils.Log.Info("Warning: Found duplicate for %s. Removing old file with incorrect name: %s", wp.ID, filepath.Base(actualPath))
+				os.Remove(actualPath)
+			}
+		}
+	}
+
+	return wp, changed, false
 }
 
 // GetRandomFromFeed retrieves a random wallpaper from the feed, optionally filtered by theme.

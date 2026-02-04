@@ -67,6 +67,19 @@ func TestConfigSetAndGet(t *testing.T) {
 	if strings.TrimSpace(output) != "light" {
 		t.Errorf("Se esperaba 'light', se obtuvo '%s'", output)
 	}
+
+	// Test new fields
+	executeCommand(rootCmd, "config", "set", "behavior.save_favorites_to_folder=true")
+	output, _ = executeCommand(rootCmd, "config", "get", "behavior.save_favorites_to_folder")
+	if strings.TrimSpace(output) != "true" {
+		t.Errorf("Se esperaba 'true', se obtuvo '%s'", output)
+	}
+
+	executeCommand(rootCmd, "config", "set", "paths.index_wallpapers=true")
+	output, _ = executeCommand(rootCmd, "config", "get", "paths.index_wallpapers")
+	if strings.TrimSpace(output) != "true" {
+		t.Errorf("Se esperaba 'true', se obtuvo '%s'", output)
+	}
 }
 
 func TestConfigReset(t *testing.T) {

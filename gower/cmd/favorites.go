@@ -3,7 +3,9 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"path/filepath"
 
@@ -25,6 +27,7 @@ var (
 	favNotes string
 	favColor string
 	favForce bool
+	favAll   bool
 	favFile  string
 )
 
@@ -158,6 +161,51 @@ var favoritesAddCmd = &cobra.Command{
 		}
 
 		newFav := FavoriteWallpaper{Wallpaper: wallpaperToAdd, Notes: favNotes}
+
+		// Check if we need to save to local folder
+		if cfg, err := loadConfig(); err == nil && cfg.Behavior.SaveFavoritesToFolder && cfg.Paths.Wallpapers != "" {
+			// Ensure directory exists
+			if err := os.MkdirAll(cfg.Paths.Wallpapers, 0755); err != nil {
+				cmd.Printf("Warning: Could not create wallpapers directory: %v\n", err)
+			} else {
+				// Determine filename
+				ext := filepath.Ext(newFav.URL)
+				if ext == "" {
+					ext = ".jpg"
+				}
+				destFilename := fmt.Sprintf("%s%s", newFav.ID, ext)
+				destPath := filepath.Join(cfg.Paths.Wallpapers, destFilename)
+
+				// Copy or Download
+				success := false
+				if _, err := os.Stat(destPath); err == nil {
+					// Already exists
+					success = true
+				} else {
+					// Check if URL is local file
+					if _, err := os.Stat(newFav.URL); err == nil {
+						// It's a local file, copy it
+						if err := copyFile(newFav.URL, destPath); err == nil {
+							success = true
+						} else {
+							cmd.Printf("Warning: Failed to copy local file to favorites folder: %v\n", err)
+						}
+					} else {
+						// It's a URL, download it
+						if err := downloadFile(newFav.URL, destPath); err == nil {
+							success = true
+						} else {
+							cmd.Printf("Warning: Failed to download favorite to folder: %v\n", err)
+						}
+					}
+				}
+
+				if success {
+					newFav.URL = destPath // Update URL to point to the persistent local file
+				}
+			}
+		}
+
 		favorites = append(favorites, newFav)
 
 		if err := saveFavorites(favorites); err != nil {
@@ -284,6 +332,26 @@ var favoritesImportCmd = &cobra.Command{
 	},
 }
 
+var favoritesAnalyzeCmd = &cobra.Command{
+	Use:   "analyze",
+	Short: "Analyze favorites items",
+	Run: func(cmd *cobra.Command, args []string) {
+		cfg, err := loadConfig()
+		if err != nil {
+			cmd.Printf("Error loading config: %v\n", err)
+			return
+		}
+		controller := core.NewController(cfg)
+
+		cmd.Println("Analyzing favorites...")
+		if err := controller.AnalyzeFavorites(favAll, favForce); err != nil {
+			cmd.Printf("Error analyzing favorites: %v\n", err)
+			return
+		}
+		cmd.Println("Analysis complete.")
+	},
+}
+
 func getFavoritesPath() (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -336,6 +404,7 @@ func init() {
 	favoritesCmd.AddCommand(favoritesRemoveCmd)
 	favoritesCmd.AddCommand(favoritesExportCmd)
 	favoritesCmd.AddCommand(favoritesImportCmd)
+	favoritesCmd.AddCommand(favoritesAnalyzeCmd)
 
 	favoritesListCmd.Flags().IntVar(&favPage, "page", 1, "Page number")
 	favoritesListCmd.Flags().IntVar(&favLimit, "limit", 10, "Items per page")
@@ -345,6 +414,43 @@ func init() {
 
 	favoritesRemoveCmd.Flags().BoolVar(&favForce, "force", false, "Do not return error if not found")
 
+	favoritesAnalyzeCmd.Flags().BoolVar(&favAll, "all", false, "Analyze all items, not just new ones")
+	favoritesAnalyzeCmd.Flags().BoolVar(&favForce, "force", false, "Force regeneration of thumbnails")
+
 	favoritesExportCmd.Flags().StringVar(&favFile, "file", "", "Output file path")
 	favoritesImportCmd.Flags().StringVar(&favFile, "file", "", "Input file path")
+}
+
+func copyFile(src, dst string) error {
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+
+	destFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+
+	_, err = io.Copy(destFile, sourceFile)
+	return err
+}
+
+func downloadFile(url, dst string) error {
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, resp.Body)
+	return err
 }
