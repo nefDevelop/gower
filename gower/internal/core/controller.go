@@ -273,7 +273,7 @@ func (c *Controller) PurgeFeed() error {
 }
 
 // AnalyzeFeed analyzes the feed items, regenerates thumbnails/colors if needed, and rebuilds the color index.
-func (c *Controller) AnalyzeFeed(all bool, force bool) error {
+func (c *Controller) AnalyzeFeed(all bool, force bool, progress func(string)) error {
 	feed, err := c.loadFeed()
 	if err != nil {
 		return err
@@ -314,7 +314,7 @@ func (c *Controller) AnalyzeFeed(all bool, force bool) error {
 				wp := j.Wp
 				ctrl := j.Controller
 
-				newWp, changed, deleteItem := ctrl.processWallpaperItem(wp, force, all, thumbDir)
+				newWp, changed, deleteItem := ctrl.processWallpaperItem(wp, force, all, thumbDir, progress)
 
 				if deleteItem {
 					results <- job{Index: j.Index, Delete: true}
@@ -429,7 +429,7 @@ func (c *Controller) indexLocalWallpapers(feed *[]models.Wallpaper) error {
 }
 
 // AnalyzeFavorites analyzes the favorites items, regenerates thumbnails/colors if needed.
-func (c *Controller) AnalyzeFavorites(all bool, force bool) error {
+func (c *Controller) AnalyzeFavorites(all bool, force bool, progress func(string)) error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return err
@@ -469,7 +469,7 @@ func (c *Controller) AnalyzeFavorites(all bool, force bool) error {
 			for j := range jobs {
 				fav := j.Fav
 				// Process the embedded Wallpaper
-				newWp, changed, deleteItem := c.processWallpaperItem(fav.Wallpaper, force, all, thumbDir)
+				newWp, changed, deleteItem := c.processWallpaperItem(fav.Wallpaper, force, all, thumbDir, progress)
 
 				if deleteItem {
 					results <- job{Index: j.Index, Delete: true}
@@ -518,13 +518,16 @@ func (c *Controller) AnalyzeFavorites(all bool, force bool) error {
 }
 
 // processWallpaperItem handles the analysis logic for a single wallpaper item
-func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, thumbDir string) (models.Wallpaper, bool, bool) {
+func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, thumbDir string, progress func(string)) (models.Wallpaper, bool, bool) {
 	changed := false
 	thumbPath := filepath.Join(thumbDir, wp.ID+".jpg")
 
 	// 1. Validar dimensiones por metadatos (si existen) para limpiar items de baja resolución
 	if !c.isValidDimension(wp.Dimension) {
 		utils.Log.Info("Removing invalid item %s (dimension %s)", wp.ID, wp.Dimension)
+		if progress != nil {
+			progress(fmt.Sprintf("Removing invalid item %s (dimension %s)", wp.ID, wp.Dimension))
+		}
 		os.Remove(thumbPath)
 		return wp, false, true
 	}
@@ -535,6 +538,9 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 	// If thumbnail is missing, or if we are forcing a full regeneration (force+all), generate it
 	if !thumbExists || force {
 		utils.Log.Info("Generating thumbnail for %s", wp.ID)
+		if progress != nil {
+			progress(fmt.Sprintf("Generating thumbnail for %s", wp.ID))
+		}
 		src := wp.Thumbnail
 		checkResolution := false
 		if src == "" || src == wp.URL {
@@ -548,11 +554,17 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 			// Check validity immediately after generation
 			if !c.isValidImage(w, h, checkResolution) {
 				utils.Log.Info("Removing invalid item %s (ratio %dx%d)", wp.ID, w, h)
+				if progress != nil {
+					progress(fmt.Sprintf("Removing invalid item %s (ratio %dx%d)", wp.ID, w, h))
+				}
 				os.Remove(thumbPath)
 				return wp, false, true
 			}
 
 			utils.Log.Info("Successfully generated thumbnail for %s", wp.ID)
+			if progress != nil {
+				progress(fmt.Sprintf("Successfully generated thumbnail for %s", wp.ID))
+			}
 			wp.Extension = ".jpg"
 			changed = true
 			// If we generated it, we can set ratio if missing
@@ -572,6 +584,9 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 			}
 		} else {
 			utils.Log.Error("Failed to generate thumbnail for %s: %v", wp.ID, err)
+			if progress != nil {
+				progress(fmt.Sprintf("Failed to generate thumbnail for %s: %v", wp.ID, err))
+			}
 			return wp, false, true
 		}
 	} else {
@@ -585,6 +600,9 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 
 			if !c.isValidImage(w, h, checkResolution) {
 				utils.Log.Info("Removing invalid item %s (ratio %dx%d)", wp.ID, w, h)
+				if progress != nil {
+					progress(fmt.Sprintf("Removing invalid item %s (ratio %dx%d)", wp.ID, w, h))
+				}
 				os.Remove(thumbPath)
 				return wp, false, true
 			}
@@ -609,6 +627,9 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 				}
 			} else {
 				utils.Log.Error("Failed to analyze color for %s: %v", wp.ID, err)
+				if progress != nil {
+					progress(fmt.Sprintf("Failed to analyze color for %s: %v", wp.ID, err))
+				}
 			}
 		}
 	}
@@ -621,12 +642,18 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 			// Check if expected path already exists to avoid overwrite error on rename
 			if _, err := os.Stat(expectedPath); os.IsNotExist(err) {
 				utils.Log.Info("Renaming cached wallpaper from %s to %s", filepath.Base(actualPath), filepath.Base(expectedPath))
+				if progress != nil {
+					progress(fmt.Sprintf("Renaming cached wallpaper from %s to %s", filepath.Base(actualPath), filepath.Base(expectedPath)))
+				}
 				if err := os.Rename(actualPath, expectedPath); err != nil {
 					utils.Log.Error("Failed to rename %s: %v", filepath.Base(actualPath), err)
 				}
 			} else if actualPath != expectedPath {
 				// Expected path exists, and it's not the same file. Remove the old one with the bad name.
 				utils.Log.Info("Warning: Found duplicate for %s. Removing old file with incorrect name: %s", wp.ID, filepath.Base(actualPath))
+				if progress != nil {
+					progress(fmt.Sprintf("Warning: Found duplicate for %s. Removing old file with incorrect name: %s", wp.ID, filepath.Base(actualPath)))
+				}
 				os.Remove(actualPath)
 			}
 		}
@@ -1275,7 +1302,7 @@ func (c *Controller) SyncFeed() (int, int, error) {
 			// Update existing entry
 			for i := range feed {
 				if feed[i].ID == wp.ID {
-					wp.Seen = feed[i].Seen // Preserve seen status
+					wp.Seen = feed[i].Seen   // Preserve seen status
 					wp.Added = feed[i].Added // Preserve added time
 					feed[i] = wp
 					break

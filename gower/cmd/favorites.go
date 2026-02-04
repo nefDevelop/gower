@@ -344,7 +344,13 @@ var favoritesAnalyzeCmd = &cobra.Command{
 		controller := core.NewController(cfg)
 
 		cmd.Println("Analyzing favorites...")
-		if err := controller.AnalyzeFavorites(favAll, favForce); err != nil {
+		progress := func(msg string) {
+			if !config.Quiet {
+				cmd.Println(msg)
+			}
+		}
+
+		if err := controller.AnalyzeFavorites(favAll, favForce, progress); err != nil {
 			cmd.Printf("Error analyzing favorites: %v\n", err)
 			return
 		}

@@ -330,7 +330,7 @@ func TestController_AnalyzeFeed(t *testing.T) {
 	thumbPath := filepath.Join(tmpDir, ".gower", "cache", "thumbs", wpID+".jpg")
 
 	// Case 1: AnalyzeFeed(false, false) - Should generate missing thumbnail
-	if err := ctrl.AnalyzeFeed(false, false); err != nil {
+	if err := ctrl.AnalyzeFeed(false, false, nil); err != nil {
 		t.Fatalf("AnalyzeFeed(false, false) failed: %v", err)
 	}
 
@@ -341,7 +341,7 @@ func TestController_AnalyzeFeed(t *testing.T) {
 
 	// Case 2: AnalyzeFeed(true, true) - Force regeneration
 	time.Sleep(50 * time.Millisecond) // Ensure fs timestamp difference
-	if err := ctrl.AnalyzeFeed(true, true); err != nil {
+	if err := ctrl.AnalyzeFeed(true, true, nil); err != nil {
 		t.Fatalf("AnalyzeFeed(true, true) failed: %v", err)
 	}
 
@@ -351,6 +351,34 @@ func TestController_AnalyzeFeed(t *testing.T) {
 	}
 	if !info2.ModTime().After(info1.ModTime()) {
 		t.Error("Thumbnail should have been regenerated with force=true and all=true")
+	}
+}
+
+func TestController_AnalyzeFavorites(t *testing.T) {
+	tmpDir := setupTestHome(t)
+	defer os.RemoveAll(tmpDir)
+
+	cfg := &models.Config{}
+	ctrl := NewController(cfg)
+
+	// Create dummy image
+	srcImgPath := filepath.Join(tmpDir, "fav_source.png")
+	createDummyImage(t, srcImgPath)
+
+	// Manually create favorites.json
+	favPath := filepath.Join(tmpDir, ".gower", "data", "favorites.json")
+	favContent := `[{"id":"fav1","url":"` + srcImgPath + `","source":"test"}]`
+	os.WriteFile(favPath, []byte(favContent), 0644)
+
+	// Analyze
+	if err := ctrl.AnalyzeFavorites(false, false, nil); err != nil {
+		t.Fatalf("AnalyzeFavorites failed: %v", err)
+	}
+
+	// Check thumbnail
+	thumbPath := filepath.Join(tmpDir, ".gower", "cache", "thumbs", "fav1.jpg")
+	if _, err := os.Stat(thumbPath); os.IsNotExist(err) {
+		t.Error("Thumbnail for favorite should have been generated")
 	}
 }
 
