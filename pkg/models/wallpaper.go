@@ -10,7 +10,6 @@ type Wallpaper struct {
 	Extension string `json:"ext,omitempty"` // Agrega esta línea
 
 	// Metadata
-	Category  string `json:"category,omitempty"`
 	Dimension string `json:"dimension,omitempty"` // Resolution (e.g. 1920x1080)
 	Ratio     string `json:"ratio,omitempty"`
 	Theme     string `json:"theme,omitempty"`     // Analyzed color theme

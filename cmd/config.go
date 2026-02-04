@@ -233,13 +233,13 @@ func getDefaultConfig() models.Config {
 		},
 		Behavior: models.BehaviorConfig{
 			Theme: "", ChangeInterval: 30, MultiMonitor: "clone",
-			WallpaperCommand: "", AutoDownload: true, RespectDarkMode: true,
+			WallpaperCommand: "", AutoDownload: true, RespectDarkMode: true, SaveFavoritesToFolder: false,
 		},
 		Power: models.PowerConfig{
 			BatteryMultiplier: 4, PauseOnLowBattery: true, LowBatteryThreshold: 20,
 		},
 		Paths: models.PathsConfig{
-			Wallpapers: "", UseSystemDir: true,
+			Wallpapers: "", UseSystemDir: true, IndexWallpapers: false,
 		},
 		UI: models.UIConfig{
 			ShowColors: true, ItemsPerPage: 10, ImagePreview: true,

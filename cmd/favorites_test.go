@@ -244,3 +244,41 @@ func TestFavoritesListColor(t *testing.T) {
 		t.Errorf("Did not expect blue-wp in output when filtering by near-red, got: %s", output)
 	}
 }
+
+func TestFavoritesAddWithPersistence(t *testing.T) {
+	resetFavoritesFlags()
+	tmpDir := setupTestHome(t)
+	defer os.RemoveAll(tmpDir)
+
+	executeCommand(rootCmd, "config", "init")
+
+	// Setup wallpapers dir
+	wallpapersDir := filepath.Join(tmpDir, "Wallpapers")
+	os.MkdirAll(wallpapersDir, 0755)
+
+	// Enable persistence
+	executeCommand(rootCmd, "config", "set", "behavior.save_favorites_to_folder=true")
+	executeCommand(rootCmd, "config", "set", "paths.wallpapers="+wallpapersDir)
+
+	// Create a dummy local file to add as favorite
+	localFile := filepath.Join(tmpDir, "source.jpg")
+	os.WriteFile(localFile, []byte("dummy image content"), 0644)
+
+	// Add to feed manually so favorites add can find it and use the local path
+	feedPath := filepath.Join(tmpDir, ".gower", "data", "feed.json")
+	feed := []models.Wallpaper{
+		{ID: "local-fav", URL: localFile, Source: "local"},
+	}
+	data, _ := json.Marshal(feed)
+	os.WriteFile(feedPath, data, 0644)
+
+	// Add to favorites
+	executeCommand(rootCmd, "favorites", "add", "local-fav")
+
+	// Verify file exists in wallpapersDir
+	destPath := filepath.Join(wallpapersDir, "local-fav.jpg")
+
+	if _, err := os.Stat(destPath); os.IsNotExist(err) {
+		t.Errorf("Favorite was not copied to wallpapers folder")
+	}
+}
