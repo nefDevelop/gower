@@ -13,6 +13,7 @@
   - Wallhaven
   - Reddit
   - NASA Picture of the Day
+  - Unsplash
   - Bing Wallpaper of the Day
   - Proveedores genéricos configurables (JSON API)
 - **Gestión de Historial (Feed)**: Lleva un registro de los fondos de pantalla que has visto, con opciones para buscar, filtrar y purgar.
@@ -20,6 +21,7 @@
 - **Modo Demonio**: Ejecuta `gower` en segundo plano para cambiar tu fondo de pantalla automáticamente a intervalos definidos.
 - **Configuración Avanzada**: Personaliza todo, desde las dimensiones de la imagen y los proveedores hasta los comandos para establecer el fondo de pantalla.
 - **Eficiente y Respetuoso**: Límites de frecuencia para las APIs, gestión de energía para portátiles y almacenamiento en caché local.
+- **Modo Oscuro Inteligente**: Detecta el tema de tu sistema (oscuro/claro) y selecciona fondos de pantalla acordes automáticamente.
 - **Salida Flexible**: Muestra la información en formato de tabla o JSON, ideal para scripting.
 
 ## 📦 Instalación
@@ -49,6 +51,7 @@ Este comando busca nuevos fondos de pantalla de los proveedores habilitados y lo
 ```bash
 gower feed update
 ```
+
 > **Nota**: La primera vez, es una buena idea ejecutar `gower feed update --force` para ignorar los límites de frecuencia y poblar tu historial.
 
 ### 2. Establecer un fondo de pantalla
@@ -90,6 +93,7 @@ gower daemon --interval 30m
 ## ⚙️ Configuración
 
 Gower busca un archivo de configuración `config.json` en las siguientes ubicaciones:
+
 - `$XDG_CONFIG_HOME/gower/config.json`
 - `$HOME/.config/gower/config.json`
 - `$HOME/.gower.json`
@@ -120,9 +124,9 @@ Un archivo de configuración de ejemplo podría ser:
     "aspect_ratio": "16:9"
   },
   "behavior": {
-    "theme": "any",
+    "respect_dark_mode": true,
     "change_interval": 30,
-    "wallpaper_command": "feh --bg-fill %s"
+    "wallpaper_command": "feh --bg-fill %s" // Comando específico para tu entorno
   },
   "paths": {
     "wallpapers": "/home/user/Pictures/Wallpapers"
@@ -196,14 +200,16 @@ Gestiona el historial local de fondos de pantalla (feed).
   - `--limit, -l <número>`: Cantidad de ítems por página.
   - `--theme <dark|light>`: Filtra por tema.
   - `--color <hex>`: Filtra por color.
+    > **Algoritmo del Feed**: El comando `feed show` utiliza un algoritmo para presentarte una mezcla de fondos de pantalla nuevos y ya vistos. El orden se mantiene estable durante una hora para facilitar la navegación entre páginas, y luego se vuelve a barajar. Los fondos de pantalla que aparecen en una página se marcan automáticamente como "vistos".
+
 - `gower feed update`: Sincroniza el feed desde las cachés de los proveedores o realiza una nueva búsqueda si es necesario.
   - `--force`: Ignora los límites de frecuencia para forzar la actualización.
 - `gower feed purge`: Elimina todo el historial del feed.
   - `--force`: Confirma la eliminación sin preguntar.
 - `gower feed stats`: Muestra estadísticas sobre el feed.
-- `gower feed analyze`: Analiza los ítems del feed para extraer metadatos como colores (requiere descarga).
+- `gower feed analyze`: Analiza los ítems del feed para extraer metadatos y realizar mantenimiento de la caché. Repara nombres de archivo incorrectos y elimina ítems corruptos.
   - `--all`: Analiza todos los ítems, no solo los nuevos.
-  - `--force`: Fuerza la regeneración de datos (ej. miniaturas).
+  - `--force`: Fuerza la regeneración de miniaturas y re-análisis de colores, incluso si ya existen.
 - `gower feed random`: Obtiene un fondo de pantalla aleatorio del feed o de favoritos.
   - `--theme <dark|light>`: Filtra por tema.
   - `--from-favorites`: Elige un fondo de pantalla aleatorio de la lista de favoritos en lugar del feed.
@@ -224,6 +230,17 @@ Establece un fondo de pantalla.
   - `--multi-monitor <clone|distinct>`: Define el comportamiento para múltiples monitores.
   - `--command <comando>`: Usa un comando personalizado para establecer el fondo de pantalla (ej. `feh --bg-fill %s`).
   - `--no-download`: No descarga la imagen, útil si ya existe localmente.
+
+#### `gower download`
+
+Descarga un fondo de pantalla a la caché o a un directorio específico.
+
+- **Uso**: `gower download [ID|URL|random] [flags]`
+- **Flags**:
+  - `--output, -o <ruta>`: Ruta del archivo o directorio de destino. Si no se especifica, intenta usar el directorio configurado en `paths.wallpapers`.
+  - `--random, -r`: Descarga un fondo de pantalla aleatorio.
+  - `--theme <dark|light>`: Filtra por tema al descargar uno aleatorio.
+  - `--from-favorites`: Descarga uno aleatorio solo de los favoritos.
 
 #### `gower favorites`
 
@@ -300,7 +317,6 @@ Exporta datos de la aplicación.
   - `--include-images`: Incluye las imágenes descargadas en el ZIP.
 - `gower export config --file <ruta>`: Exporta solo la configuración.
 - `gower export feed --file <ruta>`: Exporta solo el feed.
-
 
 ## 🛠️ Construir desde el código fuente
 

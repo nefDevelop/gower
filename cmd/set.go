@@ -223,7 +223,11 @@ func applyWallpaper(cmd *cobra.Command, controller *core.Controller, wp models.W
 		}
 	} else {
 		// Fallback to existing auto-detection logic
-		changer := core.NewWallpaperChanger("")
+		respectDark := true
+		if cfg != nil {
+			respectDark = cfg.Behavior.RespectDarkMode
+		}
+		changer := core.NewWallpaperChanger("", respectDark)
 
 		mmMode := setMultiMonitor
 		if mmMode == "" && cfg != nil {

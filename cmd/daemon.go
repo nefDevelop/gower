@@ -146,7 +146,16 @@ func changeWallpaper() {
 	}
 	controller := core.NewController(cfg)
 
-	wallpapers, err := controller.GetCachedWallpapers(daemonFromFavorites, daemonTheme)
+	targetTheme := daemonTheme
+	if targetTheme == "" && cfg.Behavior.RespectDarkMode {
+		if core.IsSystemInDarkMode() {
+			targetTheme = "dark"
+		} else {
+			targetTheme = "light"
+		}
+	}
+
+	wallpapers, err := controller.GetCachedWallpapers(daemonFromFavorites, targetTheme)
 	if err != nil || len(wallpapers) == 0 {
 		utils.Log.Debug("Daemon: No cached wallpapers found (err: %v)", err)
 		return
@@ -155,7 +164,7 @@ func changeWallpaper() {
 	wp := wallpapers[rand.Intn(len(wallpapers))]
 
 	path, _ := controller.GetWallpaperLocalPath(wp)
-	changer := core.NewWallpaperChanger("")
+	changer := core.NewWallpaperChanger("", cfg.Behavior.RespectDarkMode)
 	if err := changer.SetWallpaper(path, cfg.Behavior.MultiMonitor); err != nil {
 		utils.Log.Error("Daemon failed to set wallpaper %s: %v", wp.ID, err)
 	} else {

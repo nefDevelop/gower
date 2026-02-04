@@ -84,6 +84,7 @@ func TestExploreGenericProvider(t *testing.T) {
 
 	// 1. Crear un mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintln(w, `{
 			"images": [
 				{
@@ -113,6 +114,17 @@ func TestExploreGenericProvider(t *testing.T) {
 	}
 	createTestConfig(t, tmpDir, &cfg)
 
+	// Create parser mapping file as GenericProvider relies on it
+	parserDir := filepath.Join(tmpDir, ".gower", "data", "parser")
+	if err := os.MkdirAll(parserDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	mapping := cfg.GenericProviders[0].ResponseMapping
+	data, _ := json.Marshal(mapping)
+	if err := os.WriteFile(filepath.Join(parserDir, "generic_test.json"), data, 0644); err != nil {
+		t.Fatal(err)
+	}
+
 	testRootCmd, _, _ := newTestRootCmd()
 	// 3. Ejecutar el comando
 	output, err := executeCommand(testRootCmd, "explore", "--provider", "generic_test", "searchterm")
@@ -139,6 +151,7 @@ func TestExploreAllProviders(t *testing.T) {
 
 	// 1. Mock server para el genérico
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintln(w, `{"images":[]}`) // No necesitamos resultados, solo que se llame
 	}))
 	defer server.Close()

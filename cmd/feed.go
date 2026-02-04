@@ -3,7 +3,9 @@ package cmd
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/rand"
+	"text/tabwriter"
 	"time"
 
 	"gower/internal/core"
@@ -67,7 +69,7 @@ var feedShowCmd = &cobra.Command{
 		if config.JSONOutput {
 			displayJSON(cmd, wallpapers)
 		} else {
-			displayTable(cmd, wallpapers, config.NoColor)
+			displayTable(cmd, wallpapers)
 		}
 	},
 }
@@ -294,7 +296,17 @@ func displayJSON(cmd *cobra.Command, data interface{}) {
 	cmd.Println(string(jsonData))
 }
 
-func displayTable(cmd *cobra.Command, wallpapers interface{}, noColor bool) {
-	// Placeholder: Implementar lógica de visualización de tabla
-	cmd.Printf("Displaying table: %+v (Color disabled: %t)\n", wallpapers, noColor)
+func displayTable(cmd *cobra.Command, wallpapers interface{}) {
+	wps, ok := wallpapers.([]models.Wallpaper)
+	if !ok {
+		return
+	}
+
+	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 3, ' ', 0)
+	fmt.Fprintln(w, "ID\tRES\tTHEME\tSOURCE\tSEEN")
+
+	for _, wp := range wps {
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%t\n", wp.ID, wp.Dimension, wp.Theme, wp.Source, wp.Seen)
+	}
+	w.Flush()
 }

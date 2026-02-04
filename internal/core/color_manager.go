@@ -7,6 +7,7 @@ import (
 	"image/jpeg"
 	_ "image/png" // Support PNG decoding
 	"math"
+	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -168,6 +169,98 @@ func (cm *ColorManager) AnalyzeColor(path string) (string, error) {
 
 	// Find nearest color in palette
 	return FindNearestColor(int(r), int(g), int(b)), nil
+}
+
+// IsDark determines if a hex color is considered dark based on luminance.
+func (cm *ColorManager) IsDark(hex string) bool {
+	r, g, b := HexToRGB(hex)
+	// Calculate luminance using standard formula (Rec. 601)
+	lum := 0.299*float64(r) + 0.587*float64(g) + 0.114*float64(b)
+	return lum < 128
+}
+
+// FindNearestColorInPalette finds the closest color in a given dynamic palette.
+func (cm *ColorManager) FindNearestColorInPalette(targetHex string, palette []string) string {
+	if len(palette) == 0 {
+		return targetHex
+	}
+	r, g, b := HexToRGB(targetHex)
+	minDist := math.MaxFloat64
+	nearest := palette[0]
+
+	for _, hex := range palette {
+		pr, pg, pb := HexToRGB(hex)
+		// Euclidean distance
+		dist := math.Sqrt(math.Pow(float64(r-pr), 2) + math.Pow(float64(g-pg), 2) + math.Pow(float64(b-pb), 2))
+		if dist < minDist {
+			minDist = dist
+			nearest = hex
+		}
+	}
+	return nearest
+}
+
+// GenerateDynamicPalette uses K-Means clustering to find k representative colors.
+func (cm *ColorManager) GenerateDynamicPalette(colors []string, k int) []string {
+	if len(colors) == 0 {
+		return []string{}
+	}
+	if len(colors) <= k {
+		return colors
+	}
+
+	// Convert hex strings to RGB points
+	type Point struct {
+		R, G, B float64
+	}
+	var points []Point
+	for _, c := range colors {
+		r, g, b := HexToRGB(c)
+		points = append(points, Point{float64(r), float64(g), float64(b)})
+	}
+
+	// Initialize Centroids (Randomly pick k points)
+	rand.Seed(time.Now().UnixNano())
+	centroids := make([]Point, k)
+	perm := rand.Perm(len(points))
+	for i := 0; i < k; i++ {
+		centroids[i] = points[perm[i]]
+	}
+
+	// K-Means Iterations
+	for iter := 0; iter < 10; iter++ {
+		buckets := make([][]Point, k)
+		for _, p := range points {
+			minDist := math.MaxFloat64
+			idx := 0
+			for i, c := range centroids {
+				dist := math.Sqrt(math.Pow(p.R-c.R, 2) + math.Pow(p.G-c.G, 2) + math.Pow(p.B-c.B, 2))
+				if dist < minDist {
+					minDist = dist
+					idx = i
+				}
+			}
+			buckets[idx] = append(buckets[idx], p)
+		}
+		for i := 0; i < k; i++ {
+			if len(buckets[i]) > 0 {
+				var sumR, sumG, sumB float64
+				for _, p := range buckets[i] {
+					sumR += p.R
+					sumG += p.G
+					sumB += p.B
+				}
+				count := float64(len(buckets[i]))
+				centroids[i] = Point{R: sumR / count, G: sumG / count, B: sumB / count}
+			}
+		}
+	}
+
+	var result []string
+	for _, c := range centroids {
+		result = append(result, fmt.Sprintf("#%02X%02X%02X", int(c.R), int(c.G), int(c.B)))
+	}
+	return result
 }
 
 func FindNearestColor(r, g, b int) string {

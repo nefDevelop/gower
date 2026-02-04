@@ -232,7 +232,7 @@ func getDefaultConfig() models.Config {
 			MinWidth: 1920, MinHeight: 1080, AspectRatio: "16:9", Tolerance: 0.05,
 		},
 		Behavior: models.BehaviorConfig{
-			Theme: "dark", ChangeInterval: 30, MultiMonitor: "clone",
+			Theme: "", ChangeInterval: 30, MultiMonitor: "clone",
 			WallpaperCommand: "", AutoDownload: true, RespectDarkMode: true,
 		},
 		Power: models.PowerConfig{
@@ -369,7 +369,7 @@ func createConfigStructure(cmd *cobra.Command) error {
 
 	colorsPath := filepath.Join(baseDir, "data", "colors.json")
 	if _, err := os.Stat(colorsPath); os.IsNotExist(err) {
-		ioutil.WriteFile(colorsPath, []byte(`{"feed":[],"favorites":[]}`), 0644)
+		ioutil.WriteFile(colorsPath, []byte(`{"feed_palette":[],"favorites_palette":[]}`), 0644)
 	}
 
 	configFile := filepath.Join(baseDir, "config.json")
@@ -438,6 +438,5 @@ func init() {
 	configInitCmd.Flags().Int("change-interval", 30, "auto-change interval (minutes)")
 	configInitCmd.Flags().String("wallpaper-command", "", "custom wallpaper command")
 	configInitCmd.Flags().String("wallpapers-dir", "", "wallpapers directory")
-	configInitCmd.Flags().String("theme", "dark", "default theme [dark|light|auto]")
 	configInitCmd.Flags().String("multi-monitor", "clone", "multi-monitor mode")
 }
