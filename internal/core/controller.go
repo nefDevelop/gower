@@ -553,9 +553,9 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 		if err == nil {
 			// Check validity immediately after generation
 			if !c.isValidImage(w, h, checkResolution) {
-				utils.Log.Info("Removing invalid item %s (ratio %dx%d)", wp.ID, w, h)
+				utils.Log.Info("Removing invalid item %s (resolution %dx%d)", wp.ID, w, h)
 				if progress != nil {
-					progress(fmt.Sprintf("Removing invalid item %s (ratio %dx%d)", wp.ID, w, h))
+					progress(fmt.Sprintf("Removing invalid item %s (resolution %dx%d)", wp.ID, w, h))
 				}
 				os.Remove(thumbPath)
 				return wp, false, true
@@ -599,9 +599,9 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 			}
 
 			if !c.isValidImage(w, h, checkResolution) {
-				utils.Log.Info("Removing invalid item %s (ratio %dx%d)", wp.ID, w, h)
+				utils.Log.Info("Removing invalid item %s (resolution %dx%d)", wp.ID, w, h)
 				if progress != nil {
-					progress(fmt.Sprintf("Removing invalid item %s (ratio %dx%d)", wp.ID, w, h))
+					progress(fmt.Sprintf("Removing invalid item %s (resolution %dx%d)", wp.ID, w, h))
 				}
 				os.Remove(thumbPath)
 				return wp, false, true

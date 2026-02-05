@@ -70,7 +70,7 @@ var configSetCmd = &cobra.Command{
 			cmd.Printf("Error guardando configuración: %v\n", err)
 			return
 		}
-		cmd.Printf("Configuración actualizada: %s = %s\n", key, val)
+		cmd.Printf("%s Configuración actualizada: %s = %s\n", colorize(symbolCheck, colorGreen), key, val)
 	},
 }
 
@@ -110,7 +110,7 @@ var configResetCmd = &cobra.Command{
 			cmd.Printf("Error restableciendo configuración: %v\n", err)
 			return
 		}
-		cmd.Println("Configuración restablecida a los valores por defecto.")
+		cmd.Println(colorize(symbolCheck+" Configuración restablecida a los valores por defecto.", colorGreen))
 	},
 }
 
@@ -132,7 +132,7 @@ var configExportCmd = &cobra.Command{
 				cmd.Printf("Error exportando: %v\n", err)
 				return
 			}
-			cmd.Printf("Configuración exportada a: %s\n", args[0])
+			cmd.Printf("%s Configuración exportada a: %s\n", colorize(symbolCheck, colorGreen), args[0])
 		} else {
 			cmd.Println(string(data))
 		}
@@ -162,7 +162,7 @@ var configImportCmd = &cobra.Command{
 			cmd.Printf("Error guardando configuración: %v\n", err)
 			return
 		}
-		cmd.Println("Configuración importada exitosamente.")
+		cmd.Println(colorize(symbolCheck+" Configuración importada exitosamente.", colorGreen))
 	},
 }
 
