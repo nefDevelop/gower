@@ -259,9 +259,9 @@ Gestiona la lista de fondos de pantalla favoritos.
 - `gower favorites export --file <ruta>`: Exporta la lista de favoritos a un archivo JSON.
 - `gower favorites import --file <ruta>`: Importa favoritos desde un archivo JSON.
 - `gower favorites analyze`: Analiza los favoritos para asegurar que las imágenes y miniaturas existen.
-  - `--all`: Re-analiza todos los ítems.
-  - `--force`: Fuerza la regeneración de miniaturas.
-  - `--quiet`: Suprime la salida de progreso en consola.
+- `gower favorites analyze`: Analiza los favoritos para generar miniaturas y extraer metadatos de color. Es útil para actualizar los colores después de un cambio en el algoritmo de análisis.
+  - `--all`: Re-analiza todos los ítems, no solo los que no tienen color.
+  - `--force`: Fuerza la regeneración de miniaturas y el re-análisis de colores.
 
 #### `gower blacklist`
 
@@ -305,7 +305,7 @@ Muestra un resumen del estado general de la aplicación.
   - `--providers`: Muestra solo el estado de los proveedores.
   - `--storage`: Muestra solo el uso de almacenamiento.
   - `--daemon`: Muestra solo el estado del demonio.
-  - `--system`: Muestra solo información del sistema y dependencias.
+  - `--system`: Muestra información del sistema, como el entorno de escritorio detectado y las dependencias.
   - `--json`: Muestra toda la información en formato JSON.
 
 #### `gower cache`

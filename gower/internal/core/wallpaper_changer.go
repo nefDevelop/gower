@@ -17,7 +17,7 @@ type WallpaperChanger struct {
 func NewWallpaperChanger(desktopEnv string, respectDarkMode ...bool) *WallpaperChanger {
 	env := strings.ToLower(desktopEnv)
 	if env == "" {
-		env = detectDesktopEnv()
+		env = DetectDesktopEnv()
 	} else {
 		// Normalizar entrada manual
 		if strings.Contains(env, "kde") {
@@ -70,6 +70,10 @@ func (wc *WallpaperChanger) SetWallpaper(path string, multiMonitor string) error
 			cmd = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri-dark", uri)
 		}
 
+	case "niri":
+		// niri has its own IPC for setting wallpapers
+		cmd = exec.Command("niri", "msg", "output", "*", "wallpaper", path)
+
 	case "sway":
 		// swaybg is a good generic for sway-like compositors (like niri)
 		// Using -m fill to replicate --bg-fill behavior from feh
@@ -88,7 +92,20 @@ func (wc *WallpaperChanger) SetWallpaper(path string, multiMonitor string) error
 		cmd = exec.Command("nitrogen", "--set-auto", "--save", path)
 
 	case "dms":
-		cmd = exec.Command("dms", "ipc", "call", "wallpaper", "set", path)
+		// For Dank Material Shell, the primary method is the IPC call,
+		// which allows DMS to handle theming.
+		ipcCmd := exec.Command("dms", "ipc", "call", "wallpaper", "set", path)
+		err := ipcCmd.Run()
+		if err == nil {
+			// The IPC call was successful. We don't need to run anything else.
+			return nil
+		}
+
+		// Fallback: If the IPC call fails (e.g., due to internal matugen
+		// errors in DMS), try setting the wallpaper directly with quickshell.
+		// This might not trigger theme updates but should change the image.
+		utils.Log.Info("Warning: DMS IPC call failed (error: %v). Falling back to quickshell.", err)
+		cmd = exec.Command("quickshell", "-w", path)
 
 	case "swww":
 		cmd = exec.Command("swww", "img", path)
@@ -100,7 +117,7 @@ func (wc *WallpaperChanger) SetWallpaper(path string, multiMonitor string) error
 		return nil
 
 	default:
-		return fmt.Errorf("unsupported or undetected desktop environment: %s", wc.Env)
+		return fmt.Errorf("unsupported or undetected desktop environment: '%s'", wc.Env)
 	}
 
 	return cmd.Run()
@@ -111,30 +128,80 @@ func commandExists(cmd string) bool {
 	return err == nil
 }
 
-func detectDesktopEnv() string {
+// isProcessRunning checks if a process with the exact given name is running.
+func isProcessRunning(processName string) bool {
+	// pgrep is a standard utility on most Linux systems for this.
+	cmd := exec.Command("pgrep", "-x", processName)
+	// We don't care about the output, just the exit code.
+	// Exit code 0 means process was found.
+	if err := cmd.Run(); err == nil {
+		return true
+	}
+	return false
+}
+
+// DetectDesktopEnv tries to determine the current desktop environment.
+func DetectDesktopEnv() string {
+	// 1. Check for running processes (most reliable indicator of an active session)
+	// Give priority to dedicated wallpaper managers like dms (Dank Material Shell) if they are running.
+	if isProcessRunning("dms") && commandExists("quickshell") {
+		return "dms"
+	}
+	if isProcessRunning("niri") && commandExists("niri") {
+		return "niri"
+	}
+	if isProcessRunning("sway") && commandExists("swaybg") {
+		return "sway"
+	}
+	if isProcessRunning("gnome-shell") {
+		return "gnome"
+	}
+	if isProcessRunning("plasmashell") {
+		return "kde"
+	}
+
+	// 2. Check environment variables (less reliable, but good fallback)
 	desktop := strings.ToLower(os.Getenv("XDG_CURRENT_DESKTOP"))
 	if desktop == "test" {
 		return "test"
 	}
+	// Check for specific DEs first to avoid broad matches like "gnome" in "ubuntu:GNOME"
+	if strings.Contains(desktop, "niri") && commandExists("niri") {
+		return "niri"
+	}
+	if strings.Contains(desktop, "sway") && commandExists("swaybg") {
+		return "sway"
+	}
 	if strings.Contains(desktop, "gnome") {
 		return "gnome"
 	}
-	if strings.Contains(desktop, "kde") {
+	if strings.Contains(desktop, "kde") || strings.Contains(desktop, "plasma") {
 		return "kde"
 	}
-	// Check for sway/niri before falling back to generic X11 tools
-	if (strings.Contains(desktop, "sway") || strings.Contains(desktop, "niri")) && commandExists("swaybg") {
+
+	desktopSession := strings.ToLower(os.Getenv("DESKTOP_SESSION"))
+	if strings.Contains(desktopSession, "niri") && commandExists("niri") {
+		return "niri"
+	}
+	if strings.Contains(desktopSession, "sway") && commandExists("swaybg") {
 		return "sway"
 	}
-	// Other popular Wayland wallpaper tools
+	if strings.Contains(desktopSession, "gnome") {
+		return "gnome"
+	}
+	if strings.Contains(desktopSession, "plasma") || strings.Contains(desktopSession, "kde") {
+		return "kde"
+	}
+
+	// 3. Last resort: check for installed command-line tools as a hint
+	// These are generic and might not reflect the current session, so they have the lowest priority.
 	if commandExists("swww") {
 		return "swww"
 	}
 	if commandExists("awww") {
 		return "awww"
 	}
-
-	if commandExists("dms") {
+	if commandExists("quickshell") { // For dms
 		return "dms"
 	}
 	if commandExists("feh") {
@@ -143,9 +210,12 @@ func detectDesktopEnv() string {
 	if commandExists("nitrogen") {
 		return "nitrogen"
 	}
-	// Last resort check for swaybg
+	// swaybg and gsettings are checked here as a last resort if the processes aren't running
 	if commandExists("swaybg") {
 		return "sway"
+	}
+	if commandExists("gsettings") { // Good hint for GNOME-based, but low priority
+		return "gnome"
 	}
 	return "unknown"
 }
