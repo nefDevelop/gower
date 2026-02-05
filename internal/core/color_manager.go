@@ -1,6 +1,7 @@
 package core
 
 import (
+	"encoding/json"
 	"fmt"
 	"image"
 	_ "image/gif" // Support GIF decoding
@@ -10,8 +11,10 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -134,6 +137,13 @@ func (cm *ColorManager) GetImageDimensions(path string) (int, int, error) {
 
 // AnalyzeColor determines the dominant color of the image.
 func (cm *ColorManager) AnalyzeColor(path string) (string, error) {
+	// 1. Try Matugen if available
+	if _, err := exec.LookPath("matugen"); err == nil {
+		if color, err := cm.analyzeColorMatugen(path); err == nil {
+			return color, nil
+		}
+	}
+
 	file, err := os.Open(path)
 	if err != nil {
 		return "", err
@@ -167,8 +177,33 @@ func (cm *ColorManager) AnalyzeColor(path string) (string, error) {
 	g = (g / count) >> 8
 	b = (b / count) >> 8
 
-	// Find nearest color in palette
-	return FindNearestColor(int(r), int(g), int(b)), nil
+	// Return the actual average color as a hex string
+	return fmt.Sprintf("#%02X%02X%02X", r, g, b), nil
+}
+
+func (cm *ColorManager) analyzeColorMatugen(path string) (string, error) {
+	cmd := exec.Command("matugen", "image", path, "--json")
+	output, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+
+	// Attempt to parse JSON output from matugen
+	var result struct {
+		Source      string `json:"source"`
+		SourceColor string `json:"source_color"`
+	}
+
+	if err := json.Unmarshal(output, &result); err == nil {
+		if result.Source != "" {
+			return strings.ToUpper(result.Source), nil
+		}
+		if result.SourceColor != "" {
+			return strings.ToUpper(result.SourceColor), nil
+		}
+	}
+
+	return "", fmt.Errorf("could not extract color from matugen output")
 }
 
 // IsDark determines if a hex color is considered dark based on luminance.
@@ -256,9 +291,14 @@ func (cm *ColorManager) GenerateDynamicPalette(colors []string, k int) []string 
 		}
 	}
 
+	uniqueColors := make(map[string]bool)
 	var result []string
 	for _, c := range centroids {
-		result = append(result, fmt.Sprintf("#%02X%02X%02X", int(c.R), int(c.G), int(c.B)))
+		hex := fmt.Sprintf("#%02X%02X%02X", int(c.R), int(c.G), int(c.B))
+		if !uniqueColors[hex] {
+			uniqueColors[hex] = true
+			result = append(result, hex)
+		}
 	}
 	return result
 }

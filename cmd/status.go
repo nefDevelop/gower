@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"syscall"
 
+	"gower/internal/core"
+
 	"github.com/spf13/cobra"
 )
 
@@ -51,6 +53,7 @@ type SystemStatus struct {
 	Arch         string          `json:"arch"`
 	HomeDir      string          `json:"home_dir"`
 	ConfigDir    string          `json:"config_dir"`
+	DesktopEnv   string          `json:"desktop_env,omitempty"`
 	Dependencies map[string]bool `json:"dependencies"`
 }
 
@@ -102,9 +105,18 @@ func runStatus(cmd *cobra.Command, args []string) {
 		cmd.Println("--- System ---")
 		cmd.Printf("OS: %s\n", output.System.OS)
 		cmd.Printf("Arch: %s\n", output.System.Arch)
+		cmd.Printf("Desktop Environment: %s\n", output.System.DesktopEnv)
 		cmd.Printf("Home: %s\n", output.System.HomeDir)
 		cmd.Println("Dependencies:")
-		for dep, installed := range output.System.Dependencies {
+		// Sort keys for consistent output
+		depKeys := make([]string, 0, len(output.System.Dependencies))
+		for k := range output.System.Dependencies {
+			depKeys = append(depKeys, k)
+		}
+		sort.Strings(depKeys)
+
+		for _, dep := range depKeys {
+			installed := output.System.Dependencies[dep]
 			status := "Not Found"
 			if installed {
 				status = "Installed"
@@ -161,12 +173,17 @@ func getSystemStatus() *SystemStatus {
 	deps["nitrogen"] = checkCommand("nitrogen")
 	deps["gsettings"] = checkCommand("gsettings")
 	deps["dbus-send"] = checkCommand("dbus-send")
+	deps["swaybg"] = checkCommand("swaybg")
+	deps["quickshell"] = checkCommand("quickshell") // For Dank Material Shell (dms)
+	deps["niri"] = checkCommand("niri")
+	deps["matugen"] = checkCommand("matugen")
 
 	return &SystemStatus{
 		OS:           runtime.GOOS,
 		Arch:         runtime.GOARCH,
 		HomeDir:      home,
 		ConfigDir:    configDir,
+		DesktopEnv:   core.DetectDesktopEnv(),
 		Dependencies: deps,
 	}
 }

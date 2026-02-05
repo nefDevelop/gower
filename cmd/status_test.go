@@ -30,6 +30,9 @@ func TestStatusAll(t *testing.T) {
 	if !strings.Contains(output, "--- System ---") {
 		t.Errorf("Expected System section")
 	}
+	if !strings.Contains(output, "Desktop Environment:") {
+		t.Errorf("Expected 'Desktop Environment:' in output, got: %s", output)
+	}
 	if !strings.Contains(output, "--- Daemon ---") {
 		t.Errorf("Expected Daemon section")
 	}
@@ -55,6 +58,9 @@ func TestStatusJSON(t *testing.T) {
 
 	if !strings.Contains(output, "\"system\":") {
 		t.Errorf("Expected JSON output containing 'system'")
+	}
+	if !strings.Contains(output, "\"desktop_env\":") {
+		t.Errorf("Expected JSON output containing 'desktop_env'")
 	}
 	if !strings.Contains(output, "\"os\":") {
 		t.Errorf("Expected JSON output containing 'os'")
