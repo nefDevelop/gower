@@ -117,9 +117,9 @@ func runStatus(cmd *cobra.Command, args []string) {
 
 		for _, dep := range depKeys {
 			installed := output.System.Dependencies[dep]
-			status := "Not Found"
+			status := colorize("Not Found", colorRed)
 			if installed {
-				status = "Installed"
+				status = colorize("Installed", colorGreen)
 			}
 			cmd.Printf("  %s: %s\n", dep, status)
 		}
@@ -128,9 +128,9 @@ func runStatus(cmd *cobra.Command, args []string) {
 
 	if output.Daemon != nil {
 		cmd.Println("--- Daemon ---")
-		state := "Stopped"
+		state := colorize("Stopped", colorRed)
 		if output.Daemon.Running {
-			state = fmt.Sprintf("Running (PID: %d)", output.Daemon.PID)
+			state = colorize(fmt.Sprintf("Running (PID: %d)", output.Daemon.PID), colorGreen)
 		}
 		cmd.Printf("Status: %s\n", state)
 		cmd.Println()
@@ -138,9 +138,9 @@ func runStatus(cmd *cobra.Command, args []string) {
 
 	if output.Providers != nil {
 		cmd.Println("--- Providers ---")
-		cmd.Printf("Wallhaven: %v\n", output.Providers.Wallhaven)
-		cmd.Printf("Reddit: %v\n", output.Providers.Reddit)
-		cmd.Printf("Nasa: %v\n", output.Providers.Nasa)
+		cmd.Printf("Wallhaven: %v\n", colorizeBool(output.Providers.Wallhaven))
+		cmd.Printf("Reddit: %v\n", colorizeBool(output.Providers.Reddit))
+		cmd.Printf("Nasa: %v\n", colorizeBool(output.Providers.Nasa))
 		if len(output.Providers.Generic) > 0 {
 			cmd.Println("Manual Providers:")
 			keys := make([]string, 0, len(output.Providers.Generic))
@@ -149,7 +149,7 @@ func runStatus(cmd *cobra.Command, args []string) {
 			}
 			sort.Strings(keys)
 			for _, name := range keys {
-				cmd.Printf("  %s: %v\n", name, output.Providers.Generic[name])
+				cmd.Printf("  %s: %v\n", name, colorizeBool(output.Providers.Generic[name]))
 			}
 		}
 		cmd.Println()
@@ -162,6 +162,13 @@ func runStatus(cmd *cobra.Command, args []string) {
 		cmd.Printf("Total: %s\n", output.Storage.TotalSize)
 		cmd.Println()
 	}
+}
+
+func colorizeBool(b bool) string {
+	if b {
+		return colorize("true", colorGreen)
+	}
+	return colorize("false", colorRed)
 }
 
 func getSystemStatus() *SystemStatus {

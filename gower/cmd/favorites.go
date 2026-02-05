@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gower/internal/core"
 	"gower/internal/utils"
@@ -346,7 +347,17 @@ var favoritesAnalyzeCmd = &cobra.Command{
 		cmd.Println("Analyzing favorites...")
 		progress := func(msg string) {
 			if !config.Quiet {
-				cmd.Println(msg)
+				if strings.Contains(msg, "Error") {
+					cmd.Printf("  %s %s\n", colorize(symbolCross, colorRed), msg)
+				} else if strings.Contains(msg, "Downloading") {
+					cmd.Printf("  %s %s\n", colorize("⬇", colorCyan), msg)
+				} else if strings.Contains(msg, "Deleting") || strings.Contains(msg, "Removing") {
+					cmd.Printf("  %s %s\n", colorize("🗑", colorRed), msg)
+				} else if strings.Contains(msg, "Skipping") {
+					cmd.Printf("  %s %s\n", colorize("⏭", colorYellow), msg)
+				} else {
+					cmd.Printf("%s %s\n", colorize("::", colorBlue), msg)
+				}
 			}
 		}
 
@@ -354,7 +365,7 @@ var favoritesAnalyzeCmd = &cobra.Command{
 			cmd.Printf("Error analyzing favorites: %v\n", err)
 			return
 		}
-		cmd.Println("Analysis complete.")
+		cmd.Println(colorize(symbolCheck+" Analysis complete.", colorGreen))
 	},
 }
 

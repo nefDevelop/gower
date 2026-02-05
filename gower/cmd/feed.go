@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -25,6 +26,25 @@ var (
 	feedAll           bool
 	feedFromFavorites bool
 )
+
+const (
+	colorReset  = "\033[0m"
+	colorRed    = "\033[31m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+	colorBlue   = "\033[34m"
+	colorCyan   = "\033[36m"
+
+	symbolCheck = "✔"
+	symbolCross = "✘"
+)
+
+func colorize(text, color string) string {
+	if config.NoColor {
+		return text
+	}
+	return color + text + colorReset
+}
 
 var feedCmd = &cobra.Command{
 	Use:   "feed",
@@ -94,7 +114,7 @@ var feedPurgeCmd = &cobra.Command{
 			cmd.Printf("Error purging feed: %v\n", err)
 			return
 		}
-		cmd.Println("Feed purged successfully")
+		cmd.Println(colorize(symbolCheck+" Feed purged successfully", colorGreen))
 	},
 }
 
@@ -126,7 +146,17 @@ var feedAnalyzeCmd = &cobra.Command{
 		cmd.Println("Analyzing feed items...")
 		progress := func(msg string) {
 			if !config.Quiet {
-				cmd.Println(msg)
+				if strings.Contains(msg, "Error") {
+					cmd.Printf("  %s %s\n", colorize(symbolCross, colorRed), msg)
+				} else if strings.Contains(msg, "Downloading") {
+					cmd.Printf("  %s %s\n", colorize("⬇", colorCyan), msg)
+				} else if strings.Contains(msg, "Deleting") || strings.Contains(msg, "Removing") {
+					cmd.Printf("  %s %s\n", colorize("🗑", colorRed), msg)
+				} else if strings.Contains(msg, "Skipping") {
+					cmd.Printf("  %s %s\n", colorize("⏭", colorYellow), msg)
+				} else {
+					cmd.Printf("%s %s\n", colorize("::", colorBlue), msg)
+				}
 			}
 		}
 
@@ -134,7 +164,7 @@ var feedAnalyzeCmd = &cobra.Command{
 			cmd.Printf("Error analyzing feed: %v\n", err)
 			return
 		}
-		cmd.Println("Analysis complete.")
+		cmd.Println(colorize(symbolCheck+" Analysis complete.", colorGreen))
 	},
 }
 
@@ -200,7 +230,7 @@ var feedUpdateCmd = &cobra.Command{
 			// Verificar si ya tenemos suficientes wallpapers (Soft Limit)
 			stats, err := controller.GetFeedStats()
 			if err == nil && cfg.Limits.FeedSoftLimit > 0 && stats.Total >= cfg.Limits.FeedSoftLimit {
-				cmd.Printf("Feed saludable (%d items, límite suave: %d). Saltando búsqueda automática.\n", stats.Total, cfg.Limits.FeedSoftLimit)
+				cmd.Printf("%s Feed saludable (%d items, límite suave: %d). Saltando búsqueda automática.\n", colorize(symbolCheck, colorGreen), stats.Total, cfg.Limits.FeedSoftLimit)
 				return
 			}
 
@@ -210,13 +240,13 @@ var feedUpdateCmd = &cobra.Command{
 				elapsed := time.Since(lastUpdate)
 				limitPeriod := time.Duration(cfg.Limits.RateLimitPeriod) * time.Minute
 				if elapsed < limitPeriod && !feedForce {
-					cmd.Printf("Límite de frecuencia activo. Última búsqueda hace %v (Límite: %v). Saltando búsqueda en proveedores.\nUse --force para ignorar.\n", elapsed.Round(time.Minute), limitPeriod)
+					cmd.Printf("%s Límite de frecuencia activo. Última búsqueda hace %v (Límite: %v). Saltando búsqueda en proveedores.\nUse --force para ignorar.\n", colorize("!", colorYellow), elapsed.Round(time.Minute), limitPeriod)
 					return
 				}
 			}
 
 			// If nothing added, maybe caches are empty. Run explore all.
-			cmd.Println("No new wallpapers found in cache. Running 'explore --all'...")
+			cmd.Println(colorize("No new wallpapers found in cache. Running 'explore --all'...", colorYellow))
 			// We call the explore command logic directly or via subprocess
 			// For simplicity, we can just invoke the runExplore function if we exported it or use executeCommand logic
 			// But since runExplore is in same package:
@@ -229,7 +259,7 @@ var feedUpdateCmd = &cobra.Command{
 			count, repaired, _ = controller.SyncFeed()
 		}
 
-		cmd.Printf("Feed updated. Added %d new wallpapers, repaired %d.\n", count, repaired)
+		cmd.Printf("%s Feed updated. Added %d new wallpapers, repaired %d.\n", colorize(symbolCheck, colorGreen), count, repaired)
 	},
 }
 
