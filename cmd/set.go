@@ -23,6 +23,7 @@ var (
 	setMultiMonitor  string
 	setCommand       string
 	setNoDownload    bool
+	setTargetMonitor string
 )
 
 var setCmd = &cobra.Command{
@@ -49,6 +50,8 @@ func init() {
 		"custom wallpaper command")
 	setCmd.Flags().BoolVar(&setNoDownload, "no-download", false,
 		"don't download, use existing file")
+	setCmd.Flags().StringVar(&setTargetMonitor, "target-monitor", "",
+		"set wallpaper on a specific monitor (e.g., 'eDP-1')")
 
 	// Subcomandos
 	setCmd.AddCommand(setRandomCmd)
@@ -81,6 +84,8 @@ func runSet(cmd *cobra.Command, args []string) error {
 	controller := core.NewController(cfg)
 
 	var wallpaper *models.Wallpaper
+	var wallpapers []models.Wallpaper
+	var targetMonitors []core.Monitor
 
 	// 1. Determine target wallpaper
 	if len(args) > 0 {
@@ -121,7 +126,34 @@ func runSet(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	}
 
-	return applyWallpaper(cmd, controller, *wallpaper, cfg)
+	if wallpaper != nil {
+		wallpapers = []models.Wallpaper{*wallpaper}
+	}
+
+	if setTargetMonitor != "" {
+		changer := core.NewWallpaperChanger("", false) // RespectDarkMode doesn't matter for detection
+		allMonitors, err := changer.DetectMonitors()
+		if err != nil {
+			return fmt.Errorf("error detecting monitors for target-monitor: %w", err)
+		}
+
+		found := false
+		for _, mon := range allMonitors {
+			if mon.ID == setTargetMonitor || mon.Name == setTargetMonitor {
+				targetMonitors = []core.Monitor{mon}
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("monitor '%s' not found. Use 'gower status --monitors' to see available monitors.", setTargetMonitor)
+		}
+	} else {
+		// If no target monitor is specified, pass an empty slice, which applyWallpapers will interpret as "all"
+		targetMonitors = []core.Monitor{}
+	}
+
+	return applyWallpapers(cmd, controller, wallpapers, targetMonitors, cfg)
 }
 
 func runSetRandom(cmd *cobra.Command, args []string) error {
@@ -135,28 +167,60 @@ func runSetRandom(cmd *cobra.Command, args []string) error {
 	}
 	controller := core.NewController(cfg)
 
-	var wallpaper models.Wallpaper
+	var wallpapers []models.Wallpaper
+	var numWallpapers int = 1 // Default to 1 wallpaper
+	var monitors []core.Monitor
 
-	if setFromFavorites {
-		favorites, err := loadFavorites()
-		if err != nil {
-			return fmt.Errorf("error loading favorites: %w", err)
-		}
-		if len(favorites) == 0 {
-			return fmt.Errorf("no favorites found")
-		}
-		rand.Seed(time.Now().UnixNano())
-		fav := favorites[rand.Intn(len(favorites))]
-		wallpaper = fav.Wallpaper
-	} else {
-		var err error
-		wallpaper, err = controller.GetRandomFromFeed(setTheme)
-		if err != nil {
-			return fmt.Errorf("error getting random wallpaper: %w", err)
-		}
+	mmMode := setMultiMonitor
+	if mmMode == "" && cfg != nil {
+		mmMode = cfg.Behavior.MultiMonitor
 	}
 
-	return applyWallpaper(cmd, controller, wallpaper, cfg)
+	if mmMode == "distinct" {
+		respectDark := true
+		if cfg != nil {
+			respectDark = cfg.Behavior.RespectDarkMode
+		}
+		changer := core.NewWallpaperChanger("", respectDark)
+		detectedMonitors, err := changer.DetectMonitors()
+		if err != nil {
+			cmd.Printf("Warning: Could not detect monitors for distinct mode, falling back to single wallpaper: %v\n", err)
+			numWallpapers = 1
+			monitors = []core.Monitor{{ID: "default", Name: "default", Primary: true}} // Default single monitor
+		} else {
+			monitors = detectedMonitors
+			numWallpapers = len(monitors)
+			cmd.Printf("Detected %d monitors for distinct mode.\n", numWallpapers)
+		}
+	} else {
+		// For clone mode or single monitor, we still need a monitor slice for applyWallpapers
+		monitors = []core.Monitor{{ID: "default", Name: "default", Primary: true}}
+	}
+
+	for i := 0; i < numWallpapers; i++ {
+		var wallpaper models.Wallpaper
+		if setFromFavorites {
+			favorites, err := loadFavorites()
+			if err != nil {
+				return fmt.Errorf("error loading favorites: %w", err)
+			}
+			if len(favorites) == 0 {
+				return fmt.Errorf("no favorites found")
+			}
+			rand.Seed(time.Now().UnixNano() + int64(i)) // Seed with i to get different randoms
+			fav := favorites[rand.Intn(len(favorites))]
+			wallpaper = fav.Wallpaper
+		} else {
+			var err error
+			wallpaper, err = controller.GetRandomFromFeed(setTheme)
+			if err != nil {
+				return fmt.Errorf("error getting random wallpaper %d: %w", i+1, err)
+			}
+		}
+		wallpapers = append(wallpapers, wallpaper)
+	}
+
+	return applyWallpapers(cmd, controller, wallpapers, monitors, cfg)
 }
 
 func runSetUndo(cmd *cobra.Command, args []string) error {
@@ -187,22 +251,26 @@ func runSetUndo(cmd *cobra.Command, args []string) error {
 	// When we undo, we don't want to update the state again in the same way,
 	// so we call a slightly different application function or pass a flag.
 	// For simplicity, we'll just apply it without a state change.
-	return applyWallpaper(cmd, controller, *wp, cfg)
+	return applyWallpapers(cmd, controller, []models.Wallpaper{*wp}, []core.Monitor{}, cfg)
 }
 
-func applyWallpaper(cmd *cobra.Command, controller *core.Controller, wp models.Wallpaper, cfg *models.Config) error {
-	cmd.Printf("Setting wallpaper: %s (Source: %s)\n", wp.ID, wp.Source)
+func applyWallpapers(cmd *cobra.Command, controller *core.Controller, wallpapers []models.Wallpaper, monitors []core.Monitor, cfg *models.Config) error {
+	if len(wallpapers) == 0 {
+		return fmt.Errorf("no wallpapers provided to apply")
+	}
 
-	localPath := ""
-	if !setNoDownload {
-		var err error
-		localPath, err = controller.DownloadWallpaper(wp)
-		if err != nil {
-			return fmt.Errorf("error downloading wallpaper: %w", err)
+	localPaths := make([]string, len(wallpapers))
+	for i, wp := range wallpapers {
+		cmd.Printf("Preparing wallpaper: %s (Source: %s)\n", wp.ID, wp.Source)
+		if !setNoDownload {
+			var err error
+			localPaths[i], err = controller.DownloadWallpaper(wp)
+			if err != nil {
+				return fmt.Errorf("error downloading wallpaper %s: %w", wp.ID, err)
+			}
+		} else {
+			localPaths[i] = wp.URL
 		}
-	} else {
-		// If no download, we assume URL is a local path or we can't do much
-		localPath = wp.URL
 	}
 
 	// Determine command to run, prioritizing the flag, then config, then auto-detection.
@@ -212,8 +280,12 @@ func applyWallpaper(cmd *cobra.Command, controller *core.Controller, wp models.W
 	}
 
 	if customCmdTpl != "" {
-		// Use custom command. Running through a shell to handle paths with spaces correctly.
-		finalCmd := strings.Replace(customCmdTpl, "%s", localPath, -1)
+		// Use custom command. This path currently only supports a single wallpaper.
+		// For multi-monitor with custom command, the user would need to handle it themselves.
+		if len(localPaths) > 1 {
+			cmd.Printf("Warning: Custom command is used with multiple wallpapers. Only the first wallpaper will be passed to the command.\n")
+		}
+		finalCmd := strings.Replace(customCmdTpl, "%s", localPaths[0], -1)
 		if !config.Quiet {
 			cmd.Printf("Running custom command: %s\n", finalCmd)
 		}
@@ -234,26 +306,29 @@ func applyWallpaper(cmd *cobra.Command, controller *core.Controller, wp models.W
 			mmMode = cfg.Behavior.MultiMonitor
 		}
 
-		if err := changer.SetWallpaper(localPath, mmMode); err != nil {
-			return fmt.Errorf("error setting wallpaper: %w", err)
+		// Call the new SetWallpapers (plural) function
+		if err := changer.SetWallpapers(localPaths, monitors, mmMode); err != nil {
+			return fmt.Errorf("error setting wallpaper(s): %w", err)
 		}
 	}
-	// Update state
+
+	// Update state - for multi-monitor, we'll just store the ID of the first wallpaper for simplicity
+	// or the last one if we want to track the "main" one. Let's store the first one.
 	state, err := loadState()
 	if err != nil {
-		// Log the error but don't fail the whole operation
 		cmd.Printf("Warning: could not load state to update it: %v\n", err)
 	} else {
-		// Don't update state if we are just setting the same wallpaper again
-		if state.CurrentWallpaperID != wp.ID {
+		// Only update state if the current wallpaper(s) are different from the last recorded.
+		// For simplicity, we compare the ID of the first wallpaper.
+		if state.CurrentWallpaperID != wallpapers[0].ID {
 			state.PreviousWallpaperID = state.CurrentWallpaperID
-			state.CurrentWallpaperID = wp.ID
+			state.CurrentWallpaperID = wallpapers[0].ID // Store the ID of the first wallpaper
 			if err := state.saveState(); err != nil {
 				cmd.Printf("Warning: could not save state: %v\n", err)
 			}
 		}
 	}
 
-	cmd.Println("Wallpaper set successfully.")
+	cmd.Println("Wallpaper(s) set successfully.")
 	return nil
 }
