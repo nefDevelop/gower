@@ -23,6 +23,7 @@ var (
 	statusStorage   bool
 	statusDaemon    bool
 	statusSystem    bool
+	statusMonitors  bool
 )
 
 var statusCmd = &cobra.Command{
@@ -39,6 +40,7 @@ func init() {
 	statusCmd.Flags().BoolVar(&statusStorage, "storage", false, "Show storage usage")
 	statusCmd.Flags().BoolVar(&statusDaemon, "daemon", false, "Show daemon status")
 	statusCmd.Flags().BoolVar(&statusSystem, "system", false, "Show system information")
+	statusCmd.Flags().BoolVar(&statusMonitors, "monitors", false, "Show monitor information")
 }
 
 type StatusOutput struct {
@@ -46,6 +48,7 @@ type StatusOutput struct {
 	Daemon    *DaemonStatus    `json:"daemon,omitempty"`
 	Providers *ProvidersStatus `json:"providers,omitempty"`
 	Storage   *StorageStatus   `json:"storage,omitempty"`
+	Monitors  []core.Monitor   `json:"monitors,omitempty"`
 }
 
 type SystemStatus struct {
@@ -77,7 +80,7 @@ type StorageStatus struct {
 
 func runStatus(cmd *cobra.Command, args []string) {
 	// If no specific flag is set, show all
-	showAll := !statusProviders && !statusStorage && !statusDaemon && !statusSystem
+	showAll := !statusProviders && !statusStorage && !statusDaemon && !statusSystem && !statusMonitors
 
 	output := StatusOutput{}
 
@@ -92,6 +95,16 @@ func runStatus(cmd *cobra.Command, args []string) {
 	}
 	if showAll || statusStorage {
 		output.Storage = getStorageStatus()
+	}
+	if showAll || statusMonitors {
+		// Need a WallpaperChanger instance to detect monitors
+		changer := core.NewWallpaperChanger("", false) // RespectDarkMode doesn't matter for detection
+		monitors, err := changer.DetectMonitors()
+		if err != nil {
+			cmd.Printf("Error detecting monitors: %v\n", err)
+		} else {
+			output.Monitors = monitors
+		}
 	}
 
 	if statusJSON {
@@ -160,6 +173,20 @@ func runStatus(cmd *cobra.Command, args []string) {
 		cmd.Printf("Cache: %s\n", output.Storage.CacheSize)
 		cmd.Printf("Data: %s\n", output.Storage.DataSize)
 		cmd.Printf("Total: %s\n", output.Storage.TotalSize)
+		cmd.Println()
+	}
+
+	if output.Monitors != nil && len(output.Monitors) > 0 {
+		cmd.Println("--- Monitors ---")
+		for i, mon := range output.Monitors {
+			primary := ""
+			if mon.Primary {
+				primary = " (Primary)"
+			}
+			cmd.Printf("  Monitor %d: %s%s\n", i+1, mon.Name, primary)
+			cmd.Printf("    Resolution: %dx%d\n", mon.Width, mon.Height)
+			cmd.Printf("    Position: %d,%d\n", mon.X, mon.Y)
+		}
 		cmd.Println()
 	}
 }
