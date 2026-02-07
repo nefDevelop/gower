@@ -25,6 +25,12 @@ func TestStatusMonitors(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
+	// Ensure cobra writes to our pipe
+	originalOut := rootCmd.OutOrStdout()
+	originalErr := rootCmd.ErrOrStderr()
+	rootCmd.SetOut(w)
+	rootCmd.SetErr(w)
+
 	// Create a mock changer
 	mockChanger := &MockWallpaperChanger{
 		MockMonitors: []core.Monitor{
@@ -37,7 +43,11 @@ func TestStatusMonitors(t *testing.T) {
 	// Temporarily replace core.NewWallpaperChanger to return our mock
 	originalNewWallpaperChanger := core.NewWallpaperChanger
 	core.NewWallpaperChanger = func(desktopEnv string, respectDarkMode ...bool) *core.WallpaperChanger {
-		return &mockChanger.WallpaperChanger
+		wc := &core.WallpaperChanger{Env: desktopEnv}
+		wc.DetectMonitorsFunc = func() ([]core.Monitor, error) {
+			return mockChanger.MockMonitors, mockChanger.MockError
+		}
+		return wc
 	}
 	defer func() { core.NewWallpaperChanger = originalNewWallpaperChanger }()
 
@@ -57,6 +67,8 @@ func TestStatusMonitors(t *testing.T) {
 	// Read all output from the read end
 	out, _ := ioutil.ReadAll(r)
 	os.Stdout = oldStdout // Restore original Stdout
+	rootCmd.SetOut(originalOut)
+	rootCmd.SetErr(originalErr)
 
 	output := string(out)
 
@@ -80,6 +92,12 @@ func TestStatusMonitorsJSON(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
+	// Ensure cobra writes to our pipe
+	originalOut := rootCmd.OutOrStdout()
+	originalErr := rootCmd.ErrOrStderr()
+	rootCmd.SetOut(w)
+	rootCmd.SetErr(w)
+
 	// Create a mock changer
 	mockChanger := &MockWallpaperChanger{
 		MockMonitors: []core.Monitor{
@@ -91,7 +109,11 @@ func TestStatusMonitorsJSON(t *testing.T) {
 	// Temporarily replace core.NewWallpaperChanger to return our mock
 	originalNewWallpaperChanger := core.NewWallpaperChanger
 	core.NewWallpaperChanger = func(desktopEnv string, respectDarkMode ...bool) *core.WallpaperChanger {
-		return &mockChanger.WallpaperChanger
+		wc := &core.WallpaperChanger{Env: desktopEnv}
+		wc.DetectMonitorsFunc = func() ([]core.Monitor, error) {
+			return mockChanger.MockMonitors, mockChanger.MockError
+		}
+		return wc
 	}
 	defer func() { core.NewWallpaperChanger = originalNewWallpaperChanger }()
 
@@ -111,6 +133,8 @@ func TestStatusMonitorsJSON(t *testing.T) {
 	// Read all output from the read end
 	out, _ := ioutil.ReadAll(r)
 	os.Stdout = oldStdout // Restore original Stdout
+	rootCmd.SetOut(originalOut)
+	rootCmd.SetErr(originalErr)
 
 	output := string(out)
 

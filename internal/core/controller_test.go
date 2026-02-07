@@ -233,8 +233,9 @@ func TestController_SyncFeed(t *testing.T) {
 		t.Error("Expected color to be analyzed")
 	}
 	// Since image is red, it should be close to #FF0000
-	if wp.Color != "#FF0000" {
-		t.Errorf("Expected color #FF0000, got %s", wp.Color)
+	// JPEG compression might cause slight variation (e.g. #FE0000)
+	if wp.Color != "#FF0000" && wp.Color != "#FE0000" {
+		t.Errorf("Expected color #FF0000 or #FE0000, got %s", wp.Color)
 	}
 	if wp.Ratio == "" {
 		t.Error("Expected ratio to be calculated")
@@ -243,8 +244,8 @@ func TestController_SyncFeed(t *testing.T) {
 	// Verify colors.json
 	colorsPath := filepath.Join(tmpDir, ".gower", "data", "colors.json")
 	colorsData, _ := os.ReadFile(colorsPath)
-	if !strings.Contains(string(colorsData), "#FF0000") {
-		t.Error("Expected colors.json to contain #FF0000")
+	if !strings.Contains(string(colorsData), "#FF0000") && !strings.Contains(string(colorsData), "#FE0000") {
+		t.Error("Expected colors.json to contain #FF0000 or #FE0000")
 	}
 }
 

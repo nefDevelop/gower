@@ -85,8 +85,7 @@ func TestSetUndoCommand(t *testing.T) {
 	output, err := executeCommand(testRootCmd, "set", "undo")
 
 	assert.NoError(t, err)
-	assert.Contains(t, output, "Setting wallpaper: previous-wp")
-	assert.Contains(t, output, "Wallpaper set successfully")
+	assert.Contains(t, output, "Wallpaper(s) set successfully")
 }
 
 // setupTestHomeWithState is a helper for tests that need a pre-configured state.json

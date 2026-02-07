@@ -10,8 +10,10 @@ import (
 )
 
 type WallpaperChanger struct {
-	Env             string
-	RespectDarkMode bool
+	Env                string
+	RespectDarkMode    bool
+	DetectMonitorsFunc func() ([]Monitor, error)
+	SetWallpapersFunc  func([]string, []Monitor, string) error
 }
 
 var NewWallpaperChanger = func(desktopEnv string, respectDarkMode ...bool) *WallpaperChanger {
@@ -36,6 +38,10 @@ var NewWallpaperChanger = func(desktopEnv string, respectDarkMode ...bool) *Wall
 func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, multiMonitor string) error {
 	utils.Log.Info("Setting wallpapers for %d monitors (Env: %s, Mode: %s)", len(monitors), wc.Env, multiMonitor)
 
+	if wc.SetWallpapersFunc != nil {
+		return wc.SetWallpapersFunc(paths, monitors, multiMonitor)
+	}
+
 	if (len(monitors) == 1 && multiMonitor != "distinct") || multiMonitor == "clone" || len(monitors) == 0 {
 		path := paths[0]
 		var targetMonitors []Monitor
@@ -59,7 +65,7 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 					var allDesktops = desktops();
 					for (i=0;i<allDesktops.length;i++) {
 						d = allDesktops[i];
-						if (d.name == "%s" || d.id == %d) { // Target specific desktop
+						if (d.name == "%s" || d.id == "%s") { // Target specific desktop
 							d.wallpaperPlugin = "org.kde.image";
 							d.currentConfigGroup = Array("Wallpaper", "org.kde.image", "General");
 							d.writeConfig("Image", "file://%s");
@@ -279,7 +285,7 @@ func commandExists(cmd string) bool {
 }
 
 // isProcessRunning checks if a process with the exact given name is running.
-func isProcessRunning(processName string) bool {
+var isProcessRunning = func(processName string) bool {
 	// pgrep is a standard utility on most Linux systems for this.
 	cmd := exec.Command("pgrep", "-x", processName)
 	// We don't care about the output, just the exit code.
@@ -384,6 +390,10 @@ type Monitor struct {
 // DetectMonitors detects and returns a list of connected monitors.
 func (wc *WallpaperChanger) DetectMonitors() ([]Monitor, error) {
 	utils.Log.Info("Detecting monitors for environment: %s", wc.Env)
+	if wc.DetectMonitorsFunc != nil {
+		return wc.DetectMonitorsFunc()
+	}
+
 	var monitors []Monitor
 
 	switch wc.Env {

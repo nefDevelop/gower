@@ -25,6 +25,11 @@ func TestNewWallpaperChanger_Manual(t *testing.T) {
 }
 
 func TestDetectDesktopEnv(t *testing.T) {
+	// Mock isProcessRunning to always return false to test env vars
+	originalIsProcessRunning := isProcessRunning
+	defer func() { isProcessRunning = originalIsProcessRunning }()
+	isProcessRunning = func(name string) bool { return false }
+
 	// Save original env var
 	originalEnv := os.Getenv("XDG_CURRENT_DESKTOP")
 	defer os.Setenv("XDG_CURRENT_DESKTOP", originalEnv)
