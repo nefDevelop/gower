@@ -13,6 +13,7 @@ func resetStatusFlags() {
 	statusStorage = false
 	statusDaemon = false
 	statusSystem = false
+	statusMonitors = false
 }
 
 func TestStatusAll(t *testing.T) {
