@@ -26,7 +26,7 @@ type Controller struct {
 }
 
 // NewController creates a new Controller.
-func NewController(config *models.Config) *Controller {
+var NewController = func(config *models.Config) *Controller {
 	providerManager := NewProviderManager()
 
 	// Register native providers

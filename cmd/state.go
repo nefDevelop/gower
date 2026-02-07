@@ -26,7 +26,7 @@ var stateFilePath = func() (string, error) {
 
 // loadState reads the application state from the state file.
 // If the file doesn't exist, it returns a new empty State.
-func loadState() (*State, error) {
+var loadState = func() (*State, error) {
 	path, err := stateFilePath()
 	if err != nil {
 		return nil, err
@@ -59,7 +59,7 @@ func loadState() (*State, error) {
 }
 
 // saveState writes the application state to the state file.
-func (s *State) saveState() error {
+var saveState = func(s *State) error {
 	path, err := stateFilePath()
 	if err != nil {
 		return err

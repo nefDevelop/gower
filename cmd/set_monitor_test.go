@@ -1,16 +1,12 @@
 package cmd
 
 import (
-	"bytes"
-	"fmt"
 	"gower/internal/core"
 	"gower/pkg/models"
 	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
-
-	"github.com/spf13/cobra"
 )
 
 // Mock Controller for testing purposes
@@ -22,7 +18,7 @@ type MockController struct {
 	MockDownloadError    error
 	MockRandomWallpaper  models.Wallpaper
 	MockRandomError      error
-	MockFavorites        []models.Favorite
+	MockFavorites        []FavoriteWallpaper
 	MockFavoritesError   error
 	MockWallpaperChanger *MockWallpaperChanger // Embed our mock changer
 }
@@ -40,27 +36,27 @@ func (m *MockController) GetRandomFromFeed(theme string) (models.Wallpaper, erro
 }
 
 // Mock WallpaperChanger for testing purposes (same as in status_monitor_test.go)
-type MockWallpaperChanger struct {
+type MockSetWallpaperChanger struct {
 	core.WallpaperChanger
-	MockMonitors      []core.Monitor
-	MockDetectError   error
+	MockMonitors       []core.Monitor
+	MockDetectError    error
 	SetWallpapersCalls []struct {
-		Paths   []string
+		Paths    []string
 		Monitors []core.Monitor
-		Mode    string
+		Mode     string
 	}
 	MockSetWallpapersError error
 }
 
-func (m *MockWallpaperChanger) DetectMonitors() ([]core.Monitor, error) {
+func (m *MockSetWallpaperChanger) DetectMonitors() ([]core.Monitor, error) {
 	return m.MockMonitors, m.MockDetectError
 }
 
-func (m *MockWallpaperChanger) SetWallpapers(paths []string, monitors []core.Monitor, multiMonitor string) error {
+func (m *MockSetWallpaperChanger) SetWallpapers(paths []string, monitors []core.Monitor, multiMonitor string) error {
 	m.SetWallpapersCalls = append(m.SetWallpapersCalls, struct {
-		Paths   []string
+		Paths    []string
 		Monitors []core.Monitor
-		Mode    string
+		Mode     string
 	}{Paths: paths, Monitors: monitors, Mode: multiMonitor})
 	return m.MockSetWallpapersError
 }
@@ -69,8 +65,8 @@ func (m *MockWallpaperChanger) SetWallpapers(paths []string, monitors []core.Mon
 var originalNewController = core.NewController
 var originalNewWallpaperChanger = core.NewWallpaperChanger
 
-func setupMocks(t *testing.T) (*MockController, *MockWallpaperChanger) {
-	mockChanger := &MockWallpaperChanger{}
+func setupMocks(t *testing.T) (*MockController, *MockSetWallpaperChanger) {
+	mockChanger := &MockSetWallpaperChanger{}
 	mockController := &MockController{
 		MockWallpaperChanger: mockChanger,
 	}
@@ -96,14 +92,14 @@ func setupMocks(t *testing.T) (*MockController, *MockWallpaperChanger) {
 		return &State{}, nil
 	}
 	originalSaveState := (*State).saveState
-	(*State).saveState = func(s *State) error { return nil }
+	saveState = func(s *State) error { return nil }
 
 	t.Cleanup(func() {
 		core.NewController = originalNewController
 		core.NewWallpaperChanger = originalNewWallpaperChanger
 		loadConfig = originalLoadConfig
 		loadState = originalLoadState
-		(*State).saveState = originalSaveState
+		saveState = originalSaveState
 		// Reset flags
 		setID = ""
 		setURL = ""

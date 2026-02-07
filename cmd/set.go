@@ -323,7 +323,7 @@ func applyWallpapers(cmd *cobra.Command, controller *core.Controller, wallpapers
 		if state.CurrentWallpaperID != wallpapers[0].ID {
 			state.PreviousWallpaperID = state.CurrentWallpaperID
 			state.CurrentWallpaperID = wallpapers[0].ID // Store the ID of the first wallpaper
-			if err := state.saveState(); err != nil {
+			if err := saveState(state); err != nil {
 				cmd.Printf("Warning: could not save state: %v\n", err)
 			}
 		}

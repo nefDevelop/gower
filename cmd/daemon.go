@@ -165,7 +165,7 @@ func changeWallpaper() {
 
 	path, _ := controller.GetWallpaperLocalPath(wp)
 	changer := core.NewWallpaperChanger("", cfg.Behavior.RespectDarkMode)
-	if err := changer.SetWallpaper(path, cfg.Behavior.MultiMonitor); err != nil {
+	if err := changer.SetWallpapers([]string{path}, []core.Monitor{}, cfg.Behavior.MultiMonitor); err != nil {
 		utils.Log.Error("Daemon failed to set wallpaper %s: %v", wp.ID, err)
 	} else {
 		utils.Log.Info("Daemon set wallpaper: %s", wp.ID)
