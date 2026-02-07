@@ -2,6 +2,7 @@
 package core
 
 import (
+	"encoding/json"
 	"fmt"
 	"gower/internal/utils"
 	"os"
@@ -20,6 +21,7 @@ var NewWallpaperChanger = func(desktopEnv string, respectDarkMode ...bool) *Wall
 	env := strings.ToLower(desktopEnv)
 	if env == "" {
 		env = DetectDesktopEnv()
+		utils.Log.Debug("Auto-detected desktop environment: %s", env)
 	} else {
 		// Normalizar entrada manual
 		if strings.Contains(env, "kde") {
@@ -37,6 +39,8 @@ var NewWallpaperChanger = func(desktopEnv string, respectDarkMode ...bool) *Wall
 
 func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, multiMonitor string) error {
 	utils.Log.Info("Setting wallpapers for %d monitors (Env: %s, Mode: %s)", len(monitors), wc.Env, multiMonitor)
+	utils.Log.Debug("Monitors detected: %+v", monitors)
+	utils.Log.Debug("Wallpapers provided: %v", paths)
 
 	if wc.SetWallpapersFunc != nil {
 		return wc.SetWallpapersFunc(paths, monitors, multiMonitor)
@@ -172,14 +176,16 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 		}
 		return nil
 	} else if multiMonitor == "distinct" {
-		if len(paths) < len(monitors) {
-			return fmt.Errorf("not enough wallpapers (%d) for %d distinct monitors", len(paths), len(monitors))
+		if len(paths) == 0 {
+			return fmt.Errorf("no wallpapers provided for distinct mode")
 		}
+		// If fewer wallpapers than monitors, we cycle through them.
 
 		var allErrs []error
 		for i, monitor := range monitors {
 			path := paths[i%len(paths)] // Cycle through wallpapers if fewer than monitors
 			utils.Log.Info("Setting wallpaper for monitor %s: %s", monitor.Name, path)
+			utils.Log.Debug("Distinct Mode: Assigning '%s' to monitor '%s' (ID: %s)", path, monitor.Name, monitor.ID)
 
 			var cmd *exec.Cmd
 			switch wc.Env {
@@ -262,13 +268,22 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 				cmd = exec.Command("nitrogen", "--set-auto", "--save", path)
 
 			case "dms":
+				utils.Log.Debug("DMS: Executing IPC call for monitor %s...", monitor.Name)
 				ipcCmd := exec.Command("dms", "ipc", "call", "wallpaper", "setFor", monitor.Name, path)
 				err := ipcCmd.Run()
 				if err == nil {
+					utils.Log.Debug("DMS: IPC call successful for monitor %s", monitor.Name)
 					continue // Successfully set for this monitor
 				}
-				utils.Log.Info("Warning: DMS IPC call failed for monitor %s (error: %v). Falling back to quickshell.", monitor.Name, err)
-				cmd = exec.Command("quickshell", "-w", path)
+				utils.Log.Error("Warning: DMS IPC call failed for monitor %s (error: %v).", monitor.Name, err)
+				// Do not fallback to global quickshell -w in distinct mode as it overwrites other monitors
+				if len(monitors) == 1 {
+					utils.Log.Debug("DMS: Falling back to quickshell -w for single monitor")
+					cmd = exec.Command("quickshell", "-w", path)
+				} else {
+					utils.Log.Debug("DMS: Skipping fallback in multi-monitor distinct mode to avoid overwrite")
+					continue
+				}
 
 			case "test":
 				utils.Log.Info("Test environment: Would set wallpaper %s for monitor %s", path, monitor.Name)
@@ -282,6 +297,7 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 			}
 
 			if cmd != nil {
+				utils.Log.Debug("Executing command: %s", cmd.String())
 				if err := cmd.Run(); err != nil {
 					allErrs = append(allErrs, fmt.Errorf("failed to set wallpaper for monitor %s: %w", monitor.Name, err))
 					utils.Log.Error("Failed to set wallpaper for monitor %s: %v", monitor.Name, err)
@@ -321,7 +337,7 @@ func DetectDesktopEnv() string {
 	if isProcessRunning("swww-daemon") && commandExists("swww") {
 		return "swww"
 	}
-	if isProcessRunning("dms") && (commandExists("dms") || commandExists("quickshell")) {
+	if (isProcessRunning("dms") || isProcessRunning("quickshell")) && (commandExists("dms") || commandExists("quickshell")) {
 		return "dms"
 	}
 	if (isProcessRunning("niri") || isProcessRunning("niri-session")) && commandExists("niri") {
@@ -354,6 +370,14 @@ func DetectDesktopEnv() string {
 	}
 	if strings.Contains(desktop, "kde") || strings.Contains(desktop, "plasma") {
 		return "kde"
+	}
+	if strings.Contains(desktop, "hyprland") {
+		if commandExists("dms") {
+			return "dms"
+		}
+		if commandExists("swww") {
+			return "swww"
+		}
 	}
 
 	desktopSession := strings.ToLower(os.Getenv("DESKTOP_SESSION"))
@@ -417,6 +441,73 @@ func (wc *WallpaperChanger) DetectMonitors() ([]Monitor, error) {
 
 	var monitors []Monitor
 
+	// 1. Try Hyprland (hyprctl) - Common for DMS users
+	if commandExists("hyprctl") {
+		out, err := exec.Command("hyprctl", "monitors", "-j").Output()
+		if err == nil {
+			var hyprMonitors []struct {
+				ID      int    `json:"id"`
+				Name    string `json:"name"`
+				Width   int    `json:"width"`
+				Height  int    `json:"height"`
+				X       int    `json:"x"`
+				Y       int    `json:"y"`
+				Focused bool   `json:"focused"`
+			}
+			if err := json.Unmarshal(out, &hyprMonitors); err == nil && len(hyprMonitors) > 0 {
+				for _, m := range hyprMonitors {
+					monitors = append(monitors, Monitor{
+						ID:      m.Name,
+						Name:    m.Name,
+						Width:   m.Width,
+						Height:  m.Height,
+						X:       m.X,
+						Y:       m.Y,
+						Primary: m.Focused,
+					})
+				}
+				utils.Log.Debug("Monitors detected via hyprctl: %d found", len(monitors))
+				return monitors, nil
+			}
+		}
+	}
+
+	// 2. Try Sway (swaymsg)
+	if commandExists("swaymsg") {
+		out, err := exec.Command("swaymsg", "-t", "get_outputs").Output()
+		if err == nil {
+			var swayMonitors []struct {
+				Name string `json:"name"`
+				Rect struct {
+					Width  int `json:"width"`
+					Height int `json:"height"`
+					X      int `json:"x"`
+					Y      int `json:"y"`
+				} `json:"rect"`
+				Focused bool `json:"focused"`
+				Active  bool `json:"active"`
+			}
+			if err := json.Unmarshal(out, &swayMonitors); err == nil && len(swayMonitors) > 0 {
+				for _, m := range swayMonitors {
+					if !m.Active {
+						continue
+					}
+					monitors = append(monitors, Monitor{
+						ID:      m.Name,
+						Name:    m.Name,
+						Width:   m.Rect.Width,
+						Height:  m.Rect.Height,
+						X:       m.Rect.X,
+						Y:       m.Rect.Y,
+						Primary: m.Focused,
+					})
+				}
+				utils.Log.Debug("Monitors detected via swaymsg: %d found", len(monitors))
+				return monitors, nil
+			}
+		}
+	}
+
 	switch wc.Env {
 	case "gnome", "kde", "feh", "nitrogen", "swww", "awww", "dms", "sway", "niri", "unknown": // X11-based or compatible
 		if commandExists("xrandr") {
@@ -475,6 +566,7 @@ func (wc *WallpaperChanger) DetectMonitors() ([]Monitor, error) {
 				}
 			}
 
+			utils.Log.Debug("Monitors detected via xrandr: %d found (before filtering)", len(monitors))
 			monitors = filterXWaylandMonitors(monitors)
 		} else {
 			utils.Log.Info("Warning: xrandr not found. Cannot detect monitors accurately for X11 environment.")
@@ -508,12 +600,48 @@ func filterXWaylandMonitors(monitors []Monitor) []Monitor {
 }
 
 func IsSystemInDarkMode() bool {
-	// Detección para GNOME
-	out, err := exec.Command("gsettings", "get", "org.gnome.desktop.interface", "color-scheme").Output()
-	if err == nil {
-		s := strings.TrimSpace(string(out))
-		s = strings.Trim(s, "'")
-		return s == "prefer-dark"
+	// 1. XDG Desktop Portal (Estándar moderno para Wayland/Flatpak/Sandboxed)
+	// Devuelve uint32 1 para oscuro, 0 para sin preferencia, 2 para claro.
+	if commandExists("dbus-send") {
+		out, err := exec.Command("dbus-send", "--session", "--print-reply=literal", "--dest=org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop", "org.freedesktop.portal.Settings.Read", "string:org.freedesktop.appearance", "string:color-scheme").Output()
+		if err == nil {
+			if strings.Contains(string(out), "uint32 1") {
+				return true
+			}
+		}
 	}
+
+	// 2. GNOME / GTK (gsettings)
+	if commandExists("gsettings") {
+		out, err := exec.Command("gsettings", "get", "org.gnome.desktop.interface", "color-scheme").Output()
+		if err == nil {
+			s := strings.TrimSpace(string(out))
+			s = strings.Trim(s, "'")
+			if s == "prefer-dark" {
+				return true
+			}
+		}
+	}
+
+	// 3. KDE Plasma (kreadconfig5)
+	if commandExists("kreadconfig5") {
+		out, err := exec.Command("kreadconfig5", "--file", "kdeglobals", "--group", "General", "--key", "ColorScheme").Output()
+		if err == nil {
+			s := strings.ToLower(strings.TrimSpace(string(out)))
+			// Los esquemas oscuros suelen tener "Dark" en el nombre (ej. BreezeDark)
+			if strings.Contains(s, "dark") {
+				return true
+			}
+		}
+	}
+
+	// 4. Variables de entorno (Fallback)
+	if strings.Contains(strings.ToLower(os.Getenv("GTK_THEME")), "dark") {
+		return true
+	}
+	if strings.ToLower(os.Getenv("QT_STYLE_OVERRIDE")) == "breeze-dark" {
+		return true
+	}
+
 	return false
 }

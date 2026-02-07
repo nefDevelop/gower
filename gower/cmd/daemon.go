@@ -12,6 +12,7 @@ import (
 
 	"gower/internal/core"
 	"gower/internal/utils"
+	"gower/pkg/models"
 
 	"github.com/spf13/cobra"
 )
@@ -155,20 +156,80 @@ func changeWallpaper() {
 		}
 	}
 
-	wallpapers, err := controller.GetCachedWallpapers(daemonFromFavorites, targetTheme)
-	if err != nil || len(wallpapers) == 0 {
-		utils.Log.Debug("Daemon: No cached wallpapers found (err: %v)", err)
+	// 1. Prepare Monitor Configuration
+	changer := core.NewWallpaperChanger("", cfg.Behavior.RespectDarkMode)
+	if config.Debug {
+		utils.Log.Info("Daemon Debug: Desktop Environment detected: %s", changer.Env)
+	}
+	var monitors []core.Monitor
+	mmMode := cfg.Behavior.MultiMonitor
+
+	if mmMode == "distinct" {
+		var err error
+		monitors, err = changer.DetectMonitors()
+		if err != nil {
+			utils.Log.Error("Daemon: Failed to detect monitors for distinct mode: %v. Falling back to clone.", err)
+			mmMode = "clone"
+		} else {
+			utils.Log.Debug("Daemon: Detected %d monitors for distinct mode", len(monitors))
+		}
+	}
+
+	needed := 1
+	if mmMode == "distinct" && len(monitors) > 0 {
+		needed = len(monitors)
+	}
+
+	// 2. Get Cached Wallpapers
+	cached, err := controller.GetCachedWallpapers(daemonFromFavorites, targetTheme)
+	if err != nil || len(cached) == 0 {
+		utils.Log.Info("Daemon: No cached wallpapers found. Run 'gower set random' or 'gower download' first.")
 		return
 	}
 
-	wp := wallpapers[rand.Intn(len(wallpapers))]
+	// 3. Select Random Wallpapers
+	rand.Shuffle(len(cached), func(i, j int) { cached[i], cached[j] = cached[j], cached[i] })
 
-	path, _ := controller.GetWallpaperLocalPath(wp)
-	changer := core.NewWallpaperChanger("", cfg.Behavior.RespectDarkMode)
-	if err := changer.SetWallpapers([]string{path}, []core.Monitor{}, cfg.Behavior.MultiMonitor); err != nil {
-		utils.Log.Error("Daemon failed to set wallpaper %s: %v", wp.ID, err)
+	var selectedPaths []string
+	var selectedWallpapers []models.Wallpaper
+	count := needed
+	if len(cached) < count {
+		count = len(cached)
+	}
+	for i := 0; i < count; i++ {
+		path, _ := controller.GetWallpaperLocalPath(cached[i])
+		selectedPaths = append(selectedPaths, path)
+		selectedWallpapers = append(selectedWallpapers, cached[i])
+		if config.Debug {
+			lum := controller.ColorManager.GetLuminance(cached[i].Color)
+			utils.Log.Info("Daemon Debug: Selected %s | Color: %s | Luminance: %.2f", cached[i].ID, cached[i].Color, lum)
+		}
+	}
+
+	// 4. Apply Wallpapers
+	if err := changer.SetWallpapers(selectedPaths, monitors, mmMode); err != nil {
+		utils.Log.Error("Daemon failed to set wallpapers: %v", err)
 	} else {
-		utils.Log.Info("Daemon set wallpaper: %s", wp.ID)
+		utils.Log.Info("Daemon set %d wallpaper(s)", len(selectedPaths))
+
+		// Update state so 'gower status' knows what's set
+		if len(selectedWallpapers) > 0 {
+			if state, err := loadState(); err == nil {
+				var ids []string
+				for _, wp := range selectedWallpapers {
+					ids = append(ids, wp.ID)
+				}
+				state.CurrentWallpapers = ids
+
+				if state.CurrentWallpaperID != selectedWallpapers[0].ID {
+					state.PreviousWallpaperID = state.CurrentWallpaperID
+					state.CurrentWallpaperID = selectedWallpapers[0].ID
+				}
+				if err := saveState(state); err != nil {
+					utils.Log.Error("Failed to save state: %v", err)
+				}
+			}
+		}
 	}
 }
 

@@ -24,6 +24,7 @@ var (
 	statusDaemon    bool
 	statusSystem    bool
 	statusMonitors  bool
+	statusWallpaper bool
 )
 
 var statusCmd = &cobra.Command{
@@ -41,14 +42,16 @@ func init() {
 	statusCmd.Flags().BoolVar(&statusDaemon, "daemon", false, "Show daemon status")
 	statusCmd.Flags().BoolVar(&statusSystem, "system", false, "Show system information")
 	statusCmd.Flags().BoolVar(&statusMonitors, "monitors", false, "Show monitor information")
+	statusCmd.Flags().BoolVar(&statusWallpaper, "wallpapers", false, "Show current wallpaper information")
 }
 
 type StatusOutput struct {
-	System    *SystemStatus    `json:"system,omitempty"`
-	Daemon    *DaemonStatus    `json:"daemon,omitempty"`
-	Providers *ProvidersStatus `json:"providers,omitempty"`
-	Storage   *StorageStatus   `json:"storage,omitempty"`
-	Monitors  []core.Monitor   `json:"monitors,omitempty"`
+	System    *SystemStatus           `json:"system,omitempty"`
+	Daemon    *DaemonStatus           `json:"daemon,omitempty"`
+	Providers *ProvidersStatus        `json:"providers,omitempty"`
+	Storage   *StorageStatus          `json:"storage,omitempty"`
+	Monitors  []core.Monitor          `json:"monitors,omitempty"`
+	Wallpaper *CurrentWallpaperStatus `json:"wallpaper,omitempty"`
 }
 
 type SystemStatus struct {
@@ -78,9 +81,14 @@ type StorageStatus struct {
 	TotalSize string `json:"total_size"`
 }
 
+type CurrentWallpaperStatus struct {
+	ID  string   `json:"id"`
+	IDs []string `json:"ids,omitempty"`
+}
+
 func runStatus(cmd *cobra.Command, args []string) {
 	// If no specific flag is set, show all
-	showAll := !statusProviders && !statusStorage && !statusDaemon && !statusSystem && !statusMonitors
+	showAll := !statusProviders && !statusStorage && !statusDaemon && !statusSystem && !statusMonitors && !statusWallpaper
 
 	output := StatusOutput{}
 
@@ -89,6 +97,9 @@ func runStatus(cmd *cobra.Command, args []string) {
 	}
 	if showAll || statusDaemon {
 		output.Daemon = getDaemonStatus()
+	}
+	if showAll || statusWallpaper {
+		output.Wallpaper = getWallpaperStatus()
 	}
 	if showAll || statusProviders {
 		output.Providers = getProvidersStatus()
@@ -149,6 +160,18 @@ func runStatus(cmd *cobra.Command, args []string) {
 		cmd.Println()
 	}
 
+	if output.Wallpaper != nil {
+		cmd.Println("--- Wallpaper ---")
+		if len(output.Wallpaper.IDs) > 0 {
+			for i, id := range output.Wallpaper.IDs {
+				cmd.Printf("Monitor %d: %s\n", i+1, id)
+			}
+		} else {
+			cmd.Printf("Current ID: %s\n", output.Wallpaper.ID)
+		}
+		cmd.Println()
+	}
+
 	if output.Providers != nil {
 		cmd.Println("--- Providers ---")
 		cmd.Printf("Wallhaven: %v\n", colorizeBool(output.Providers.Wallhaven))
@@ -176,7 +199,7 @@ func runStatus(cmd *cobra.Command, args []string) {
 		cmd.Println()
 	}
 
-	if output.Monitors != nil && len(output.Monitors) > 0 {
+	if len(output.Monitors) > 0 {
 		cmd.Println("--- Monitors ---")
 		for i, mon := range output.Monitors {
 			primary := ""
@@ -244,6 +267,17 @@ func getDaemonStatus() *DaemonStatus {
 		}
 	}
 	return &DaemonStatus{Running: running, PID: pid}
+}
+
+func getWallpaperStatus() *CurrentWallpaperStatus {
+	state, err := loadState()
+	if err != nil || (state.CurrentWallpaperID == "" && len(state.CurrentWallpapers) == 0) {
+		return nil
+	}
+	return &CurrentWallpaperStatus{
+		ID:  state.CurrentWallpaperID,
+		IDs: state.CurrentWallpapers,
+	}
 }
 
 func getProvidersStatus() *ProvidersStatus {

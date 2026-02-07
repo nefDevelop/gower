@@ -45,6 +45,7 @@ func TestSaveAndLoadState(t *testing.T) {
 	initialState := &State{
 		CurrentWallpaperID:  "wall_123",
 		PreviousWallpaperID: "wall_abc",
+		CurrentWallpapers:   []string{"wall_123", "wall_456"},
 	}
 
 	// 2. Save the state
@@ -59,6 +60,7 @@ func TestSaveAndLoadState(t *testing.T) {
 	// 4. Verify the contents
 	assert.Equal(t, "wall_123", loadedState.CurrentWallpaperID)
 	assert.Equal(t, "wall_abc", loadedState.PreviousWallpaperID)
+	assert.Equal(t, []string{"wall_123", "wall_456"}, loadedState.CurrentWallpapers)
 }
 
 func TestLoadState_NonExistent(t *testing.T) {
@@ -73,6 +75,7 @@ func TestLoadState_NonExistent(t *testing.T) {
 	// Should be an empty state
 	assert.Equal(t, "", state.CurrentWallpaperID)
 	assert.Equal(t, "", state.PreviousWallpaperID)
+	assert.Empty(t, state.CurrentWallpapers)
 }
 
 func TestLoadState_Corrupt(t *testing.T) {
@@ -93,4 +96,5 @@ func TestLoadState_Corrupt(t *testing.T) {
 	// Should be a fresh empty state
 	assert.Equal(t, "", state.CurrentWallpaperID)
 	assert.Equal(t, "", state.PreviousWallpaperID)
+	assert.Empty(t, state.CurrentWallpapers)
 }

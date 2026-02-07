@@ -14,6 +14,7 @@ func resetStatusFlags() {
 	statusDaemon = false
 	statusSystem = false
 	statusMonitors = false
+	statusWallpaper = false
 }
 
 func TestStatusAll(t *testing.T) {
@@ -100,5 +101,33 @@ func TestStatusFlags(t *testing.T) {
 	}
 	if !strings.Contains(output, "--- Storage ---") {
 		t.Errorf("Expected Storage section")
+	}
+}
+
+func TestStatusWallpaper(t *testing.T) {
+	resetStatusFlags()
+	tmpDir := setupTestHome(t)
+	defer os.RemoveAll(tmpDir)
+
+	executeCommand(rootCmd, "config", "init")
+
+	// Manually create state.json
+	statePath := filepath.Join(tmpDir, ".gower", "state.json")
+	stateData := `{"current_wallpaper_id": "wall_1", "current_wallpapers": ["wall_1", "wall_2"]}`
+	os.WriteFile(statePath, []byte(stateData), 0644)
+
+	output, err := executeCommand(rootCmd, "status")
+	if err != nil {
+		t.Fatalf("Error executing status: %v", err)
+	}
+
+	if !strings.Contains(output, "--- Wallpaper ---") {
+		t.Errorf("Expected Wallpaper section")
+	}
+	if !strings.Contains(output, "Monitor 1: wall_1") {
+		t.Errorf("Expected Monitor 1: wall_1, got: %s", output)
+	}
+	if !strings.Contains(output, "Monitor 2: wall_2") {
+		t.Errorf("Expected Monitor 2: wall_2, got: %s", output)
 	}
 }

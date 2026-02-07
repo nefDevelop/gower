@@ -11,8 +11,9 @@ import (
 
 // State represents the persistent state of the application.
 type State struct {
-	CurrentWallpaperID  string `json:"current_wallpaper_id"`
-	PreviousWallpaperID string `json:"previous_wallpaper_id"`
+	CurrentWallpaperID  string   `json:"current_wallpaper_id"`
+	CurrentWallpapers   []string `json:"current_wallpapers,omitempty"`
+	PreviousWallpaperID string   `json:"previous_wallpaper_id"`
 }
 
 // stateFilePath returns the path to the state file.
