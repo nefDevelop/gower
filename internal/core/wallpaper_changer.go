@@ -94,10 +94,18 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 				}
 
 			case "niri":
-				cmd = exec.Command("niri", "msg", "output", monitor.Name, "wallpaper", path)
+				if commandExists("swww") {
+					cmd = exec.Command("swww", "img", "-o", monitor.Name, path)
+				} else {
+					return fmt.Errorf("wallpaper setting for Niri requires 'swww'. Please install it")
+				}
 
 			case "sway":
-				cmd = exec.Command("swaybg", "-i", path, "-m", "fill")
+				if monitor.Name != "" && monitor.Name != "default" {
+					cmd = exec.Command("swaymsg", "output", monitor.Name, "bg", path, "fill")
+				} else {
+					cmd = exec.Command("swaybg", "-i", path, "-m", "fill")
+				}
 
 			case "feh":
 				display := fmt.Sprintf(":%d.%d", 0, 0) // Default to :0.0 for single target
@@ -105,10 +113,13 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 					// Attempt to map monitor ID to X display if possible, otherwise use default
 					// This is a simplification; a robust solution would parse xrandr output more thoroughly.
 					// For now, we assume the first detected monitor is :0.0, second :0.1, etc.
-					for idx, m := range targetMonitors {
-						if m.ID == monitor.ID {
-							display = fmt.Sprintf(":%d.%d", 0, idx)
-							break
+					allMonitors, err := wc.DetectMonitors()
+					if err == nil {
+						for idx, m := range allMonitors {
+							if m.ID == monitor.ID {
+								display = fmt.Sprintf(":%d.%d", 0, idx)
+								break
+							}
 						}
 					}
 				}
@@ -118,7 +129,13 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 				cmd = exec.Command("nitrogen", "--set-auto", "--save", path)
 
 			case "dms":
-				ipcCmd := exec.Command("dms", "ipc", "call", "wallpaper", "set", path)
+				var ipcCmd *exec.Cmd
+				if monitor.Name != "" && monitor.Name != "default" {
+					ipcCmd = exec.Command("dms", "ipc", "call", "wallpaper", "setFor", monitor.Name, path)
+				} else {
+					ipcCmd = exec.Command("dms", "ipc", "call", "wallpaper", "set", path)
+				}
+
 				err := ipcCmd.Run()
 				if err == nil {
 					continue
@@ -222,8 +239,11 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 				cmd = exec.Command("swaymsg", "output", monitor.Name, "bg", path, "fill")
 
 			case "niri":
-				// niri uses niri msg output <monitor_name> wallpaper <path>
-				cmd = exec.Command("niri", "msg", "output", monitor.Name, "wallpaper", path)
+				if commandExists("swww") {
+					cmd = exec.Command("swww", "img", "-o", monitor.Name, path)
+				} else {
+					return fmt.Errorf("wallpaper setting for Niri requires 'swww'. Please install it")
+				}
 
 			case "swww":
 				// swww can set per monitor.
@@ -242,9 +262,7 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 				cmd = exec.Command("nitrogen", "--set-auto", "--save", path)
 
 			case "dms":
-				// DMS IPC call for per-monitor is not directly available.
-				utils.Log.Info("Warning: DMS does not easily support distinct wallpapers per monitor via current method. Falling back to clone for monitor %s.", monitor.Name)
-				ipcCmd := exec.Command("dms", "ipc", "call", "wallpaper", "set", path)
+				ipcCmd := exec.Command("dms", "ipc", "call", "wallpaper", "setFor", monitor.Name, path)
 				err := ipcCmd.Run()
 				if err == nil {
 					continue // Successfully set for this monitor
@@ -300,10 +318,13 @@ var isProcessRunning = func(processName string) bool {
 func DetectDesktopEnv() string {
 	// 1. Check for running processes (most reliable indicator of an active session)
 	// Give priority to dedicated wallpaper managers like dms (Dank Material Shell) if they are running.
-	if isProcessRunning("dms") && commandExists("quickshell") {
+	if isProcessRunning("swww-daemon") && commandExists("swww") {
+		return "swww"
+	}
+	if isProcessRunning("dms") && (commandExists("dms") || commandExists("quickshell")) {
 		return "dms"
 	}
-	if isProcessRunning("niri") && commandExists("niri") {
+	if (isProcessRunning("niri") || isProcessRunning("niri-session")) && commandExists("niri") {
 		return "niri"
 	}
 	if isProcessRunning("sway") && commandExists("swaybg") {
@@ -397,7 +418,7 @@ func (wc *WallpaperChanger) DetectMonitors() ([]Monitor, error) {
 	var monitors []Monitor
 
 	switch wc.Env {
-	case "gnome", "kde", "feh", "nitrogen", "swww", "awww", "dms", "unknown": // X11-based or compatible
+	case "gnome", "kde", "feh", "nitrogen", "swww", "awww", "dms", "sway", "niri", "unknown": // X11-based or compatible
 		if commandExists("xrandr") {
 			cmd := exec.Command("xrandr", "--query")
 			output, err := cmd.Output()
@@ -453,17 +474,22 @@ func (wc *WallpaperChanger) DetectMonitors() ([]Monitor, error) {
 					})
 				}
 			}
+
+			// Filter out XWAYLAND virtual monitors if real hardware monitors are detected.
+			var realMonitors []Monitor
+			for _, m := range monitors {
+				if !strings.HasPrefix(m.Name, "XWAYLAND") {
+					realMonitors = append(realMonitors, m)
+				}
+			}
+			if len(realMonitors) > 0 {
+				monitors = realMonitors
+			}
 		} else {
 			utils.Log.Info("Warning: xrandr not found. Cannot detect monitors accurately for X11 environment.")
 			// Fallback to a single monitor if xrandr is not available
 			monitors = append(monitors, Monitor{ID: "default", Name: "default", Primary: true})
 		}
-
-	case "sway", "niri": // Wayland compositors
-		// For Sway/Niri, we would typically use their IPC.
-		// This is a placeholder for future implementation.
-		utils.Log.Info("Warning: Multi-monitor detection for %s is not yet fully implemented. Assuming single monitor.", wc.Env)
-		monitors = append(monitors, Monitor{ID: "default", Name: "default", Primary: true})
 
 	default:
 		utils.Log.Info("Warning: Multi-monitor detection for environment '%s' is not supported. Assuming single monitor.", wc.Env)
