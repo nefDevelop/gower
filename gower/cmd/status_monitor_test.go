@@ -1,14 +1,11 @@
 package cmd
 
 import (
-	"bytes"
 	"gower/internal/core"
 	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
-
-	"github.com/spf13/cobra"
 )
 
 // Mock DetectMonitors for testing purposes

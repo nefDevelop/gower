@@ -187,7 +187,7 @@ func getConfigPath() (string, error) {
 	return filepath.Join(homeDir, ".gower", "config.json"), nil
 }
 
-func loadConfig() (*models.Config, error) {
+var loadConfig = func() (*models.Config, error) {
 	path, err := getConfigPath()
 	if err != nil {
 		return nil, err

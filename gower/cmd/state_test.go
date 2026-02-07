@@ -48,7 +48,7 @@ func TestSaveAndLoadState(t *testing.T) {
 	}
 
 	// 2. Save the state
-	err := initialState.saveState()
+	err := saveState(initialState)
 	assert.NoError(t, err)
 
 	// 3. Load the state back

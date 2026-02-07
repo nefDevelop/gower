@@ -61,7 +61,7 @@ func TestSetWallpaper(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc, func(t *testing.T) {
 			wc := NewWallpaperChanger(tc)
-			err := wc.SetWallpaper(tmpfile.Name(), "")
+			err := wc.SetWallpapers([]string{tmpfile.Name()}, []Monitor{}, "clone")
 
 			if tc == "unsupported" {
 				if err == nil {

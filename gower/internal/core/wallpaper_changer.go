@@ -14,7 +14,7 @@ type WallpaperChanger struct {
 	RespectDarkMode bool
 }
 
-func NewWallpaperChanger(desktopEnv string, respectDarkMode ...bool) *WallpaperChanger {
+var NewWallpaperChanger = func(desktopEnv string, respectDarkMode ...bool) *WallpaperChanger {
 	env := strings.ToLower(desktopEnv)
 	if env == "" {
 		env = DetectDesktopEnv()
@@ -164,7 +164,7 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 				// KDE's script already iterates through desktops, so we need to be careful.
 				// For distinct, we'd ideally set per-desktop. This is a complex task for dbus-send.
 				// For now, we'll log a warning and fall back to clone behavior for KDE distinct.
-				utils.Log.Warn("KDE does not easily support distinct wallpapers per monitor via current method. Falling back to clone for monitor %s.", monitor.Name)
+				utils.Log.Info("Warning: KDE does not easily support distinct wallpapers per monitor via current method. Falling back to clone for monitor %s.", monitor.Name)
 				script := fmt.Sprintf(`
 					var allDesktops = desktops();
 					for (i=0;i<allDesktops.length;i++) {
@@ -186,7 +186,7 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 				// It's usually a single wallpaper stretched/scaled across all.
 				// For true distinct, one might need extensions or more complex dconf interactions.
 				// For now, we'll log a warning and fall back to clone behavior for GNOME distinct.
-				utils.Log.Warn("GNOME does not easily support distinct wallpapers per monitor via current method. Falling back to clone for monitor %s.", monitor.Name)
+				utils.Log.Info("Warning: GNOME does not easily support distinct wallpapers per monitor via current method. Falling back to clone for monitor %s.", monitor.Name)
 				uri := "file://" + path
 				if wc.RespectDarkMode {
 					if IsSystemInDarkMode() {
@@ -232,12 +232,12 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 			case "nitrogen":
 				// Nitrogen handles multi-monitor itself, but typically with one config.
 				// Setting distinct per monitor with nitrogen programmatically is complex.
-				utils.Log.Warn("Nitrogen does not easily support distinct wallpapers per monitor programmatically. Falling back to clone for monitor %s.", monitor.Name)
+				utils.Log.Info("Warning: Nitrogen does not easily support distinct wallpapers per monitor programmatically. Falling back to clone for monitor %s.", monitor.Name)
 				cmd = exec.Command("nitrogen", "--set-auto", "--save", path)
 
 			case "dms":
 				// DMS IPC call for per-monitor is not directly available.
-				utils.Log.Warn("DMS does not easily support distinct wallpapers per monitor via current method. Falling back to clone for monitor %s.", monitor.Name)
+				utils.Log.Info("Warning: DMS does not easily support distinct wallpapers per monitor via current method. Falling back to clone for monitor %s.", monitor.Name)
 				ipcCmd := exec.Command("dms", "ipc", "call", "wallpaper", "set", path)
 				err := ipcCmd.Run()
 				if err == nil {
@@ -367,17 +367,17 @@ func DetectDesktopEnv() string {
 	if commandExists("gsettings") { // Good hint for GNOME-based, but low priority
 		return "gnome"
 	}
-	return false
+	return ""
 }
 
 // Monitor represents a detected display monitor.
 type Monitor struct {
-	ID     string
-	Name   string
-	Width  int
-	Height int
-	X      int
-	Y      int
+	ID      string
+	Name    string
+	Width   int
+	Height  int
+	X       int
+	Y       int
 	Primary bool
 }
 
@@ -444,7 +444,7 @@ func (wc *WallpaperChanger) DetectMonitors() ([]Monitor, error) {
 				}
 			}
 		} else {
-			utils.Log.Warn("xrandr not found. Cannot detect monitors accurately for X11 environment.")
+			utils.Log.Info("Warning: xrandr not found. Cannot detect monitors accurately for X11 environment.")
 			// Fallback to a single monitor if xrandr is not available
 			monitors = append(monitors, Monitor{ID: "default", Name: "default", Primary: true})
 		}
@@ -452,11 +452,11 @@ func (wc *WallpaperChanger) DetectMonitors() ([]Monitor, error) {
 	case "sway", "niri": // Wayland compositors
 		// For Sway/Niri, we would typically use their IPC.
 		// This is a placeholder for future implementation.
-		utils.Log.Warn("Multi-monitor detection for %s is not yet fully implemented. Assuming single monitor.", wc.Env)
+		utils.Log.Info("Warning: Multi-monitor detection for %s is not yet fully implemented. Assuming single monitor.", wc.Env)
 		monitors = append(monitors, Monitor{ID: "default", Name: "default", Primary: true})
 
 	default:
-		utils.Log.Warn("Multi-monitor detection for environment '%s' is not supported. Assuming single monitor.", wc.Env)
+		utils.Log.Info("Warning: Multi-monitor detection for environment '%s' is not supported. Assuming single monitor.", wc.Env)
 		monitors = append(monitors, Monitor{ID: "default", Name: "default", Primary: true})
 	}
 
