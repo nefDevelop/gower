@@ -86,3 +86,49 @@ func TestSetWallpaper(t *testing.T) {
 		})
 	}
 }
+
+func TestFilterXWaylandMonitors(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []Monitor
+		expected int
+	}{
+		{
+			name: "Mixed monitors",
+			input: []Monitor{
+				{Name: "DP-1"},
+				{Name: "HDMI-1"},
+				{Name: "XWAYLAND0"},
+			},
+			expected: 2, // Should remove XWAYLAND0
+		},
+		{
+			name: "Only real monitors",
+			input: []Monitor{
+				{Name: "eDP-1"},
+			},
+			expected: 1,
+		},
+		{
+			name: "Only XWayland (fallback)",
+			input: []Monitor{
+				{Name: "XWAYLAND0"},
+			},
+			expected: 1, // Should keep it if it's the only one
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := filterXWaylandMonitors(tt.input)
+			if len(result) != tt.expected {
+				t.Errorf("Expected %d monitors, got %d", tt.expected, len(result))
+			}
+			for _, m := range result {
+				if len(result) > 1 && strings.HasPrefix(m.Name, "XWAYLAND") {
+					t.Errorf("Result contains XWAYLAND monitor when real monitors exist")
+				}
+			}
+		})
+	}
+}

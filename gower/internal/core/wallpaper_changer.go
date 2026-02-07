@@ -475,16 +475,7 @@ func (wc *WallpaperChanger) DetectMonitors() ([]Monitor, error) {
 				}
 			}
 
-			// Filter out XWAYLAND virtual monitors if real hardware monitors are detected.
-			var realMonitors []Monitor
-			for _, m := range monitors {
-				if !strings.HasPrefix(m.Name, "XWAYLAND") {
-					realMonitors = append(realMonitors, m)
-				}
-			}
-			if len(realMonitors) > 0 {
-				monitors = realMonitors
-			}
+			monitors = filterXWaylandMonitors(monitors)
 		} else {
 			utils.Log.Info("Warning: xrandr not found. Cannot detect monitors accurately for X11 environment.")
 			// Fallback to a single monitor if xrandr is not available
@@ -500,6 +491,20 @@ func (wc *WallpaperChanger) DetectMonitors() ([]Monitor, error) {
 		return nil, fmt.Errorf("no monitors detected")
 	}
 	return monitors, nil
+}
+
+// filterXWaylandMonitors removes virtual XWAYLAND monitors if real hardware monitors are present.
+func filterXWaylandMonitors(monitors []Monitor) []Monitor {
+	var realMonitors []Monitor
+	for _, m := range monitors {
+		if !strings.HasPrefix(m.Name, "XWAYLAND") {
+			realMonitors = append(realMonitors, m)
+		}
+	}
+	if len(realMonitors) > 0 {
+		return realMonitors
+	}
+	return monitors
 }
 
 func IsSystemInDarkMode() bool {

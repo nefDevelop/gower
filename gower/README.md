@@ -146,6 +146,8 @@ La opción `behavior.wallpaper_command` es crucial. Debes ajustarla a tu entorno
 - **feh**: `feh --bg-fill %s`
 - **GNOME**: `gsettings set org.gnome.desktop.background picture-uri file://%s`
 - **Sway/Wayland**: `swaymsg output * bg %s fill`
+- **Niri**: `swww img -o <MONITOR> %s` (Requiere `swww`)
+- **DMS**: `dms ipc call wallpaper set %s` (Global) o `dms ipc call wallpaper setFor <MONITOR> %s`
 
 ## 📜 Lista de Comandos
 
