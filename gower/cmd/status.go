@@ -211,6 +211,7 @@ func getSystemStatus() *SystemStatus {
 	deps["quickshell"] = checkCommand("quickshell") // For Dank Material Shell (dms)
 	deps["niri"] = checkCommand("niri")
 	deps["matugen"] = checkCommand("matugen")
+	deps["swww"] = checkCommand("swww")
 
 	return &SystemStatus{
 		OS:           runtime.GOOS,

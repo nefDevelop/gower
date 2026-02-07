@@ -53,6 +53,11 @@ func init() {
 	setCmd.Flags().StringVar(&setTargetMonitor, "target-monitor", "",
 		"set wallpaper on a specific monitor (e.g., 'eDP-1')")
 
+	setRandomCmd.Flags().StringVar(&setTargetMonitor, "target-monitor", "", "set wallpaper on a specific monitor (e.g., 'eDP-1')")
+	setRandomCmd.Flags().StringVar(&setTheme, "theme", "", "theme filter [dark|light|auto]")
+	setRandomCmd.Flags().BoolVar(&setFromFavorites, "from-favorites", false, "random from favorites only")
+	setRandomCmd.Flags().StringVar(&setMultiMonitor, "multi-monitor", "", "multi-monitor mode [clone|distinct]")
+
 	// Subcomandos
 	setCmd.AddCommand(setRandomCmd)
 	setCmd.AddCommand(setUndoCmd)
@@ -176,7 +181,25 @@ func runSetRandom(cmd *cobra.Command, args []string) error {
 		mmMode = cfg.Behavior.MultiMonitor
 	}
 
-	if mmMode == "distinct" {
+	if setTargetMonitor != "" {
+		changer := core.NewWallpaperChanger("", false)
+		allMonitors, err := changer.DetectMonitors()
+		if err != nil {
+			return fmt.Errorf("error detecting monitors for target-monitor: %w", err)
+		}
+
+		found := false
+		for _, mon := range allMonitors {
+			if mon.ID == setTargetMonitor || mon.Name == setTargetMonitor {
+				monitors = []core.Monitor{mon}
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("monitor '%s' not found. Use 'gower status --monitors' to see available monitors.", setTargetMonitor)
+		}
+	} else if mmMode == "distinct" {
 		respectDark := true
 		if cfg != nil {
 			respectDark = cfg.Behavior.RespectDarkMode
