@@ -145,3 +145,25 @@ func TestColorManager_AnalyzeColor(t *testing.T) {
 		t.Errorf("Expected dominant color #FF0000, got %s", hex)
 	}
 }
+
+func TestColorManager_GetLuminance(t *testing.T) {
+	cm := NewColorManager()
+
+	// White
+	lum := cm.GetLuminance("#FFFFFF")
+	if lum < 254.0 {
+		t.Errorf("Expected luminance close to 255 for white, got %f", lum)
+	}
+
+	// Black
+	lum = cm.GetLuminance("#000000")
+	if lum > 1.0 {
+		t.Errorf("Expected luminance close to 0 for black, got %f", lum)
+	}
+
+	// Red (0.299 * 255 = 76.245)
+	lum = cm.GetLuminance("#FF0000")
+	if lum < 76.0 || lum > 77.0 {
+		t.Errorf("Expected luminance around 76.245 for red, got %f", lum)
+	}
+}

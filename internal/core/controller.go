@@ -1,11 +1,13 @@
 package core
 
 import (
+	crand "crypto/rand"
 	"fmt"
 	"gower/internal/providers"
 	"gower/internal/utils"
 	"gower/pkg/models" // Import models package
 	"io"
+	"math/big"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -353,15 +355,14 @@ func (c *Controller) AnalyzeFeed(all bool, force bool, progress func(string)) er
 		feed = newFeed
 	}
 
-	// Always rebuild index to ensure it matches current feed colors
-	if err := c.rebuildColorsIndex(feed); err != nil {
-		utils.Log.Error("Failed to rebuild colors index: %v", err)
+	if updatedCount > 0 {
+		if err := c.saveFeed(feed); err != nil {
+			return err
+		}
 	}
 
-	if updatedCount > 0 {
-		return c.saveFeed(feed)
-	}
-	return nil
+	// Always rebuild index to ensure it matches current feed colors
+	return c.rebuildColorsIndex(feed)
 }
 
 // indexLocalWallpapers scans the configured wallpapers directory and updates the feed.
@@ -535,6 +536,14 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 	info, errStat := os.Stat(thumbPath)
 	thumbExists := errStat == nil && info.Size() > 0
 
+	// Check if existing thumbnail is valid image data
+	if thumbExists && !force {
+		if _, _, err := c.ColorManager.GetImageDimensions(thumbPath); err != nil {
+			thumbExists = false // Treat as missing to force regeneration
+			utils.Log.Info("Thumbnail for %s is corrupt or invalid. Regenerating...", wp.ID)
+		}
+	}
+
 	// If thumbnail is missing, or if we are forcing a full regeneration (force+all), generate it
 	if !thumbExists || force {
 		utils.Log.Info("Generating thumbnail for %s", wp.ID)
@@ -689,9 +698,52 @@ func (c *Controller) GetRandomFromFeed(theme string) (models.Wallpaper, error) {
 		return models.Wallpaper{}, fmt.Errorf("no wallpapers found in feed (with given theme)")
 	}
 
-	// TODO: Use a proper random number generator
-	randomIndex := time.Now().Nanosecond() % len(filteredFeed)
-	return filteredFeed[randomIndex], nil
+	// Use crypto/rand for better distribution and to avoid seeding issues in rapid calls
+	n, err := crand.Int(crand.Reader, big.NewInt(int64(len(filteredFeed))))
+	if err != nil {
+		return filteredFeed[rand.Intn(len(filteredFeed))], nil
+	}
+
+	return filteredFeed[n.Int64()], nil
+}
+
+// GetRandomWallpapersFromFeed retrieves N unique random wallpapers from the feed.
+func (c *Controller) GetRandomWallpapersFromFeed(count int, theme string) ([]models.Wallpaper, error) {
+	feed, err := c.loadFeed()
+	if err != nil {
+		return nil, err
+	}
+
+	blacklist, _ := c.loadBlacklist()
+	blacklistMap := make(map[string]bool)
+	for _, id := range blacklist {
+		blacklistMap[id] = true
+	}
+
+	var filteredFeed []models.Wallpaper
+	for _, wp := range feed {
+		if blacklistMap[wp.ID] {
+			continue
+		}
+		if theme == "" || strings.EqualFold(wp.Theme, theme) {
+			filteredFeed = append(filteredFeed, wp)
+		}
+	}
+
+	if len(filteredFeed) == 0 {
+		return nil, fmt.Errorf("no wallpapers found in feed (with given theme)")
+	}
+
+	// Shuffle using a local seeded source
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	r.Shuffle(len(filteredFeed), func(i, j int) {
+		filteredFeed[i], filteredFeed[j] = filteredFeed[j], filteredFeed[i]
+	})
+
+	if len(filteredFeed) < count {
+		return filteredFeed, nil
+	}
+	return filteredFeed[:count], nil
 }
 
 // GetFeedStats calculates and returns statistics about the feed.
@@ -818,6 +870,11 @@ func (c *Controller) AddToBlacklist(id string) error {
 		return err
 	}
 	utils.Log.Info("Added wallpaper %s to blacklist", id)
+
+	// Rebuild index to reflect blacklist change
+	if feed, err := c.loadFeed(); err == nil {
+		c.rebuildColorsIndex(feed)
+	}
 	return nil
 }
 
@@ -850,6 +907,11 @@ func (c *Controller) RemoveFromBlacklist(id string) error {
 		return err
 	}
 	utils.Log.Info("Removed wallpaper %s from blacklist", id)
+
+	// Rebuild index to reflect blacklist change
+	if feed, err := c.loadFeed(); err == nil {
+		c.rebuildColorsIndex(feed)
+	}
 	return nil
 }
 
@@ -1203,10 +1265,13 @@ func (c *Controller) SyncFeed() (int, int, error) {
 				if inFeed[wp.ID] {
 					// Check if thumbnail exists
 					thumbPath := filepath.Join(thumbDir, wp.ID+".jpg")
-					if _, err := os.Stat(thumbPath); err == nil {
-						// Exists, skip
-						processed[wp.ID] = true
-						continue
+					if info, err := os.Stat(thumbPath); err == nil && info.Size() > 0 {
+						// Check if valid image
+						if _, _, err := c.ColorManager.GetImageDimensions(thumbPath); err == nil {
+							// Exists and valid, skip
+							processed[wp.ID] = true
+							continue
+						}
 					}
 					// Thumbnail missing, add to candidates to regenerate
 				}
@@ -1272,6 +1337,11 @@ func (c *Controller) SyncFeed() (int, int, error) {
 						} else {
 							wp.Theme = "light"
 						}
+					}
+
+					// Auto-download full image if enabled
+					if c.Config.Behavior.AutoDownload {
+						c.DownloadWallpaper(wp)
 					}
 
 					// Marcar como no visto

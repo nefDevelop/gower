@@ -126,7 +126,8 @@ Un archivo de configuración de ejemplo podría ser:
   "behavior": {
     "respect_dark_mode": true,
     "change_interval": 30,
-    "wallpaper_command": "feh --bg-fill %s" // Comando específico para tu entorno
+    "multi_monitor": "distinct",
+    "auto_download": false
   },
   "paths": {
     "wallpapers": "/home/user/Pictures/Wallpapers",
@@ -235,7 +236,6 @@ Establece un fondo de pantalla.
     - `clone`: El mismo fondo de pantalla se aplica a todos los monitores.
     - `distinct`: Se intentará aplicar un fondo de pantalla diferente a cada monitor. (Nota: La compatibilidad y el comportamiento exacto pueden variar según el entorno de escritorio. Algunos entornos pueden no soportar fondos de pantalla distintos por monitor o requerir configuraciones adicionales).
   - `--target-monitor <ID_monitor>`: Establece el fondo de pantalla solo en el monitor especificado por su ID (ej. "eDP-1", "DP-1"). Puedes ver los IDs de tus monitores con `gower status --monitors`. Este flag anula el comportamiento de `multi-monitor` para el fondo de pantalla actual.
-  - `--command <comando>`: Usa un comando personalizado para establecer el fondo de pantalla (ej. `feh --bg-fill %s`).
   - `--no-download`: No descarga la imagen, útil si ya existe localmente.
 
 #### `gower download`

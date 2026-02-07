@@ -172,6 +172,18 @@ func runSetRandom(cmd *cobra.Command, args []string) error {
 	}
 	controller := core.NewController(cfg)
 
+	// Auto-detect theme if "auto" or if empty and config enabled
+	if setTheme == "auto" || (setTheme == "" && cfg.Behavior.RespectDarkMode) {
+		if core.IsSystemInDarkMode() {
+			setTheme = "dark"
+		} else {
+			setTheme = "light"
+		}
+		if config.Debug {
+			cmd.Printf("   [DEBUG] Auto-selecting theme: %s\n", setTheme)
+		}
+	}
+
 	var wallpapers []models.Wallpaper
 	var numWallpapers int = 1 // Default to 1 wallpaper
 	var monitors []core.Monitor
@@ -285,6 +297,10 @@ func applyWallpapers(cmd *cobra.Command, controller *core.Controller, wallpapers
 	localPaths := make([]string, len(wallpapers))
 	for i, wp := range wallpapers {
 		cmd.Printf("Preparing wallpaper: %s (Source: %s)\n", wp.ID, wp.Source)
+		if config.Debug {
+			lum := controller.ColorManager.GetLuminance(wp.Color)
+			cmd.Printf("   [DEBUG] Color: %s | Luminance: %.2f | Dark: %v\n", wp.Color, lum, lum < 100)
+		}
 		if !setNoDownload {
 			var err error
 			localPaths[i], err = controller.DownloadWallpaper(wp)
@@ -323,6 +339,9 @@ func applyWallpapers(cmd *cobra.Command, controller *core.Controller, wallpapers
 			respectDark = cfg.Behavior.RespectDarkMode
 		}
 		changer := core.NewWallpaperChanger("", respectDark)
+		if config.Debug {
+			cmd.Printf("   [DEBUG] Desktop Environment detected: %s\n", changer.Env)
+		}
 
 		mmMode := setMultiMonitor
 		if mmMode == "" && cfg != nil {
@@ -341,14 +360,20 @@ func applyWallpapers(cmd *cobra.Command, controller *core.Controller, wallpapers
 	if err != nil {
 		cmd.Printf("Warning: could not load state to update it: %v\n", err)
 	} else {
+		var ids []string
+		for _, wp := range wallpapers {
+			ids = append(ids, wp.ID)
+		}
+		state.CurrentWallpapers = ids
+
 		// Only update state if the current wallpaper(s) are different from the last recorded.
 		// For simplicity, we compare the ID of the first wallpaper.
 		if state.CurrentWallpaperID != wallpapers[0].ID {
 			state.PreviousWallpaperID = state.CurrentWallpaperID
 			state.CurrentWallpaperID = wallpapers[0].ID // Store the ID of the first wallpaper
-			if err := saveState(state); err != nil {
-				cmd.Printf("Warning: could not save state: %v\n", err)
-			}
+		}
+		if err := saveState(state); err != nil {
+			cmd.Printf("Warning: could not save state: %v\n", err)
 		}
 	}
 

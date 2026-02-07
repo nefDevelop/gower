@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/json"
 	"fmt"
+	"gower/internal/utils"
 	"image"
 	_ "image/gif" // Support GIF decoding
 	"image/jpeg"
@@ -208,10 +209,15 @@ func (cm *ColorManager) analyzeColorMatugen(path string) (string, error) {
 
 // IsDark determines if a hex color is considered dark based on luminance.
 func (cm *ColorManager) IsDark(hex string) bool {
+	lum := cm.GetLuminance(hex)
+	utils.Log.Debug("Color Analysis - Hex: %s, Luminance: %.2f (Dark: %v)", hex, lum, lum < 100)
+	return lum < 100
+}
+
+// GetLuminance calculates the luminance of a hex color using Rec. 601 formula.
+func (cm *ColorManager) GetLuminance(hex string) float64 {
 	r, g, b := HexToRGB(hex)
-	// Calculate luminance using standard formula (Rec. 601)
-	lum := 0.299*float64(r) + 0.587*float64(g) + 0.114*float64(b)
-	return lum < 128
+	return 0.299*float64(r) + 0.587*float64(g) + 0.114*float64(b)
 }
 
 // FindNearestColorInPalette finds the closest color in a given dynamic palette.
