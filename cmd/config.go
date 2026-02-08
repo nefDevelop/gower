@@ -35,8 +35,10 @@ var configShowCmd = &cobra.Command{
 			cmd.Printf("Error cargando configuración: %v\n", err)
 			return
 		}
-		data, _ := json.MarshalIndent(cfg, "", "  ")
-		cmd.Println(string(data))
+		if !config.Quiet {
+			data, _ := json.MarshalIndent(cfg, "", "  ")
+			cmd.Println(string(data))
+		}
 	},
 }
 
@@ -71,7 +73,9 @@ var configSetCmd = &cobra.Command{
 			cmd.Printf("Error guardando configuración: %v\n", err)
 			return
 		}
-		cmd.Printf("%s Configuración actualizada: %s = %s\n", colorize(symbolCheck, colorGreen), key, val)
+		if !config.Quiet {
+			cmd.Printf("%s Configuración actualizada: %s = %s\n", colorize(symbolCheck, colorGreen), key, val)
+		}
 	},
 }
 
@@ -94,7 +98,9 @@ var configGetCmd = &cobra.Command{
 			cmd.Printf("Error obteniendo valor: %v\n", err)
 			return
 		}
-		cmd.Println(val)
+		if !config.Quiet {
+			cmd.Println(val)
+		}
 	},
 }
 
@@ -111,7 +117,9 @@ var configResetCmd = &cobra.Command{
 			cmd.Printf("Error restableciendo configuración: %v\n", err)
 			return
 		}
-		cmd.Println(colorize(symbolCheck+" Configuración restablecida a los valores por defecto.", colorGreen))
+		if !config.Quiet {
+			cmd.Println(colorize(symbolCheck+" Configuración restablecida a los valores por defecto.", colorGreen))
+		}
 	},
 }
 
@@ -133,9 +141,13 @@ var configExportCmd = &cobra.Command{
 				cmd.Printf("Error exportando: %v\n", err)
 				return
 			}
-			cmd.Printf("%s Configuración exportada a: %s\n", colorize(symbolCheck, colorGreen), args[0])
+			if !config.Quiet {
+				cmd.Printf("%s Configuración exportada a: %s\n", colorize(symbolCheck, colorGreen), args[0])
+			}
 		} else {
-			cmd.Println(string(data))
+			if !config.Quiet {
+				cmd.Println(string(data))
+			}
 		}
 	},
 }
@@ -163,7 +175,9 @@ var configImportCmd = &cobra.Command{
 			cmd.Printf("Error guardando configuración: %v\n", err)
 			return
 		}
-		cmd.Println(colorize(symbolCheck+" Configuración importada exitosamente.", colorGreen))
+		if !config.Quiet {
+			cmd.Println(colorize(symbolCheck+" Configuración importada exitosamente.", colorGreen))
+		}
 	},
 }
 
@@ -184,7 +198,9 @@ var configUpdateCmd = &cobra.Command{
 			cmd.Printf("Error guardando configuración: %v\n", err)
 			return
 		}
-		cmd.Println(colorize(symbolCheck+" Configuración actualizada con nuevos campos.", colorGreen))
+		if !config.Quiet {
+			cmd.Println(colorize(symbolCheck+" Configuración actualizada con nuevos campos.", colorGreen))
+		}
 	},
 }
 
@@ -431,7 +447,9 @@ func createConfigStructure(cmd *cobra.Command) error {
 		return fmt.Errorf("error guardando configuración inicial: %v", err)
 	}
 
-	cmd.Printf("Estructura de configuración creada en: %s\n", baseDir)
+	if !config.Quiet {
+		cmd.Printf("Estructura de configuración creada en: %s\n", baseDir)
+	}
 	return nil
 }
 
@@ -444,15 +462,19 @@ func runConfigInit(cmd *cobra.Command, args []string) {
 	configFile := filepath.Join(homeDir, ".config", "gower", "config.json")
 
 	if _, err := os.Stat(configFile); !os.IsNotExist(err) {
-		cmd.Printf("El archivo de configuración ya existe en: %s\n", configFile)
+		if !config.Quiet {
+			cmd.Printf("El archivo de configuración ya existe en: %s\n", configFile)
+		}
 		return
 	}
 
 	if config.DryRun {
-		cmd.Printf("[DRY-RUN] Se crearía el directorio base: %s\n", filepath.Dir(configFile))
-		cmd.Println("[DRY-RUN] Se crearían los directorios de datos, caché y logs.")
-		cmd.Println("[DRY-RUN] Se inicializarían los archivos JSON vacíos.")
-		cmd.Printf("[DRY-RUN] Se generaría el archivo de configuración en: %s\n", configFile)
+		if !config.Quiet {
+			cmd.Printf("[DRY-RUN] Se crearía el directorio base: %s\n", filepath.Dir(configFile))
+			cmd.Println("[DRY-RUN] Se crearían los directorios de datos, caché y logs.")
+			cmd.Println("[DRY-RUN] Se inicializarían los archivos JSON vacíos.")
+			cmd.Printf("[DRY-RUN] Se generaría el archivo de configuración en: %s\n", configFile)
+		}
 		return
 	}
 
