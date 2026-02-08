@@ -148,3 +148,56 @@ func TestConfigExportAndImport(t *testing.T) {
 		t.Errorf("Se esperaba '' después de importar, se obtuvo '%s'", output)
 	}
 }
+
+func TestConfigUpdate(t *testing.T) {
+	tmpDir := setupTestHome(t)
+	defer os.RemoveAll(tmpDir)
+
+	// 1. Crear un archivo de configuración parcial/antiguo manualmente
+	configDir := filepath.Join(tmpDir, ".gower")
+	os.MkdirAll(configDir, 0755)
+	configFile := filepath.Join(configDir, "config.json")
+	// Este JSON carece de "from_favorites"
+	oldJSON := []byte(`{"behavior":{"theme":"dark","change_interval":60}}`)
+	if err := os.WriteFile(configFile, oldJSON, 0644); err != nil {
+		t.Fatalf("Failed to write old config: %v", err)
+	}
+
+	// 2. Ejecutar config update
+	output, err := executeCommand(rootCmd, "config", "update")
+	if err != nil {
+		t.Fatalf("Error executing config update: %v", err)
+	}
+
+	if !strings.Contains(output, "Configuración actualizada con nuevos campos") {
+		t.Errorf("Expected success message, got: %s", output)
+	}
+
+	// 3. Verificar que el archivo ahora contiene "from_favorites"
+	newContent, err := os.ReadFile(configFile)
+	if err != nil {
+		t.Fatalf("Failed to read updated config: %v", err)
+	}
+	if !strings.Contains(string(newContent), "from_favorites") {
+		t.Errorf("Updated config file should contain 'from_favorites'")
+	}
+}
+
+func TestConfigFromFavorites(t *testing.T) {
+	tmpDir := setupTestHome(t)
+	defer os.RemoveAll(tmpDir)
+
+	executeCommand(rootCmd, "config", "init")
+
+	// Test Set
+	executeCommand(rootCmd, "config", "set", "behavior.from_favorites=true")
+
+	// Test Get
+	output, err := executeCommand(rootCmd, "config", "get", "behavior.from_favorites")
+	if err != nil {
+		t.Fatalf("Error executing get: %v", err)
+	}
+	if strings.TrimSpace(output) != "true" {
+		t.Errorf("Expected 'true', got '%s'", output)
+	}
+}

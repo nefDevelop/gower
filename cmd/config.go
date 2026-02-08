@@ -166,6 +166,27 @@ var configImportCmd = &cobra.Command{
 	},
 }
 
+var configUpdateCmd = &cobra.Command{
+	Use:   "update",
+	Short: "Actualizar estructura del archivo de configuración",
+	Run: func(cmd *cobra.Command, args []string) {
+		if err := ensureConfig(); err != nil {
+			cmd.Println(err)
+			return
+		}
+		cfg, err := loadConfig()
+		if err != nil {
+			cmd.Printf("Error cargando configuración: %v\n", err)
+			return
+		}
+		if err := saveConfig(cfg); err != nil {
+			cmd.Printf("Error guardando configuración: %v\n", err)
+			return
+		}
+		cmd.Println(colorize(symbolCheck+" Configuración actualizada con nuevos campos.", colorGreen))
+	},
+}
+
 func ensureConfig() error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -233,7 +254,7 @@ func getDefaultConfig() models.Config {
 		},
 		Behavior: models.BehaviorConfig{
 			Theme: "", ChangeInterval: 30, MultiMonitor: "clone",
-			WallpaperCommand: "", AutoDownload: true, RespectDarkMode: true, SaveFavoritesToFolder: false,
+			WallpaperCommand: "", AutoDownload: true, RespectDarkMode: true, SaveFavoritesToFolder: false, FromFavorites: false,
 		},
 		Power: models.PowerConfig{
 			BatteryMultiplier: 4, PauseOnLowBattery: true, LowBatteryThreshold: 20,
@@ -430,6 +451,7 @@ func init() {
 	configCmd.AddCommand(configResetCmd)
 	configCmd.AddCommand(configExportCmd)
 	configCmd.AddCommand(configImportCmd)
+	configCmd.AddCommand(configUpdateCmd)
 
 	configInitCmd.Flags().String("wallhaven-api-key", "", "Wallhaven API key")
 	configInitCmd.Flags().StringSlice("providers", []string{"wallhaven", "reddit"},

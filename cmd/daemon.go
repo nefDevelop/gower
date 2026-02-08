@@ -112,6 +112,10 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 			daemonInterval = cfg.Behavior.ChangeInterval
 		}
 
+		if !cmd.Flags().Changed("from-favorites") {
+			daemonFromFavorites = cfg.Behavior.FromFavorites
+		}
+
 		changer := core.NewWallpaperChanger("", cfg.Behavior.RespectDarkMode)
 		monitors, _ := changer.DetectMonitors()
 

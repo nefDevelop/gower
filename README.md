@@ -127,7 +127,8 @@ Un archivo de configuración de ejemplo podría ser:
     "respect_dark_mode": true,
     "change_interval": 30,
     "multi_monitor": "distinct",
-    "auto_download": false
+    "auto_download": false,
+    "from_favorites": false
   },
   "paths": {
     "wallpapers": "/home/user/Pictures/Wallpapers",
@@ -287,6 +288,7 @@ Gestiona la configuración de la aplicación.
 - `gower config reset`: Restablece la configuración a sus valores por defecto.
 - `gower config export [archivo]`: Exporta la configuración a un archivo o a la salida estándar.
 - `gower config import <archivo>`: Importa una configuración desde un archivo.
+- `gower config update`: Actualiza la estructura del archivo de configuración existente con nuevos campos.
 
 #### `gower daemon`
 
