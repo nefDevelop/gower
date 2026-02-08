@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"gower/internal/core"
 	"gower/internal/utils"
 	"gower/pkg/models"
 
@@ -292,7 +293,7 @@ func getDefaultConfig() models.Config {
 			ShowColors: true, ItemsPerPage: 10, ImagePreview: true,
 		},
 		Limits: models.LimitsConfig{
-			FeedSoftLimit: 400, FeedHardLimit: 2000, RateLimitRequests: 45, RateLimitPeriod: 60,
+			FeedSoftLimit: 400, FeedHardLimit: 2000, RateLimitRequests: 45, RateLimitPeriod: 60, LogRetentionDays: 7,
 		},
 	}
 }
@@ -384,12 +385,11 @@ func getConfigValue(cfg *models.Config, path string) (string, error) {
 }
 
 func createConfigStructure(cmd *cobra.Command) error {
-	homeDir, err := os.UserHomeDir()
+	baseDir, err := core.GetAppDir()
 	if err != nil {
 		return err
 	}
 
-	baseDir := filepath.Join(homeDir, ".config", "gower")
 	dirs := []string{
 		baseDir,
 		filepath.Join(baseDir, "data"),

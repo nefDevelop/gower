@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"gower/internal/core"
 	"gower/internal/utils"
 )
 
@@ -18,11 +19,11 @@ type State struct {
 
 // stateFilePath returns the path to the state file.
 var stateFilePath = func() (string, error) {
-	home, err := os.UserHomeDir()
+	appDir, err := core.GetAppDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".gower", "state.json"), nil
+	return filepath.Join(appDir, "state.json"), nil
 }
 
 // loadState reads the application state from the state file.

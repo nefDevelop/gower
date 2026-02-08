@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"math/rand"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strconv"
@@ -23,6 +24,7 @@ var (
 	daemonTheme         string
 	daemonForce         bool
 	daemonJSON          bool
+	daemonForeground    bool
 )
 
 var daemonCmd = &cobra.Command{
@@ -73,6 +75,7 @@ func init() {
 	daemonStartCmd.Flags().IntVar(&daemonInterval, "interval", 30, "Interval in minutes")
 	daemonStartCmd.Flags().BoolVar(&daemonFromFavorites, "from-favorites", false, "Include favorites")
 	daemonStartCmd.Flags().StringVar(&daemonTheme, "theme", "", "Filter by theme")
+	daemonStartCmd.Flags().BoolVar(&daemonForeground, "foreground", false, "Run in foreground (blocking)")
 
 	daemonStopCmd.Flags().BoolVar(&daemonForce, "force", false, "Force stop")
 	daemonStatusCmd.Flags().BoolVar(&daemonJSON, "json", false, "Output in JSON")
@@ -84,11 +87,35 @@ func init() {
 }
 
 func getPidFilePath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".gower", "gower.pid")
+	appDir, _ := core.GetAppDir()
+	return filepath.Join(appDir, "gower.pid")
 }
 
 func runDaemonStart(cmd *cobra.Command, args []string) {
+	if !daemonForeground {
+		pidFile := getPidFilePath()
+		if _, err := os.Stat(pidFile); err == nil {
+			cmd.Println("Daemon appears to be running (pid file exists). Use stop or force.")
+			return
+		}
+
+		exe, err := os.Executable()
+		if err != nil {
+			cmd.Printf("Error getting executable: %v\n", err)
+			return
+		}
+
+		procArgs := append(os.Args[1:], "--foreground")
+		command := exec.Command(exe, procArgs...)
+
+		if err := command.Start(); err != nil {
+			cmd.Printf("Error starting daemon: %v\n", err)
+			return
+		}
+		cmd.Printf("Daemon started in background with PID %d\n", command.Process.Pid)
+		return
+	}
+
 	pidFile := getPidFilePath()
 	if _, err := os.Stat(pidFile); err == nil {
 		cmd.Println("Daemon appears to be running (pid file exists). Use stop or force.")
@@ -101,6 +128,8 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 
 	cmd.Printf("Daemon started with PID %d\n", pid)
 	utils.Log.Info("Daemon started with PID %d", pid)
+
+	cleanupLogs()
 
 	// Print configuration details
 	cfg, err := loadConfig()
@@ -352,5 +381,37 @@ func sendSignal(cmd *cobra.Command, sig syscall.Signal, action string) {
 	if err == nil {
 		proc.Signal(sig)
 		cmd.Printf("Daemon %s.\n", action)
+	}
+}
+
+func cleanupLogs() {
+	cfg, err := loadConfig()
+	if err != nil {
+		return
+	}
+	days := cfg.Limits.LogRetentionDays
+	if days <= 0 {
+		days = 7
+	}
+
+	appDir, err := core.GetAppDir()
+	if err != nil {
+		return
+	}
+	logsDir := filepath.Join(appDir, "logs")
+
+	files, err := os.ReadDir(logsDir)
+	if err != nil {
+		return
+	}
+
+	cutoff := time.Now().AddDate(0, 0, -days)
+	for _, file := range files {
+		if !file.IsDir() {
+			info, err := file.Info()
+			if err == nil && info.ModTime().Before(cutoff) {
+				os.Remove(filepath.Join(logsDir, file.Name()))
+			}
+		}
 	}
 }

@@ -27,6 +27,30 @@ type Controller struct {
 	ColorManager    *ColorManager
 }
 
+// GetAppDir returns the application directory, preferring XDG but falling back to legacy .gower
+func GetAppDir() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+
+	xdgDir := filepath.Join(homeDir, ".config", "gower")
+	legacyDir := filepath.Join(homeDir, ".gower")
+
+	if _, err := os.Stat(filepath.Join(xdgDir, "config.json")); err == nil {
+		return xdgDir, nil
+	}
+	if _, err := os.Stat(filepath.Join(legacyDir, "config.json")); err == nil {
+		return legacyDir, nil
+	}
+	if _, err := os.Stat(legacyDir); err == nil {
+		if _, err := os.Stat(xdgDir); os.IsNotExist(err) {
+			return legacyDir, nil
+		}
+	}
+	return xdgDir, nil
+}
+
 // NewController creates a new Controller.
 var NewController = func(config *models.Config) *Controller {
 	providerManager := NewProviderManager()
@@ -53,12 +77,12 @@ var NewController = func(config *models.Config) *Controller {
 
 	// Register generic providers
 	jsonManager := utils.NewSecureJSONManager()
-	homeDir, _ := os.UserHomeDir()
+	appDir, _ := GetAppDir()
 
 	for _, providerConfig := range config.GenericProviders {
 		if providerConfig.Enabled {
-			if homeDir != "" {
-				parserPath := filepath.Join(homeDir, ".config", "gower", "data", "parser", providerConfig.Name+".json")
+			if appDir != "" {
+				parserPath := filepath.Join(appDir, "data", "parser", providerConfig.Name+".json")
 				var mapping models.ResponseMapping
 				if err := jsonManager.ReadJSON(parserPath, &mapping); err == nil {
 					providerConfig.ResponseMapping = mapping
@@ -79,19 +103,19 @@ var NewController = func(config *models.Config) *Controller {
 }
 
 func (c *Controller) getFeedPath() (string, error) {
-	homeDir, err := os.UserHomeDir()
+	appDir, err := GetAppDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(homeDir, ".config", "gower", "data", "feed.json"), nil
+	return filepath.Join(appDir, "data", "feed.json"), nil
 }
 
 func (c *Controller) getBlacklistPath() (string, error) {
-	homeDir, err := os.UserHomeDir()
+	appDir, err := GetAppDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(homeDir, ".config", "gower", "data", "blacklist.json"), nil
+	return filepath.Join(appDir, "data", "blacklist.json"), nil
 }
 
 func (c *Controller) loadBlacklist() ([]string, error) {
@@ -289,11 +313,11 @@ func (c *Controller) AnalyzeFeed(all bool, force bool, progress func(string)) er
 		}
 	}
 
-	homeDir, err := os.UserHomeDir()
+	appDir, err := GetAppDir()
 	if err != nil {
 		return err
 	}
-	thumbDir := filepath.Join(homeDir, ".config", "gower", "cache", "thumbs")
+	thumbDir := filepath.Join(appDir, "cache", "thumbs")
 
 	type job struct {
 		Controller *Controller
@@ -431,12 +455,12 @@ func (c *Controller) indexLocalWallpapers(feed *[]models.Wallpaper) (int, int, e
 
 // AnalyzeFavorites analyzes the favorites items, regenerates thumbnails/colors if needed.
 func (c *Controller) AnalyzeFavorites(all bool, force bool, progress func(string)) error {
-	homeDir, err := os.UserHomeDir()
+	appDir, err := GetAppDir()
 	if err != nil {
 		return err
 	}
-	favPath := filepath.Join(homeDir, ".config", "gower", "data", "favorites.json")
-	thumbDir := filepath.Join(homeDir, ".config", "gower", "cache", "thumbs")
+	favPath := filepath.Join(appDir, "data", "favorites.json")
+	thumbDir := filepath.Join(appDir, "cache", "thumbs")
 
 	// Define struct locally to match JSON
 	type Favorite struct {
@@ -992,11 +1016,11 @@ func (c *Controller) getFeedPathString() string {
 
 // GetWallpaperLocalPath returns the expected local path for a wallpaper without downloading it.
 func (c *Controller) GetWallpaperLocalPath(wp models.Wallpaper) (string, error) {
-	homeDir, err := os.UserHomeDir()
+	appDir, err := GetAppDir()
 	if err != nil {
 		return "", err
 	}
-	cacheDir := filepath.Join(homeDir, ".config", "gower", "cache", "wallpapers")
+	cacheDir := filepath.Join(appDir, "cache", "wallpapers")
 
 	// Determine filename
 	// Parse URL to safely get the extension from the path, ignoring query parameters.
@@ -1128,11 +1152,11 @@ func (c *Controller) GetCachedWallpapers(includeFavorites bool, theme string) ([
 // findWallpaperCacheFile finds the local cache file for a wallpaper, even if it has a bad name.
 // It returns the full path to the file and a boolean indicating if it was found.
 func (c *Controller) findWallpaperCacheFile(wp models.Wallpaper) (string, bool) {
-	homeDir, err := os.UserHomeDir()
+	appDir, err := GetAppDir()
 	if err != nil {
 		return "", false
 	}
-	wallpaperCacheDir := filepath.Join(homeDir, ".config", "gower", "cache", "wallpapers")
+	wallpaperCacheDir := filepath.Join(appDir, "cache", "wallpapers")
 	safeID := strings.ReplaceAll(wp.ID, "/", "_")
 
 	// Glob for files starting with the safe ID
@@ -1157,11 +1181,11 @@ type ParserSearch struct {
 }
 
 func (c *Controller) getParserPath(providerName string) (string, error) {
-	homeDir, err := os.UserHomeDir()
+	appDir, err := GetAppDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(homeDir, ".config", "gower", "data", "parser", providerName+".json"), nil
+	return filepath.Join(appDir, "data", "parser", providerName+".json"), nil
 }
 
 // SaveParserSearch saves the search results to the provider's parser cache file.
@@ -1203,11 +1227,11 @@ func (c *Controller) SaveParserSearch(providerName, query string, results []mode
 func (c *Controller) SyncFeed() (int, int, error) {
 	utils.Log.Info("Starting feed sync...")
 
-	homeDir, err := os.UserHomeDir()
+	appDir, err := GetAppDir()
 	if err != nil {
 		return 0, 0, err
 	}
-	parserDir := filepath.Join(homeDir, ".config", "gower", "data", "parser")
+	parserDir := filepath.Join(appDir, "data", "parser")
 
 	files, err := os.ReadDir(parserDir)
 	if err != nil {
@@ -1264,7 +1288,7 @@ func (c *Controller) SyncFeed() (int, int, error) {
 
 	addedCount := 0
 	repairedCount := 0
-	thumbDir := filepath.Join(homeDir, ".config", "gower", "cache", "thumbs")
+	thumbDir := filepath.Join(appDir, "cache", "thumbs")
 
 	// 1. Recolectar candidatos únicos
 	var candidates []models.Wallpaper
@@ -1462,11 +1486,11 @@ func (c *Controller) RebuildColorIndex() error {
 }
 
 func (c *Controller) rebuildColorsIndex(feed []models.Wallpaper) error {
-	homeDir, err := os.UserHomeDir()
+	appDir, err := GetAppDir()
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(homeDir, ".config", "gower", "data", "colors.json")
+	path := filepath.Join(appDir, "data", "colors.json")
 
 	// Collect Feed colors
 	var feedColors []string
@@ -1477,7 +1501,7 @@ func (c *Controller) rebuildColorsIndex(feed []models.Wallpaper) error {
 	}
 
 	// Collect Favorites colors
-	favPath := filepath.Join(homeDir, ".config", "gower", "data", "favorites.json")
+	favPath := filepath.Join(appDir, "data", "favorites.json")
 	var favorites []struct {
 		models.Wallpaper
 		Notes string `json:"notes,omitempty"`
@@ -1508,11 +1532,11 @@ func (c *Controller) rebuildColorsIndex(feed []models.Wallpaper) error {
 
 // LoadColorPalettes loads the generated palettes from colors.json
 func (c *Controller) LoadColorPalettes() ([]string, []string, error) {
-	homeDir, err := os.UserHomeDir()
+	appDir, err := GetAppDir()
 	if err != nil {
 		return nil, nil, err
 	}
-	path := filepath.Join(homeDir, ".config", "gower", "data", "colors.json")
+	path := filepath.Join(appDir, "data", "colors.json")
 
 	var data struct {
 		FeedPalette      []string `json:"feed_palette"`
@@ -1595,11 +1619,11 @@ func (c *Controller) isValidDimension(dimension string) bool {
 
 // GetLastProviderUpdateTime returns the modification time of the most recently updated provider cache file.
 func (c *Controller) GetLastProviderUpdateTime() (time.Time, error) {
-	homeDir, err := os.UserHomeDir()
+	appDir, err := GetAppDir()
 	if err != nil {
 		return time.Time{}, err
 	}
-	parserDir := filepath.Join(homeDir, ".config", "gower", "data", "parser")
+	parserDir := filepath.Join(appDir, "data", "parser")
 
 	files, err := os.ReadDir(parserDir)
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"gower/internal/core"
 	"gower/internal/utils"
 
 	"github.com/spf13/cobra"
@@ -18,8 +19,8 @@ var cacheCleanCmd = &cobra.Command{
 	Use:   "clean",
 	Short: "Clean the cache directory",
 	Run: func(cmd *cobra.Command, args []string) {
-		home, _ := os.UserHomeDir()
-		cacheDir := filepath.Join(home, ".gower", "cache")
+		appDir, _ := core.GetAppDir()
+		cacheDir := filepath.Join(appDir, "cache")
 
 		// Remove all contents
 		err := os.RemoveAll(cacheDir)
@@ -41,8 +42,8 @@ var cacheSizeCmd = &cobra.Command{
 	Use:   "size",
 	Short: "Show cache size",
 	Run: func(cmd *cobra.Command, args []string) {
-		home, _ := os.UserHomeDir()
-		cacheDir := filepath.Join(home, ".gower", "cache")
+		appDir, _ := core.GetAppDir()
+		cacheDir := filepath.Join(appDir, "cache")
 
 		var size int64
 		err := filepath.Walk(cacheDir, func(_ string, info os.FileInfo, err error) error {

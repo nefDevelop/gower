@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"gower/internal/core"
 	"gower/internal/utils"
 
 	"github.com/spf13/cobra"
@@ -21,8 +22,7 @@ var storageVerifyCmd = &cobra.Command{
 	Short: "Verify integrity of data files",
 	Run: func(cmd *cobra.Command, args []string) {
 		files := []string{"config.json", "data/feed.json", "data/favorites.json", "data/blacklist.json"}
-		home, _ := os.UserHomeDir()
-		baseDir := filepath.Join(home, ".gower")
+		baseDir, _ := core.GetAppDir()
 
 		allGood := true
 		for _, f := range files {
@@ -61,8 +61,7 @@ var storageRepairCmd = &cobra.Command{
 	Short: "Attempt to repair corrupt files from backups",
 	Run: func(cmd *cobra.Command, args []string) {
 		files := []string{"config.json", "data/feed.json", "data/favorites.json", "data/blacklist.json"}
-		home, _ := os.UserHomeDir()
-		baseDir := filepath.Join(home, ".gower")
+		baseDir, _ := core.GetAppDir()
 
 		for _, f := range files {
 			path := filepath.Join(baseDir, f)

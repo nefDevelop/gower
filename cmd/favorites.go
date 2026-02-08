@@ -370,19 +370,19 @@ var favoritesAnalyzeCmd = &cobra.Command{
 }
 
 func getFavoritesPath() (string, error) {
-	homeDir, err := os.UserHomeDir()
+	appDir, err := core.GetAppDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(homeDir, ".gower", "data", "favorites.json"), nil
+	return filepath.Join(appDir, "data", "favorites.json"), nil
 }
 
 func getFeedPath() (string, error) {
-	homeDir, err := os.UserHomeDir()
+	appDir, err := core.GetAppDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(homeDir, ".gower", "data", "feed.json"), nil
+	return filepath.Join(appDir, "data", "feed.json"), nil
 }
 
 func loadFavorites() ([]FavoriteWallpaper, error) {
