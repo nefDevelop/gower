@@ -108,14 +108,18 @@ func runDownloadRandom(cmd *cobra.Command, controller *core.Controller, cfg *mod
 }
 
 func performDownload(cmd *cobra.Command, controller *core.Controller, wp models.Wallpaper, cfg *models.Config) error {
-	cmd.Printf("Downloading wallpaper: %s (Source: %s)\n", wp.ID, wp.Source)
+	if !config.Quiet {
+		cmd.Printf("Downloading wallpaper: %s (Source: %s)\n", wp.ID, wp.Source)
+	}
 
 	cachePath, err := controller.DownloadWallpaper(wp)
 	if err != nil {
 		return fmt.Errorf("error downloading: %w", err)
 	}
 
-	cmd.Printf("Downloaded to cache: %s\n", cachePath)
+	if !config.Quiet {
+		cmd.Printf("Downloaded to cache: %s\n", cachePath)
+	}
 
 	targetPath := downloadOutput
 	if targetPath == "" && cfg.Paths.Wallpapers != "" {
@@ -159,7 +163,9 @@ func performDownload(cmd *cobra.Command, controller *core.Controller, wp models.
 		if _, err := io.Copy(dst, src); err != nil {
 			return err
 		}
-		cmd.Printf("Saved to: %s\n", outPath)
+		if !config.Quiet {
+			cmd.Printf("Saved to: %s\n", outPath)
+		}
 	}
 
 	return nil

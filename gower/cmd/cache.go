@@ -33,7 +33,9 @@ var cacheCleanCmd = &cobra.Command{
 		os.MkdirAll(filepath.Join(cacheDir, "wallpapers"), 0755)
 		os.MkdirAll(filepath.Join(cacheDir, "thumbs"), 0755)
 
-		cmd.Println("Cache cleaned successfully.")
+		if !config.Quiet {
+			cmd.Println("Cache cleaned successfully.")
+		}
 		utils.Log.Info("Cache cleaned successfully")
 	},
 }
@@ -61,7 +63,9 @@ var cacheSizeCmd = &cobra.Command{
 			return
 		}
 
-		cmd.Printf("Cache size: %.2f MB\n", float64(size)/1024/1024)
+		if !config.Quiet {
+			cmd.Printf("Cache size: %.2f MB\n", float64(size)/1024/1024)
+		}
 	},
 }
 

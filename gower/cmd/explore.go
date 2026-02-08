@@ -78,7 +78,9 @@ func runExplore(cmd *cobra.Command, args []string) {
 	}
 
 	if len(selectedProviders) == 0 {
-		cmd.Println("No enabled providers found or selected.")
+		if !config.Quiet {
+			cmd.Println("No enabled providers found or selected.")
+		}
 		return
 	}
 
@@ -157,7 +159,7 @@ func runExplore(cmd *cobra.Command, args []string) {
 	if config.JSONOutput {
 		data, _ := json.MarshalIndent(allWallpapers, "", "  ")
 		cmd.Println(string(data))
-	} else {
+	} else if !config.Quiet {
 		for _, w := range allWallpapers {
 			cmd.Printf("  - ID: %s | Res: %s | Source: %s | URL: %s\n", w.ID, w.Dimension, w.Source, w.URL)
 		}

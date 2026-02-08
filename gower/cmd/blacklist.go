@@ -37,7 +37,9 @@ var blacklistAddCmd = &cobra.Command{
 			cmd.Printf("Warning: Failed to remove from feed: %v\n", err)
 		}
 
-		cmd.Printf("Wallpaper %s added to blacklist.\n", id)
+		if !config.Quiet {
+			cmd.Printf("Wallpaper %s added to blacklist.\n", id)
+		}
 	},
 }
 
@@ -61,7 +63,9 @@ var blacklistRemoveCmd = &cobra.Command{
 			return
 		}
 
-		cmd.Printf("Wallpaper %s removed from blacklist.\n", id)
+		if !config.Quiet {
+			cmd.Printf("Wallpaper %s removed from blacklist.\n", id)
+		}
 	},
 }
 
@@ -83,9 +87,11 @@ var blacklistListCmd = &cobra.Command{
 			return
 		}
 
-		cmd.Println("Blacklisted IDs:")
-		for _, id := range blacklist {
-			cmd.Printf(" - %s\n", id)
+		if !config.Quiet {
+			cmd.Println("Blacklisted IDs:")
+			for _, id := range blacklist {
+				cmd.Printf(" - %s\n", id)
+			}
 		}
 	},
 }

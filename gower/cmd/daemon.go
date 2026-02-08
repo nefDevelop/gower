@@ -95,7 +95,9 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 	if !daemonForeground {
 		pidFile := getPidFilePath()
 		if _, err := os.Stat(pidFile); err == nil {
-			cmd.Println("Daemon appears to be running (pid file exists). Use stop or force.")
+			if !config.Quiet {
+				cmd.Println("Daemon appears to be running (pid file exists). Use stop or force.")
+			}
 			return
 		}
 
@@ -112,13 +114,17 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 			cmd.Printf("Error starting daemon: %v\n", err)
 			return
 		}
-		cmd.Printf("Daemon started in background with PID %d\n", command.Process.Pid)
+		if !config.Quiet {
+			cmd.Printf("Daemon started in background with PID %d\n", command.Process.Pid)
+		}
 		return
 	}
 
 	pidFile := getPidFilePath()
 	if _, err := os.Stat(pidFile); err == nil {
-		cmd.Println("Daemon appears to be running (pid file exists). Use stop or force.")
+		if !config.Quiet {
+			cmd.Println("Daemon appears to be running (pid file exists). Use stop or force.")
+		}
 		return
 	}
 
@@ -126,7 +132,9 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 	os.WriteFile(pidFile, []byte(strconv.Itoa(pid)), 0644)
 	defer os.Remove(pidFile)
 
-	cmd.Printf("Daemon started with PID %d\n", pid)
+	if !config.Quiet {
+		cmd.Printf("Daemon started with PID %d\n", pid)
+	}
 	utils.Log.Info("Daemon started with PID %d", pid)
 
 	cleanupLogs()
@@ -155,13 +163,15 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 			themeDisplay = "None"
 		}
 
-		cmd.Println("--- Daemon Configuration ---")
-		cmd.Printf("Interval: %d minutes\n", daemonInterval)
-		cmd.Printf("Multi-Monitor Mode: %s\n", cfg.Behavior.MultiMonitor)
-		cmd.Printf("Detected Monitors: %d\n", len(monitors))
-		cmd.Printf("Theme Filter: %s\n", themeDisplay)
-		cmd.Printf("From Favorites: %v\n", daemonFromFavorites)
-		cmd.Println("----------------------------")
+		if !config.Quiet {
+			cmd.Println("--- Daemon Configuration ---")
+			cmd.Printf("Interval: %d minutes\n", daemonInterval)
+			cmd.Printf("Multi-Monitor Mode: %s\n", cfg.Behavior.MultiMonitor)
+			cmd.Printf("Detected Monitors: %d\n", len(monitors))
+			cmd.Printf("Theme Filter: %s\n", themeDisplay)
+			cmd.Printf("From Favorites: %v\n", daemonFromFavorites)
+			cmd.Println("----------------------------")
+		}
 	}
 
 	sigs := make(chan os.Signal, 1)
@@ -180,15 +190,21 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 		case sig := <-sigs:
 			switch sig {
 			case syscall.SIGINT, syscall.SIGTERM:
-				cmd.Println("Stopping daemon...")
+				if !config.Quiet {
+					cmd.Println("Stopping daemon...")
+				}
 				utils.Log.Info("Stopping daemon...")
 				return
 			case syscall.SIGUSR1:
-				cmd.Println("Daemon paused.")
+				if !config.Quiet {
+					cmd.Println("Daemon paused.")
+				}
 				utils.Log.Info("Daemon paused.")
 				paused = true
 			case syscall.SIGUSR2:
-				cmd.Println("Daemon resumed.")
+				if !config.Quiet {
+					cmd.Println("Daemon resumed.")
+				}
 				utils.Log.Info("Daemon resumed.")
 				paused = false
 				changeWallpaper(cmd)
@@ -288,7 +304,7 @@ func changeWallpaper(cmd *cobra.Command) {
 		}
 	} else {
 		utils.Log.Info("Daemon set %d wallpaper(s)", len(selectedPaths))
-		if cmd != nil {
+		if cmd != nil && !config.Quiet {
 			cmd.Printf("[%s] Wallpaper changed: %d image(s) applied.\n", time.Now().Format("15:04:05"), len(selectedPaths))
 			if config.Debug {
 				for i, p := range selectedPaths {
@@ -322,7 +338,9 @@ func runDaemonStop(cmd *cobra.Command, args []string) {
 	pidFile := getPidFilePath()
 	data, err := os.ReadFile(pidFile)
 	if err != nil {
-		cmd.Println("Daemon not running (no pid file).")
+		if !config.Quiet {
+			cmd.Println("Daemon not running (no pid file).")
+		}
 		return
 	}
 	pid, _ := strconv.Atoi(string(data))
@@ -330,7 +348,9 @@ func runDaemonStop(cmd *cobra.Command, args []string) {
 	proc, err := os.FindProcess(pid)
 	if err == nil {
 		proc.Signal(syscall.SIGTERM)
-		cmd.Println("Stop signal sent.")
+		if !config.Quiet {
+			cmd.Println("Stop signal sent.")
+		}
 	}
 	if daemonForce {
 		os.Remove(pidFile)
@@ -360,7 +380,7 @@ func runDaemonStatus(cmd *cobra.Command, args []string) {
 		}
 		jsonOut, _ := json.Marshal(status)
 		cmd.Println(string(jsonOut))
-	} else {
+	} else if !config.Quiet {
 		if running {
 			cmd.Printf("Daemon is running (PID: %d)\n", pid)
 		} else {
@@ -373,14 +393,18 @@ func sendSignal(cmd *cobra.Command, sig syscall.Signal, action string) {
 	pidFile := getPidFilePath()
 	data, err := os.ReadFile(pidFile)
 	if err != nil {
-		cmd.Println("Daemon not running.")
+		if !config.Quiet {
+			cmd.Println("Daemon not running.")
+		}
 		return
 	}
 	pid, _ := strconv.Atoi(string(data))
 	proc, err := os.FindProcess(pid)
 	if err == nil {
 		proc.Signal(sig)
-		cmd.Printf("Daemon %s.\n", action)
+		if !config.Quiet {
+			cmd.Printf("Daemon %s.\n", action)
+		}
 	}
 }
 
