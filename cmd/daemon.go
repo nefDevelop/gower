@@ -102,6 +102,35 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 	cmd.Printf("Daemon started with PID %d\n", pid)
 	utils.Log.Info("Daemon started with PID %d", pid)
 
+	// Print configuration details
+	cfg, err := loadConfig()
+	if err != nil {
+		cmd.Printf("Warning: Failed to load config: %v\n", err)
+	} else {
+		// Si no se ha especificado el flag --interval, usar el valor de config.json
+		if !cmd.Flags().Changed("interval") && cfg.Behavior.ChangeInterval > 0 {
+			daemonInterval = cfg.Behavior.ChangeInterval
+		}
+
+		changer := core.NewWallpaperChanger("", cfg.Behavior.RespectDarkMode)
+		monitors, _ := changer.DetectMonitors()
+
+		themeDisplay := daemonTheme
+		if themeDisplay == "" && cfg.Behavior.RespectDarkMode {
+			themeDisplay = "Auto (System)"
+		} else if themeDisplay == "" {
+			themeDisplay = "None"
+		}
+
+		cmd.Println("--- Daemon Configuration ---")
+		cmd.Printf("Interval: %d minutes\n", daemonInterval)
+		cmd.Printf("Multi-Monitor Mode: %s\n", cfg.Behavior.MultiMonitor)
+		cmd.Printf("Detected Monitors: %d\n", len(monitors))
+		cmd.Printf("Theme Filter: %s\n", themeDisplay)
+		cmd.Printf("From Favorites: %v\n", daemonFromFavorites)
+		cmd.Println("----------------------------")
+	}
+
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1, syscall.SIGUSR2)
 
@@ -111,7 +140,7 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 	paused := false
 
 	// Initial run
-	changeWallpaper()
+	changeWallpaper(cmd)
 
 	for {
 		select {
@@ -129,20 +158,23 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 				cmd.Println("Daemon resumed.")
 				utils.Log.Info("Daemon resumed.")
 				paused = false
-				changeWallpaper()
+				changeWallpaper(cmd)
 			}
 		case <-ticker.C:
 			if !paused {
-				changeWallpaper()
+				changeWallpaper(cmd)
 			}
 		}
 	}
 }
 
-func changeWallpaper() {
+func changeWallpaper(cmd *cobra.Command) {
 	cfg, err := loadConfig()
 	if err != nil {
 		utils.Log.Error("Daemon failed to load config: %v", err)
+		if cmd != nil {
+			cmd.Printf("Error loading config: %v\n", err)
+		}
 		return
 	}
 	controller := core.NewController(cfg)
@@ -166,10 +198,19 @@ func changeWallpaper() {
 
 	if mmMode == "distinct" {
 		var err error
-		monitors, err = changer.DetectMonitors()
-		if err != nil {
-			utils.Log.Error("Daemon: Failed to detect monitors for distinct mode: %v. Falling back to clone.", err)
+		// Retry detection a few times to be robust against transient failures
+		for i := 0; i < 3; i++ {
+			monitors, err = changer.DetectMonitors()
+			if err == nil && len(monitors) > 0 {
+				break
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+
+		if err != nil || len(monitors) == 0 {
+			utils.Log.Error("Daemon: Failed to detect monitors for distinct mode (err: %v, count: %d). Falling back to clone.", err, len(monitors))
 			mmMode = "clone"
+			monitors = []core.Monitor{{ID: "default", Name: "default", Primary: true}}
 		} else {
 			utils.Log.Debug("Daemon: Detected %d monitors for distinct mode", len(monitors))
 		}
@@ -209,8 +250,19 @@ func changeWallpaper() {
 	// 4. Apply Wallpapers
 	if err := changer.SetWallpapers(selectedPaths, monitors, mmMode); err != nil {
 		utils.Log.Error("Daemon failed to set wallpapers: %v", err)
+		if cmd != nil {
+			cmd.Printf("Error setting wallpapers: %v\n", err)
+		}
 	} else {
 		utils.Log.Info("Daemon set %d wallpaper(s)", len(selectedPaths))
+		if cmd != nil {
+			cmd.Printf("[%s] Wallpaper changed: %d image(s) applied.\n", time.Now().Format("15:04:05"), len(selectedPaths))
+			if config.Debug {
+				for i, p := range selectedPaths {
+					cmd.Printf("  Monitor %d: %s\n", i+1, filepath.Base(p))
+				}
+			}
+		}
 
 		// Update state so 'gower status' knows what's set
 		if len(selectedWallpapers) > 0 {
