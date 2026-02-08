@@ -58,7 +58,7 @@ var NewController = func(config *models.Config) *Controller {
 	for _, providerConfig := range config.GenericProviders {
 		if providerConfig.Enabled {
 			if homeDir != "" {
-				parserPath := filepath.Join(homeDir, ".gower", "data", "parser", providerConfig.Name+".json")
+				parserPath := filepath.Join(homeDir, ".config", "gower", "data", "parser", providerConfig.Name+".json")
 				var mapping models.ResponseMapping
 				if err := jsonManager.ReadJSON(parserPath, &mapping); err == nil {
 					providerConfig.ResponseMapping = mapping
@@ -83,7 +83,7 @@ func (c *Controller) getFeedPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(homeDir, ".gower", "data", "feed.json"), nil
+	return filepath.Join(homeDir, ".config", "gower", "data", "feed.json"), nil
 }
 
 func (c *Controller) getBlacklistPath() (string, error) {
@@ -91,7 +91,7 @@ func (c *Controller) getBlacklistPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(homeDir, ".gower", "data", "blacklist.json"), nil
+	return filepath.Join(homeDir, ".config", "gower", "data", "blacklist.json"), nil
 }
 
 func (c *Controller) loadBlacklist() ([]string, error) {
@@ -284,7 +284,7 @@ func (c *Controller) AnalyzeFeed(all bool, force bool, progress func(string)) er
 
 	// Index local wallpapers if enabled
 	if c.Config.Paths.IndexWallpapers && c.Config.Paths.Wallpapers != "" {
-		if err := c.indexLocalWallpapers(&feed); err != nil {
+		if _, _, err := c.indexLocalWallpapers(&feed); err != nil {
 			utils.Log.Error("Error indexing local wallpapers: %v", err)
 		}
 	}
@@ -293,7 +293,7 @@ func (c *Controller) AnalyzeFeed(all bool, force bool, progress func(string)) er
 	if err != nil {
 		return err
 	}
-	thumbDir := filepath.Join(homeDir, ".gower", "cache", "thumbs")
+	thumbDir := filepath.Join(homeDir, ".config", "gower", "cache", "thumbs")
 
 	type job struct {
 		Controller *Controller
@@ -366,11 +366,11 @@ func (c *Controller) AnalyzeFeed(all bool, force bool, progress func(string)) er
 }
 
 // indexLocalWallpapers scans the configured wallpapers directory and updates the feed.
-func (c *Controller) indexLocalWallpapers(feed *[]models.Wallpaper) error {
+func (c *Controller) indexLocalWallpapers(feed *[]models.Wallpaper) (int, int, error) {
 	localDir := c.Config.Paths.Wallpapers
 	files, err := os.ReadDir(localDir)
 	if err != nil {
-		return err
+		return 0, 0, err
 	}
 
 	// Map existing local items in feed
@@ -426,7 +426,7 @@ func (c *Controller) indexLocalWallpapers(feed *[]models.Wallpaper) error {
 	}
 
 	utils.Log.Info("Local indexing: %d added, %d removed", addedCount, removedCount)
-	return nil
+	return addedCount, removedCount, nil
 }
 
 // AnalyzeFavorites analyzes the favorites items, regenerates thumbnails/colors if needed.
@@ -435,8 +435,8 @@ func (c *Controller) AnalyzeFavorites(all bool, force bool, progress func(string
 	if err != nil {
 		return err
 	}
-	favPath := filepath.Join(homeDir, ".gower", "data", "favorites.json")
-	thumbDir := filepath.Join(homeDir, ".gower", "cache", "thumbs")
+	favPath := filepath.Join(homeDir, ".config", "gower", "data", "favorites.json")
+	thumbDir := filepath.Join(homeDir, ".config", "gower", "cache", "thumbs")
 
 	// Define struct locally to match JSON
 	type Favorite struct {
@@ -996,7 +996,7 @@ func (c *Controller) GetWallpaperLocalPath(wp models.Wallpaper) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	cacheDir := filepath.Join(homeDir, ".gower", "cache", "wallpapers")
+	cacheDir := filepath.Join(homeDir, ".config", "gower", "cache", "wallpapers")
 
 	// Determine filename
 	// Parse URL to safely get the extension from the path, ignoring query parameters.
@@ -1132,7 +1132,7 @@ func (c *Controller) findWallpaperCacheFile(wp models.Wallpaper) (string, bool) 
 	if err != nil {
 		return "", false
 	}
-	wallpaperCacheDir := filepath.Join(homeDir, ".gower", "cache", "wallpapers")
+	wallpaperCacheDir := filepath.Join(homeDir, ".config", "gower", "cache", "wallpapers")
 	safeID := strings.ReplaceAll(wp.ID, "/", "_")
 
 	// Glob for files starting with the safe ID
@@ -1161,7 +1161,7 @@ func (c *Controller) getParserPath(providerName string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(homeDir, ".gower", "data", "parser", providerName+".json"), nil
+	return filepath.Join(homeDir, ".config", "gower", "data", "parser", providerName+".json"), nil
 }
 
 // SaveParserSearch saves the search results to the provider's parser cache file.
@@ -1207,7 +1207,7 @@ func (c *Controller) SyncFeed() (int, int, error) {
 	if err != nil {
 		return 0, 0, err
 	}
-	parserDir := filepath.Join(homeDir, ".gower", "data", "parser")
+	parserDir := filepath.Join(homeDir, ".config", "gower", "data", "parser")
 
 	files, err := os.ReadDir(parserDir)
 	if err != nil {
@@ -1221,6 +1221,33 @@ func (c *Controller) SyncFeed() (int, int, error) {
 	// Load existing feed and blacklist to avoid duplicates
 	feed, _ := c.loadFeed()
 	blacklist, _ := c.loadBlacklist()
+
+	// Index local wallpapers if enabled
+	addedLocal := 0
+	removedLocal := 0
+	var newLocalWallpapers []models.Wallpaper
+
+	if c.Config.Paths.IndexWallpapers && c.Config.Paths.Wallpapers != "" {
+		prevLen := len(feed)
+		var err error
+		addedLocal, removedLocal, err = c.indexLocalWallpapers(&feed)
+		if err != nil {
+			utils.Log.Error("Error indexing local wallpapers: %v", err)
+		}
+		if addedLocal > 0 {
+			newLocalWallpapers = feed[prevLen:]
+		}
+	}
+
+	if removedLocal > 0 {
+		newFeed := make([]models.Wallpaper, 0, len(feed))
+		for _, wp := range feed {
+			if wp.ID != "" {
+				newFeed = append(newFeed, wp)
+			}
+		}
+		feed = newFeed
+	}
 
 	inFeed := make(map[string]bool)
 	for _, wp := range feed {
@@ -1237,10 +1264,16 @@ func (c *Controller) SyncFeed() (int, int, error) {
 
 	addedCount := 0
 	repairedCount := 0
-	thumbDir := filepath.Join(homeDir, ".gower", "cache", "thumbs")
+	thumbDir := filepath.Join(homeDir, ".config", "gower", "cache", "thumbs")
 
 	// 1. Recolectar candidatos únicos
 	var candidates []models.Wallpaper
+
+	// Añadir nuevos wallpapers locales para análisis inmediato (miniaturas/color)
+	for _, wp := range newLocalWallpapers {
+		candidates = append(candidates, wp)
+		processed[wp.ID] = true
+	}
 
 	for _, file := range files {
 		if file.IsDir() || filepath.Ext(file.Name()) != ".json" {
@@ -1389,7 +1422,7 @@ func (c *Controller) SyncFeed() (int, int, error) {
 	// Reconstruir colors.json basado en el feed actualizado
 	c.rebuildColorsIndex(feed)
 
-	if addedCount > 0 || repairedCount > 0 {
+	if addedCount > 0 || repairedCount > 0 || addedLocal > 0 || removedLocal > 0 {
 		// Aplicar Hard Limit (FIFO)
 		if c.Config.Limits.FeedHardLimit > 0 && len(feed) > c.Config.Limits.FeedHardLimit {
 			// Mantener solo los últimos N elementos
@@ -1397,9 +1430,9 @@ func (c *Controller) SyncFeed() (int, int, error) {
 		}
 		err := c.saveFeed(feed)
 		if err == nil {
-			utils.Log.Info("Feed sync completed. Added: %d, Repaired: %d", addedCount, repairedCount)
+			utils.Log.Info("Feed sync completed. Added: %d (Local: %d), Repaired: %d", addedCount+addedLocal, addedLocal, repairedCount)
 		}
-		return addedCount, repairedCount, err
+		return addedCount + addedLocal, repairedCount, err
 	}
 	utils.Log.Info("Feed sync completed. No changes.")
 	return 0, 0, nil
@@ -1433,7 +1466,7 @@ func (c *Controller) rebuildColorsIndex(feed []models.Wallpaper) error {
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(homeDir, ".gower", "data", "colors.json")
+	path := filepath.Join(homeDir, ".config", "gower", "data", "colors.json")
 
 	// Collect Feed colors
 	var feedColors []string
@@ -1444,7 +1477,7 @@ func (c *Controller) rebuildColorsIndex(feed []models.Wallpaper) error {
 	}
 
 	// Collect Favorites colors
-	favPath := filepath.Join(homeDir, ".gower", "data", "favorites.json")
+	favPath := filepath.Join(homeDir, ".config", "gower", "data", "favorites.json")
 	var favorites []struct {
 		models.Wallpaper
 		Notes string `json:"notes,omitempty"`
@@ -1479,7 +1512,7 @@ func (c *Controller) LoadColorPalettes() ([]string, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	path := filepath.Join(homeDir, ".gower", "data", "colors.json")
+	path := filepath.Join(homeDir, ".config", "gower", "data", "colors.json")
 
 	var data struct {
 		FeedPalette      []string `json:"feed_palette"`
@@ -1566,7 +1599,7 @@ func (c *Controller) GetLastProviderUpdateTime() (time.Time, error) {
 	if err != nil {
 		return time.Time{}, err
 	}
-	parserDir := filepath.Join(homeDir, ".gower", "data", "parser")
+	parserDir := filepath.Join(homeDir, ".config", "gower", "data", "parser")
 
 	files, err := os.ReadDir(parserDir)
 	if err != nil {

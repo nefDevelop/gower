@@ -111,7 +111,7 @@ var configProviderAddCmd = &cobra.Command{
 		}
 
 		homeDir, _ := os.UserHomeDir()
-		parserDir := filepath.Join(homeDir, ".gower", "data", "parser")
+		parserDir := filepath.Join(homeDir, ".config", "gower", "data", "parser")
 		if err := os.MkdirAll(parserDir, 0755); err != nil {
 			cmd.Printf("Warning: Could not create parser directory: %v\n", err)
 		}
@@ -163,7 +163,7 @@ var configProviderRemoveCmd = &cobra.Command{
 
 		// Eliminar archivo del parser
 		homeDir, _ := os.UserHomeDir()
-		parserFile := filepath.Join(homeDir, ".gower", "data", "parser", name+".json")
+		parserFile := filepath.Join(homeDir, ".config", "gower", "data", "parser", name+".json")
 		if err := os.Remove(parserFile); err != nil && !os.IsNotExist(err) {
 			cmd.Printf("Warning: Could not remove parser file: %v\n", err)
 		}

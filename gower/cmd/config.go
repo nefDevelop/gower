@@ -188,11 +188,10 @@ var configUpdateCmd = &cobra.Command{
 }
 
 func ensureConfig() error {
-	homeDir, err := os.UserHomeDir()
+	configFile, err := getConfigPath()
 	if err != nil {
-		return fmt.Errorf("Error obteniendo directorio home: %v", err)
+		return err
 	}
-	configFile := filepath.Join(homeDir, ".gower", "config.json")
 
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
 		return fmt.Errorf("Configuración no encontrada. Ejecuta 'gower config init' primero.")
@@ -201,11 +200,28 @@ func ensureConfig() error {
 }
 
 func getConfigPath() (string, error) {
+	if config.ConfigFile != "" {
+		return config.ConfigFile, nil
+	}
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(homeDir, ".gower", "config.json"), nil
+
+	// 1. Check primary location: ~/.config/gower/config.json
+	xdgPath := filepath.Join(homeDir, ".config", "gower", "config.json")
+	if _, err := os.Stat(xdgPath); err == nil {
+		return xdgPath, nil
+	}
+
+	// 2. Check legacy location: ~/.gower/config.json
+	legacyPath := filepath.Join(homeDir, ".gower", "config.json")
+	if _, err := os.Stat(legacyPath); err == nil {
+		return legacyPath, nil
+	}
+
+	// Default to primary for new configurations
+	return xdgPath, nil
 }
 
 var loadConfig = func() (*models.Config, error) {
@@ -218,6 +234,16 @@ var loadConfig = func() (*models.Config, error) {
 	if err := manager.ReadJSON(path, &cfg); err != nil {
 		return nil, err
 	}
+
+	if strings.HasPrefix(cfg.Paths.Wallpapers, "~/") || cfg.Paths.Wallpapers == "~" {
+		homeDir, _ := os.UserHomeDir()
+		if cfg.Paths.Wallpapers == "~" {
+			cfg.Paths.Wallpapers = homeDir
+		} else {
+			cfg.Paths.Wallpapers = filepath.Join(homeDir, cfg.Paths.Wallpapers[2:])
+		}
+	}
+
 	return &cfg, nil
 }
 
@@ -254,7 +280,7 @@ func getDefaultConfig() models.Config {
 		},
 		Behavior: models.BehaviorConfig{
 			Theme: "", ChangeInterval: 30, MultiMonitor: "clone",
-			WallpaperCommand: "", AutoDownload: true, RespectDarkMode: true, SaveFavoritesToFolder: false, FromFavorites: false,
+			AutoDownload: true, RespectDarkMode: true, SaveFavoritesToFolder: false, FromFavorites: false,
 		},
 		Power: models.PowerConfig{
 			BatteryMultiplier: 4, PauseOnLowBattery: true, LowBatteryThreshold: 20,
@@ -363,7 +389,7 @@ func createConfigStructure(cmd *cobra.Command) error {
 		return err
 	}
 
-	baseDir := filepath.Join(homeDir, ".gower")
+	baseDir := filepath.Join(homeDir, ".config", "gower")
 	dirs := []string{
 		baseDir,
 		filepath.Join(baseDir, "data"),
@@ -415,7 +441,7 @@ func runConfigInit(cmd *cobra.Command, args []string) {
 		fmt.Printf("Error obteniendo directorio home: %v\n", err)
 		return
 	}
-	configFile := filepath.Join(homeDir, ".gower", "config.json")
+	configFile := filepath.Join(homeDir, ".config", "gower", "config.json")
 
 	if _, err := os.Stat(configFile); !os.IsNotExist(err) {
 		cmd.Printf("El archivo de configuración ya existe en: %s\n", configFile)
@@ -458,7 +484,6 @@ func init() {
 		"enabled providers")
 	configInitCmd.Flags().String("min-resolution", "1920x1080", "minimum resolution")
 	configInitCmd.Flags().Int("change-interval", 30, "auto-change interval (minutes)")
-	configInitCmd.Flags().String("wallpaper-command", "", "custom wallpaper command")
 	configInitCmd.Flags().String("wallpapers-dir", "", "wallpapers directory")
 	configInitCmd.Flags().String("multi-monitor", "clone", "multi-monitor mode")
 }

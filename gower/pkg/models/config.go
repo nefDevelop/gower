@@ -80,7 +80,6 @@ type BehaviorConfig struct {
 	Theme                 string `json:"theme"`
 	ChangeInterval        int    `json:"change_interval"`
 	MultiMonitor          string `json:"multi_monitor"`
-	WallpaperCommand      string `json:"wallpaper_command"`
 	AutoDownload          bool   `json:"auto_download"`
 	RespectDarkMode       bool   `json:"respect_dark_mode"`
 	SaveFavoritesToFolder bool   `json:"save_favorites_to_folder"`

@@ -29,7 +29,7 @@ func resetExploreFlags() {
 
 // createTestConfig crea un archivo config.json personalizado para un test.
 func createTestConfig(t *testing.T, dir string, config *models.Config) {
-	gowerDir := filepath.Join(dir, ".gower")
+	gowerDir := filepath.Join(dir, ".config", "gower")
 	if err := os.MkdirAll(gowerDir, 0755); err != nil {
 		t.Fatalf("Failed to create .gower dir: %v", err)
 	}
@@ -115,7 +115,7 @@ func TestExploreGenericProvider(t *testing.T) {
 	createTestConfig(t, tmpDir, &cfg)
 
 	// Create parser mapping file as GenericProvider relies on it
-	parserDir := filepath.Join(tmpDir, ".gower", "data", "parser")
+	parserDir := filepath.Join(tmpDir, ".config", "gower", "data", "parser")
 	if err := os.MkdirAll(parserDir, 0755); err != nil {
 		t.Fatal(err)
 	}
