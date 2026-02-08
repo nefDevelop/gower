@@ -84,6 +84,7 @@ type BehaviorConfig struct {
 	AutoDownload          bool   `json:"auto_download"`
 	RespectDarkMode       bool   `json:"respect_dark_mode"`
 	SaveFavoritesToFolder bool   `json:"save_favorites_to_folder"`
+	FromFavorites         bool   `json:"from_favorites"`
 }
 
 type PowerConfig struct {
