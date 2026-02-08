@@ -212,7 +212,7 @@ func TestFavoritesListColor(t *testing.T) {
 	}
 
 	// Manually create a dynamic palette for the test
-	colorsPath := filepath.Join(tmpDir, ".gower", "data", "colors.json")
+	colorsPath := filepath.Join(tmpDir, ".config", "gower", "data", "colors.json")
 	paletteJSON := `{"favorites_palette": ["#FF0000", "#0000FF"]}`
 	if err := os.WriteFile(colorsPath, []byte(paletteJSON), 0644); err != nil {
 		t.Fatalf("Failed to write colors.json for test: %v", err)
@@ -265,7 +265,7 @@ func TestFavoritesAddWithPersistence(t *testing.T) {
 	os.WriteFile(localFile, []byte("dummy image content"), 0644)
 
 	// Add to feed manually so favorites add can find it and use the local path
-	feedPath := filepath.Join(tmpDir, ".gower", "data", "feed.json")
+	feedPath := filepath.Join(tmpDir, ".config", "gower", "data", "feed.json")
 	feed := []models.Wallpaper{
 		{ID: "local-fav", URL: localFile, Source: "local"},
 	}

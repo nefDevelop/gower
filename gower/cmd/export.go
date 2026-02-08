@@ -212,8 +212,8 @@ func exportAllToZip(cmd *cobra.Command, filename string, includeImages bool) err
 
 	// Images
 	if includeImages {
-		home, _ := os.UserHomeDir()
-		cacheDir := filepath.Join(home, ".gower", "cache", "wallpapers")
+		appDir, _ := core.GetAppDir()
+		cacheDir := filepath.Join(appDir, "cache", "wallpapers")
 		filepath.Walk(cacheDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil || info.IsDir() {
 				return nil

@@ -22,7 +22,7 @@ func setupTestHome(t *testing.T) string {
 	t.Setenv("USERPROFILE", tmpDir) // Windows
 
 	// Create data directory
-	if err := os.MkdirAll(filepath.Join(tmpDir, ".gower", "data"), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join(tmpDir, ".config", "gower", "data"), 0755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -122,7 +122,7 @@ func TestController_Blacklist(t *testing.T) {
 	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "2"})
 
 	// Manually write blacklist file
-	blacklistPath := filepath.Join(tmpDir, ".gower", "data", "blacklist.json")
+	blacklistPath := filepath.Join(tmpDir, ".config", "gower", "data", "blacklist.json")
 	if err := os.WriteFile(blacklistPath, []byte(`["1"]`), 0644); err != nil {
 		t.Fatalf("Failed to write blacklist: %v", err)
 	}
@@ -184,7 +184,7 @@ func TestController_SyncFeed(t *testing.T) {
 	createDummyImage(t, imgPath)
 
 	// Create a parser cache file
-	parserDir := filepath.Join(tmpDir, ".gower", "data", "parser")
+	parserDir := filepath.Join(tmpDir, ".config", "gower", "data", "parser")
 	if err := os.MkdirAll(parserDir, 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +242,7 @@ func TestController_SyncFeed(t *testing.T) {
 	}
 
 	// Verify colors.json
-	colorsPath := filepath.Join(tmpDir, ".gower", "data", "colors.json")
+	colorsPath := filepath.Join(tmpDir, ".config", "gower", "data", "colors.json")
 	colorsData, _ := os.ReadFile(colorsPath)
 	if !strings.Contains(string(colorsData), "#FF0000") && !strings.Contains(string(colorsData), "#FE0000") {
 		t.Error("Expected colors.json to contain #FF0000 or #FE0000")
@@ -257,8 +257,8 @@ func TestController_GetWallpaper(t *testing.T) {
 	ctrl := NewController(cfg)
 
 	// 1. Setup mock data files
-	feedPath := filepath.Join(tmpDir, ".gower", "data", "feed.json")
-	favPath := filepath.Join(tmpDir, ".gower", "data", "favorites.json")
+	feedPath := filepath.Join(tmpDir, ".config", "gower", "data", "feed.json")
+	favPath := filepath.Join(tmpDir, ".config", "gower", "data", "favorites.json")
 
 	feedWallpapers := []models.Wallpaper{{ID: "feed_wall", URL: "http://example.com/feed.jpg"}}
 	favWallpapers := []struct {
@@ -328,7 +328,7 @@ func TestController_AnalyzeFeed(t *testing.T) {
 	}
 
 	// 3. Ensure thumbnail does NOT exist initially
-	thumbPath := filepath.Join(tmpDir, ".gower", "cache", "thumbs", wpID+".jpg")
+	thumbPath := filepath.Join(tmpDir, ".config", "gower", "cache", "thumbs", wpID+".jpg")
 
 	// Case 1: AnalyzeFeed(false, false) - Should generate missing thumbnail
 	if err := ctrl.AnalyzeFeed(false, false, nil); err != nil {
@@ -367,7 +367,7 @@ func TestController_AnalyzeFavorites(t *testing.T) {
 	createDummyImage(t, srcImgPath)
 
 	// Manually create favorites.json
-	favPath := filepath.Join(tmpDir, ".gower", "data", "favorites.json")
+	favPath := filepath.Join(tmpDir, ".config", "gower", "data", "favorites.json")
 	favContent := `[{"id":"fav1","url":"` + srcImgPath + `","source":"test"}]`
 	os.WriteFile(favPath, []byte(favContent), 0644)
 
@@ -377,7 +377,7 @@ func TestController_AnalyzeFavorites(t *testing.T) {
 	}
 
 	// Check thumbnail
-	thumbPath := filepath.Join(tmpDir, ".gower", "cache", "thumbs", "fav1.jpg")
+	thumbPath := filepath.Join(tmpDir, ".config", "gower", "cache", "thumbs", "fav1.jpg")
 	if _, err := os.Stat(thumbPath); os.IsNotExist(err) {
 		t.Error("Thumbnail for favorite should have been generated")
 	}

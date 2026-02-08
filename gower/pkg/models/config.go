@@ -109,4 +109,5 @@ type LimitsConfig struct {
 	FeedHardLimit     int `json:"feed_hard_limit"`
 	RateLimitRequests int `json:"rate_limit_requests"`
 	RateLimitPeriod   int `json:"rate_limit_period"`
+	LogRetentionDays  int `json:"log_retention_days,omitempty"`
 }

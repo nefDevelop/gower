@@ -223,7 +223,7 @@ func colorizeBool(b bool) string {
 
 func getSystemStatus() *SystemStatus {
 	home, _ := os.UserHomeDir()
-	configDir := filepath.Join(home, ".gower")
+	configDir, _ := core.GetAppDir()
 
 	deps := make(map[string]bool)
 	deps["feh"] = checkCommand("feh")
@@ -300,8 +300,7 @@ func getProvidersStatus() *ProvidersStatus {
 }
 
 func getStorageStatus() *StorageStatus {
-	home, _ := os.UserHomeDir()
-	baseDir := filepath.Join(home, ".gower")
+	baseDir, _ := core.GetAppDir()
 
 	cacheSize := getDirSize(filepath.Join(baseDir, "cache"))
 	dataSize := getDirSize(filepath.Join(baseDir, "data"))
