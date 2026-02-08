@@ -312,11 +312,8 @@ func applyWallpapers(cmd *cobra.Command, controller *core.Controller, wallpapers
 		}
 	}
 
-	// Determine command to run, prioritizing the flag, then config, then auto-detection.
+	// Determine command to run, prioritizing the flag, then auto-detection.
 	customCmdTpl := setCommand
-	if customCmdTpl == "" && cfg != nil && cfg.Behavior.WallpaperCommand != "" {
-		customCmdTpl = cfg.Behavior.WallpaperCommand
-	}
 
 	if customCmdTpl != "" {
 		// Use custom command. This path currently only supports a single wallpaper.

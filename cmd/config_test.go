@@ -21,7 +21,7 @@ func TestConfigInit(t *testing.T) {
 		t.Errorf("Salida inesperada: %s", output)
 	}
 
-	configPath := filepath.Join(tmpDir, ".gower", "config.json")
+	configPath := filepath.Join(tmpDir, ".config", "gower", "config.json")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		t.Errorf("El archivo de configuración no fue creado")
 	}
@@ -154,7 +154,7 @@ func TestConfigUpdate(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	// 1. Crear un archivo de configuración parcial/antiguo manualmente
-	configDir := filepath.Join(tmpDir, ".gower")
+	configDir := filepath.Join(tmpDir, ".config", "gower")
 	os.MkdirAll(configDir, 0755)
 	configFile := filepath.Join(configDir, "config.json")
 	// Este JSON carece de "from_favorites"

@@ -94,9 +94,8 @@ gower daemon --interval 30m
 
 Gower busca un archivo de configuración `config.json` en las siguientes ubicaciones:
 
-- `$XDG_CONFIG_HOME/gower/config.json`
 - `$HOME/.config/gower/config.json`
-- `$HOME/.gower.json`
+- `$HOME/.gower/config.json`
 
 Puedes especificar una ruta de configuración diferente con el flag `--config`.
 
@@ -140,16 +139,6 @@ Un archivo de configuración de ejemplo podría ser:
   }
 }
 ```
-
-### Comando para establecer el fondo de pantalla
-
-La opción `behavior.wallpaper_command` es crucial. Debes ajustarla a tu entorno de escritorio o gestor de ventanas. `%s` será reemplazado por la ruta del archivo de imagen.
-
-- **feh**: `feh --bg-fill %s`
-- **GNOME**: `gsettings set org.gnome.desktop.background picture-uri file://%s`
-- **Sway/Wayland**: `swaymsg output * bg %s fill`
-- **Niri**: `swww img -o <MONITOR> %s` (Requiere `swww`)
-- **DMS**: `dms ipc call wallpaper set %s` (Global) o `dms ipc call wallpaper setFor <MONITOR> %s`
 
 ## 📜 Lista de Comandos
 
@@ -205,7 +194,7 @@ Gestiona el historial local de fondos de pantalla (feed).
   - `--limit, -l <número>`: Cantidad de ítems por página.
   - `--theme <dark|light>`: Filtra por tema.
   - `--color <hex>`: Filtra por color.
-    > **Algoritmo del Feed**: El comando `feed show` utiliza un algoritmo para presentarte una mezcla de fondos de pantalla nuevos y ya vistos. El orden se mantiene estable durante una hora para facilitar la navegación entre páginas, y luego se vuelve a barajar. Los fondos de pantalla que aparecen en una página se marcan automáticamente como "vistos".
+    > **Algoritmo del Feed**: El comando `feed show` utiliza un algoritmo para presentarte una mezcla de fondos de pantalla nuevos y ya vistos (incluyendo los locales si `index_wallpapers` está activo). El orden se mantiene estable durante una hora para facilitar la navegación entre páginas, y luego se vuelve a barajar. Los fondos de pantalla que aparecen en una página se marcan automáticamente como "vistos".
 
 - `gower feed update`: Sincroniza el feed desde las cachés de los proveedores o realiza una nueva búsqueda si es necesario.
   - `--force`: Ignora los límites de frecuencia para forzar la actualización.
