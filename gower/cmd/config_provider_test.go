@@ -77,7 +77,7 @@ func TestConfigProviderGenericAddAndRemove(t *testing.T) {
 	}
 
 	// Verify parser file
-	parserPath := filepath.Join(tmpDir, ".gower", "data", "parser", providerName+".json")
+	parserPath := filepath.Join(tmpDir, ".config", "gower", "data", "parser", providerName+".json")
 	if _, err := os.Stat(parserPath); os.IsNotExist(err) {
 		t.Errorf("Parser file not created at %s", parserPath)
 	}
