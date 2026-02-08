@@ -24,7 +24,7 @@ func TestBlacklistAdd(t *testing.T) {
 	}
 
 	// Verify file content
-	blacklistPath := filepath.Join(tmpDir, ".gower", "data", "blacklist.json")
+	blacklistPath := filepath.Join(tmpDir, ".config", "gower", "data", "blacklist.json")
 	content, err := os.ReadFile(blacklistPath)
 	if err != nil {
 		t.Fatalf("Error reading blacklist file: %v", err)

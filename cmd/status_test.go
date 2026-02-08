@@ -90,7 +90,7 @@ func TestStatusFlags(t *testing.T) {
 
 	// Test --storage
 	// Create some dummy file to check size
-	cacheDir := filepath.Join(tmpDir, ".gower", "cache")
+	cacheDir := filepath.Join(tmpDir, ".config", "gower", "cache")
 	os.MkdirAll(cacheDir, 0755)
 	os.WriteFile(filepath.Join(cacheDir, "test"), []byte("test"), 0644)
 
@@ -112,7 +112,7 @@ func TestStatusWallpaper(t *testing.T) {
 	executeCommand(rootCmd, "config", "init")
 
 	// Manually create state.json
-	statePath := filepath.Join(tmpDir, ".gower", "state.json")
+	statePath := filepath.Join(tmpDir, ".config", "gower", "state.json")
 	stateData := `{"current_wallpaper_id": "wall_1", "current_wallpapers": ["wall_1", "wall_2"]}`
 	os.WriteFile(statePath, []byte(stateData), 0644)
 
