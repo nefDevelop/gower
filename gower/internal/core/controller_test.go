@@ -47,7 +47,7 @@ func TestController_AddAndGetFeed(t *testing.T) {
 	}
 
 	// Test GetFeed with pagination
-	feed, err := ctrl.GetFeed(1, 10, "", "", "")
+	feed, err := ctrl.GetFeed(1, 10, "", "", "", "", false)
 	if err != nil {
 		t.Fatalf("GetFeed failed: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestController_AddAndGetFeed(t *testing.T) {
 	}
 
 	// Test GetFeed with theme filter
-	feedDark, err := ctrl.GetFeed(1, 10, "", "dark", "")
+	feedDark, err := ctrl.GetFeed(1, 10, "", "dark", "", "", false)
 	if err != nil {
 		t.Fatalf("GetFeed dark failed: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestController_PurgeFeed(t *testing.T) {
 		t.Fatalf("PurgeFeed failed: %v", err)
 	}
 
-	feed, _ := ctrl.GetFeed(1, 10, "", "", "")
+	feed, _ := ctrl.GetFeed(1, 10, "", "", "", "", false)
 	if len(feed) != 0 {
 		t.Errorf("Feed not empty after purge")
 	}
@@ -127,7 +127,7 @@ func TestController_Blacklist(t *testing.T) {
 		t.Fatalf("Failed to write blacklist: %v", err)
 	}
 
-	feed, err := ctrl.GetFeed(1, 10, "", "", "")
+	feed, err := ctrl.GetFeed(1, 10, "", "", "", "", false)
 	if err != nil {
 		t.Fatalf("GetFeed failed: %v", err)
 	}
@@ -221,7 +221,7 @@ func TestController_SyncFeed(t *testing.T) {
 	}
 
 	// Verify feed
-	feed, _ := ctrl.GetFeed(1, 10, "", "", "")
+	feed, _ := ctrl.GetFeed(1, 10, "", "", "", "", false)
 	if len(feed) != 1 {
 		t.Fatalf("Expected 1 item in feed, got %d", len(feed))
 	}
@@ -384,7 +384,7 @@ func TestController_AnalyzeFeed_Colors(t *testing.T) {
 		t.Fatalf("AnalyzeFeed failed: %v", err)
 	}
 
-	feed, _ := ctrl.GetFeed(1, 10, "", "", "")
+	feed, _ := ctrl.GetFeed(1, 10, "", "", "", "", false)
 	var res1, res2 models.Wallpaper
 	for _, w := range feed {
 		if w.ID == "test_wrong_color" {
@@ -407,7 +407,7 @@ func TestController_AnalyzeFeed_Colors(t *testing.T) {
 		t.Fatalf("AnalyzeFeed --all failed: %v", err)
 	}
 
-	feed, _ = ctrl.GetFeed(1, 10, "", "", "")
+	feed, _ = ctrl.GetFeed(1, 10, "", "", "", "", false)
 	for _, w := range feed {
 		if w.ID == "test_wrong_color" {
 			res1 = w
@@ -466,7 +466,7 @@ func TestController_GetFeed_Algorithm(t *testing.T) {
 	}
 
 	// 2. Get the feed - first call
-	result1, err := ctrl.GetFeed(1, 4, "", "", "")
+	result1, err := ctrl.GetFeed(1, 4, "", "", "", "", false)
 	if err != nil {
 		t.Fatalf("GetFeed failed: %v", err)
 	}
@@ -502,7 +502,7 @@ func TestController_GetFeed_Algorithm(t *testing.T) {
 	if err := ctrl.saveFeed(initialFeed); err != nil {
 		t.Fatalf("Failed to reset feed: %v", err)
 	}
-	result2, err := ctrl.GetFeed(1, 4, "", "", "")
+	result2, err := ctrl.GetFeed(1, 4, "", "", "", "", false)
 	if err != nil {
 		t.Fatalf("Second GetFeed failed: %v", err)
 	}

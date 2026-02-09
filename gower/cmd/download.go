@@ -21,12 +21,13 @@ var (
 	downloadTheme         string
 	downloadFromFavorites bool
 	downloadTag           bool
+	downloadToCollection  bool
 )
 
 var downloadCmd = &cobra.Command{
 	Use:   "download [id|url|random]",
 	Short: "Download a wallpaper",
-	Long:  `Download a wallpaper to the cache or a specific file/directory.`,
+	Long:  `Download a wallpaper to the cache or a specific directory.`,
 	Args:  cobra.MaximumNArgs(1),
 	RunE:  runDownload,
 }
@@ -38,6 +39,7 @@ func init() {
 	downloadCmd.Flags().StringVar(&downloadTheme, "theme", "", "Theme filter for random [dark|light]")
 	downloadCmd.Flags().BoolVar(&downloadFromFavorites, "from-favorites", false, "Random from favorites only")
 	downloadCmd.Flags().BoolVar(&downloadTag, "tag", false, "Append theme tag [d]/[l] to filename")
+	downloadCmd.Flags().BoolVar(&downloadToCollection, "to-collection", false, "Save to the collection folder defined in config (paths.wallpapers)")
 }
 
 func runDownload(cmd *cobra.Command, args []string) error {
@@ -121,8 +123,11 @@ func performDownload(cmd *cobra.Command, controller *core.Controller, wp models.
 		cmd.Printf("Downloaded to cache: %s\n", cachePath)
 	}
 
+	// Determine final destination
 	targetPath := downloadOutput
-	if targetPath == "" && cfg.Paths.Wallpapers != "" {
+	if downloadToCollection {
+		targetPath = cfg.Paths.Wallpapers
+	} else if targetPath == "" && cfg.Paths.Wallpapers != "" && downloadOutput == "" && !downloadToCollection {
 		targetPath = cfg.Paths.Wallpapers
 	}
 

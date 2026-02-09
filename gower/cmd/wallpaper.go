@@ -19,6 +19,11 @@ var wallpaperCmd = &cobra.Command{
 	Use:   "wallpaper <id>",
 	Short: "View or manage a specific wallpaper",
 	Long:  `Displays detailed information about a specific wallpaper. Can also be used to remove it from the feed and/or delete the physical file.`,
+	Example: `  # View details
+  gower wallpaper wh_12345
+
+  # Delete from feed and disk
+  gower wallpaper local_image.jpg --delete --file`,
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := ensureConfig(); err != nil {

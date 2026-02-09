@@ -88,6 +88,7 @@ func runSet(cmd *cobra.Command, args []string) error {
 	var wallpaper *models.Wallpaper
 	var wallpapers []models.Wallpaper
 	var targetMonitors []core.Monitor
+	var targetMonitorIndex = -1
 
 	// 1. Determine target wallpaper
 	if len(args) > 0 {
@@ -140,9 +141,10 @@ func runSet(cmd *cobra.Command, args []string) error {
 		}
 
 		found := false
-		for _, mon := range allMonitors {
+		for i, mon := range allMonitors {
 			if mon.ID == setTargetMonitor || mon.Name == setTargetMonitor {
 				targetMonitors = []core.Monitor{mon}
+				targetMonitorIndex = i
 				found = true
 				break
 			}
@@ -155,7 +157,7 @@ func runSet(cmd *cobra.Command, args []string) error {
 		targetMonitors = []core.Monitor{}
 	}
 
-	return applyWallpapers(cmd, controller, wallpapers, targetMonitors, cfg)
+	return applyWallpapers(cmd, controller, wallpapers, targetMonitors, cfg, targetMonitorIndex)
 }
 
 func runSetRandom(cmd *cobra.Command, args []string) error {
@@ -184,6 +186,7 @@ func runSetRandom(cmd *cobra.Command, args []string) error {
 	var wallpapers []models.Wallpaper
 	var numWallpapers int = 1 // Default to 1 wallpaper
 	var monitors []core.Monitor
+	var targetMonitorIndex = -1
 
 	mmMode := setMultiMonitor
 	if mmMode == "" && cfg != nil {
@@ -198,9 +201,10 @@ func runSetRandom(cmd *cobra.Command, args []string) error {
 		}
 
 		found := false
-		for _, mon := range allMonitors {
+		for i, mon := range allMonitors {
 			if mon.ID == setTargetMonitor || mon.Name == setTargetMonitor {
 				monitors = []core.Monitor{mon}
+				targetMonitorIndex = i
 				found = true
 				break
 			}
@@ -252,7 +256,7 @@ func runSetRandom(cmd *cobra.Command, args []string) error {
 		wallpapers = append(wallpapers, wallpaper)
 	}
 
-	return applyWallpapers(cmd, controller, wallpapers, monitors, cfg)
+	return applyWallpapers(cmd, controller, wallpapers, monitors, cfg, targetMonitorIndex)
 }
 
 func runSetUndo(cmd *cobra.Command, args []string) error {
@@ -298,10 +302,10 @@ func runSetUndo(cmd *cobra.Command, args []string) error {
 	// When we undo, we don't want to update the state again in the same way,
 	// so we call a slightly different application function or pass a flag.
 	// For simplicity, we'll just apply it without a state change.
-	return applyWallpapers(cmd, controller, wallpapers, []core.Monitor{}, cfg)
+	return applyWallpapers(cmd, controller, wallpapers, []core.Monitor{}, cfg, -1)
 }
 
-func applyWallpapers(cmd *cobra.Command, controller *core.Controller, wallpapers []models.Wallpaper, monitors []core.Monitor, cfg *models.Config) error {
+func applyWallpapers(cmd *cobra.Command, controller *core.Controller, wallpapers []models.Wallpaper, monitors []core.Monitor, cfg *models.Config, targetIndex int) error {
 	if len(wallpapers) == 0 {
 		return fmt.Errorf("no wallpapers provided to apply")
 	}
@@ -370,15 +374,33 @@ func applyWallpapers(cmd *cobra.Command, controller *core.Controller, wallpapers
 			ids = append(ids, wp.ID)
 		}
 
-		// Only update state if the current wallpaper(s) are different from the last recorded.
-		// We compare both the primary ID and the full list to detect changes in distinct mode.
+		var newCurrentWallpapers []string
+
+		if targetIndex >= 0 {
+			// Partial update: preserve existing state and update only the target index
+			newCurrentWallpapers = make([]string, len(state.CurrentWallpapers))
+			copy(newCurrentWallpapers, state.CurrentWallpapers)
+
+			// Ensure capacity if targetIndex is beyond current length
+			if targetIndex >= len(newCurrentWallpapers) {
+				grown := make([]string, targetIndex+1)
+				copy(grown, newCurrentWallpapers)
+				newCurrentWallpapers = grown
+			}
+
+			if len(ids) > 0 {
+				newCurrentWallpapers[targetIndex] = ids[0]
+			}
+		} else {
+			// Full update (clone or distinct set)
+			newCurrentWallpapers = ids
+		}
+
 		changed := false
-		if state.CurrentWallpaperID != wallpapers[0].ID {
-			changed = true
-		} else if len(state.CurrentWallpapers) != len(ids) {
+		if len(state.CurrentWallpapers) != len(newCurrentWallpapers) {
 			changed = true
 		} else {
-			for i, id := range ids {
+			for i, id := range newCurrentWallpapers {
 				if state.CurrentWallpapers[i] != id {
 					changed = true
 					break
@@ -389,8 +411,14 @@ func applyWallpapers(cmd *cobra.Command, controller *core.Controller, wallpapers
 		if changed {
 			state.PreviousWallpaperID = state.CurrentWallpaperID
 			state.PreviousWallpapers = state.CurrentWallpapers
-			state.CurrentWallpaperID = wallpapers[0].ID // Store the ID of the first wallpaper
-			state.CurrentWallpapers = ids
+
+			// Update singular ID only if we are updating the first monitor or doing a full update
+			if len(newCurrentWallpapers) > 0 {
+				if targetIndex == -1 || targetIndex == 0 {
+					state.CurrentWallpaperID = newCurrentWallpapers[0]
+				}
+			}
+			state.CurrentWallpapers = newCurrentWallpapers
 		}
 		if err := saveState(state); err != nil {
 			cmd.Printf("Warning: could not save state: %v\n", err)
