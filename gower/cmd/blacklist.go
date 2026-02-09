@@ -37,6 +37,11 @@ var blacklistAddCmd = &cobra.Command{
 			cmd.Printf("Warning: Failed to remove from feed: %v\n", err)
 		}
 
+		// Rebuild color index to remove the color of the blacklisted wallpaper
+		if err := controller.RebuildColorIndex(); err != nil {
+			cmd.Printf("Warning: Failed to rebuild color index: %v\n", err)
+		}
+
 		if !config.Quiet {
 			cmd.Printf("Wallpaper %s added to blacklist.\n", id)
 		}
@@ -61,6 +66,11 @@ var blacklistRemoveCmd = &cobra.Command{
 		if err := controller.RemoveFromBlacklist(id); err != nil {
 			cmd.Printf("Error removing from blacklist: %v\n", err)
 			return
+		}
+
+		// Rebuild color index as a wallpaper might be usable again
+		if err := controller.RebuildColorIndex(); err != nil {
+			cmd.Printf("Warning: Failed to rebuild color index: %v\n", err)
 		}
 
 		if !config.Quiet {

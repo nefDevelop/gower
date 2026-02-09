@@ -270,30 +270,53 @@ func changeWallpaper(cmd *cobra.Command) {
 		needed = len(monitors)
 	}
 
-	// 2. Get Cached Wallpapers
-	cached, err := controller.GetCachedWallpapers(daemonFromFavorites, targetTheme)
-	if err != nil || len(cached) == 0 {
-		utils.Log.Info("Daemon: No cached wallpapers found. Run 'gower set random' or 'gower download' first.")
-		return
-	}
-
-	// 3. Select Random Wallpapers
-	rand.Shuffle(len(cached), func(i, j int) { cached[i], cached[j] = cached[j], cached[i] })
-
-	var selectedPaths []string
+	// 2. Get Wallpapers (from favorites or feed)
 	var selectedWallpapers []models.Wallpaper
-	count := needed
-	if len(cached) < count {
-		count = len(cached)
-	}
-	for i := 0; i < count; i++ {
-		path, _ := controller.GetWallpaperLocalPath(cached[i])
-		selectedPaths = append(selectedPaths, path)
-		selectedWallpapers = append(selectedWallpapers, cached[i])
-		if config.Debug {
-			lum := controller.ColorManager.GetLuminance(cached[i].Color)
-			utils.Log.Info("Daemon Debug: Selected %s | Color: %s | Luminance: %.2f", cached[i].ID, cached[i].Color, lum)
+	for i := 0; i < needed; i++ {
+		var wallpaper models.Wallpaper
+		var err error
+
+		if daemonFromFavorites {
+			favorites, err := loadFavorites()
+			if err != nil {
+				utils.Log.Error("Daemon: Error loading favorites: %v", err)
+				return
+			}
+			if len(favorites) == 0 {
+				utils.Log.Info("Daemon: No favorites found to set.")
+				return
+			}
+			rand.Seed(time.Now().UnixNano() + int64(i))
+			fav := favorites[rand.Intn(len(favorites))]
+			wallpaper = fav.Wallpaper
+		} else {
+			wallpaper, err = controller.GetRandomFromFeed(targetTheme)
+			if err != nil {
+				utils.Log.Error("Daemon: Error getting random wallpaper from feed: %v", err)
+				return
+			}
 		}
+		selectedWallpapers = append(selectedWallpapers, wallpaper)
+	}
+
+	// 3. Download wallpapers
+	var selectedPaths []string
+	for _, wp := range selectedWallpapers {
+		path, err := controller.DownloadWallpaper(wp)
+		if err != nil {
+			utils.Log.Error("Daemon: Failed to download wallpaper %s: %v", wp.ID, err)
+			continue // Skip this wallpaper if download fails
+		}
+		selectedPaths = append(selectedPaths, path)
+		if config.Debug {
+			lum := controller.ColorManager.GetLuminance(wp.Color)
+			utils.Log.Info("Daemon Debug: Selected %s | Color: %s | Luminance: %.2f", wp.ID, wp.Color, lum)
+		}
+	}
+
+	if len(selectedPaths) == 0 {
+		utils.Log.Error("Daemon: No wallpapers could be successfully downloaded.")
+		return
 	}
 
 	// 4. Apply Wallpapers
