@@ -299,6 +299,7 @@ Muestra un resumen del estado general de la aplicación.
   - `--daemon`: Muestra solo el estado del demonio.
   - `--system`: Muestra información del sistema, como el entorno de escritorio detectado y las dependencias.
   - `--monitors`: Muestra información detallada sobre los monitores detectados (ID, resolución, posición, etc.).
+  - `--wallpapers`: Muestra información detallada de los fondos de pantalla actuales, incluyendo sus rutas y metadatos, en formato JSON si se usa con `--json`.
   - `--json`: Muestra toda la información en formato JSON.
 
 #### `gower cache`

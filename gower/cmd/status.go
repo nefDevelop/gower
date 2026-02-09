@@ -14,6 +14,7 @@ import (
 	"text/tabwriter"
 
 	"gower/internal/core"
+	"gower/pkg/models"
 
 	"github.com/spf13/cobra"
 )
@@ -38,8 +39,7 @@ var statusCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(statusCmd)
 	statusCmd.Flags().BoolVar(&statusJSON, "json", false, "Output in JSON")
-	statusCmd.Flags().BoolVar(&statusProviders, "providers", false, "Show providers status")
-	statusCmd.Flags().BoolVar(&statusStorage, "storage", false, "Show storage usage")
+	statusCmd.Flags().BoolVar(&statusProviders, "providers", false, "Show providers status")	statusCmd.Flags().BoolVar(&statusStorage, "storage", false, "Show storage usage")
 	statusCmd.Flags().BoolVar(&statusDaemon, "daemon", false, "Show daemon status")
 	statusCmd.Flags().BoolVar(&statusSystem, "system", false, "Show system information")
 	statusCmd.Flags().BoolVar(&statusMonitors, "monitors", false, "Show monitor information")
@@ -83,8 +83,7 @@ type StorageStatus struct {
 }
 
 type CurrentWallpaperStatus struct {
-	ID  string   `json:"id"`
-	IDs []string `json:"ids,omitempty"`
+	Wallpapers []models.Wallpaper `json:"wallpapers,omitempty"`
 }
 
 func runStatus(cmd *cobra.Command, args []string) {
@@ -172,17 +171,23 @@ func runStatus(cmd *cobra.Command, args []string) {
 		cmd.Println()
 	}
 
-	if output.Wallpaper != nil {
+	if output.Wallpaper != nil && len(output.Wallpaper.Wallpapers) > 0 {
 		cmd.Println("--- Wallpaper ---")
 		w := newTabWriter()
-		if len(output.Wallpaper.IDs) > 0 {
-			for i, id := range output.Wallpaper.IDs {
-				fmt.Fprintf(w, "Monitor %d:\t%s\n", i+1, id)
-			}
-		} else {
-			fmt.Fprintf(w, "Current ID:\t%s\n", output.Wallpaper.ID)
+		for i, wp := range output.Wallpaper.Wallpapers {
+			fmt.Fprintf(w, "Monitor %d ID:\t%s\n", i+1, wp.ID)
+			fmt.Fprintf(w, "Monitor %d Path:\t%s\n", i+1, wp.Path)
+			fmt.Fprintf(w, "Monitor %d Source:\t%s\n", i+1, wp.Source)
+			fmt.Fprintf(w, "Monitor %d URL:\t%s\n", i+1, wp.URL)
+			fmt.Fprintf(w, "Monitor %d Dimension:\t%s\n", i+1, wp.Dimension)
+			fmt.Fprintf(w, "Monitor %d Color:\t%s\n", i+1, wp.Color)
+			fmt.Fprintf(w, "Monitor %d Theme:\t%s\n", i+1, wp.Theme)
 		}
 		w.Flush()
+		cmd.Println()
+	} else if output.Wallpaper != nil {
+		cmd.Println("--- Wallpaper ---")
+		cmd.Println("  No wallpapers currently set.")
 		cmd.Println()
 	}
 
@@ -200,6 +205,7 @@ func runStatus(cmd *cobra.Command, args []string) {
 				keys = append(keys, k)
 			}
 			sort.Strings(keys)
+
 			w = newTabWriter()
 			for _, name := range keys {
 				fmt.Fprintf(w, "  %s:\t%v\n", name, colorizeBool(output.Providers.Generic[name]))
@@ -293,12 +299,43 @@ func getDaemonStatus() *DaemonStatus {
 
 func getWallpaperStatus() *CurrentWallpaperStatus {
 	state, err := loadState()
-	if err != nil || (state.CurrentWallpaperID == "" && len(state.CurrentWallpapers) == 0) {
+	if err != nil {
 		return nil
 	}
+
+	var wallpapers []models.Wallpaper
+	controller := core.NewController() // Assuming NewController initializes correctly
+
+	// If multiple wallpapers are set (for multiple monitors)
+	if len(state.CurrentWallpapers) > 0 {
+		for _, id := range state.CurrentWallpapers {
+			wp, err := controller.GetWallpaper(id)
+			if err != nil {
+				// Log error but continue with other wallpapers
+				fmt.Fprintf(os.Stderr, "Error retrieving wallpaper %s: %v\n", id, err)
+				continue
+			}
+			if wp != nil {
+				wallpapers = append(wallpapers, *wp)
+			}
+		}
+	} else if state.CurrentWallpaperID != "" {
+		// Fallback for single wallpaper (older state format or single monitor setup)
+		wp, err := controller.GetWallpaper(state.CurrentWallpaperID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error retrieving wallpaper %s: %v\n", state.CurrentWallpaperID, err)
+		}
+		if wp != nil {
+			wallpapers = append(wallpapers, *wp)
+		}
+	}
+
+	if len(wallpapers) == 0 {
+		return nil
+	}
+
 	return &CurrentWallpaperStatus{
-		ID:  state.CurrentWallpaperID,
-		IDs: state.CurrentWallpapers,
+		Wallpapers: wallpapers,
 	}
 }
 
