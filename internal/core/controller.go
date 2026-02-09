@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,6 +25,11 @@ type Controller struct {
 	ProviderManager *ProviderManager
 	feedManager     *utils.SecureJSONManager // Manager for feed.json
 	ColorManager    *ColorManager
+}
+
+type FeedCache struct {
+	Hour int64    `json:"hour"`
+	IDs  []string `json:"ids"`
 }
 
 // GetAppDir returns the application directory, preferring XDG but falling back to legacy .gower
@@ -162,7 +168,7 @@ func (c *Controller) saveFeed(feed []models.Wallpaper) error {
 }
 
 // GetFeed retrieves wallpapers from the feed with pagination and optional search/theme filters.
-func (c *Controller) GetFeed(page, limit int, search, theme, color string) ([]models.Wallpaper, error) {
+func (c *Controller) GetFeed(page, limit int, search, theme, color, sortMode string, refresh bool) ([]models.Wallpaper, error) {
 	feed, err := c.loadFeed()
 	if err != nil {
 		return nil, err
@@ -208,57 +214,101 @@ func (c *Controller) GetFeed(page, limit int, search, theme, color string) ([]mo
 			}
 		}
 
-		if blacklistMap[wp.ID] {
-			continue
-		}
-
 		if matchesSearch && matchesTheme && matchesColor {
 			filteredFeed = append(filteredFeed, wp)
 		}
 	}
 
-	// Algoritmo de Feed: 50% nuevos, orden aleatorio estable por 1 hora
-	var unseen []models.Wallpaper
-	var seen []models.Wallpaper
+	var mixedFeed []models.Wallpaper
 
-	for _, wp := range filteredFeed {
-		if !wp.Seen {
-			unseen = append(unseen, wp)
-		} else {
-			seen = append(seen, wp)
+	switch sortMode {
+	case "newest":
+		sort.Slice(filteredFeed, func(i, j int) bool {
+			return filteredFeed[i].Added > filteredFeed[j].Added
+		})
+		mixedFeed = filteredFeed
+	case "oldest":
+		sort.Slice(filteredFeed, func(i, j int) bool {
+			return filteredFeed[i].Added < filteredFeed[j].Added
+		})
+		mixedFeed = filteredFeed
+	case "source":
+		sort.Slice(filteredFeed, func(i, j int) bool {
+			if filteredFeed[i].Source == filteredFeed[j].Source {
+				return filteredFeed[i].Added > filteredFeed[j].Added
+			}
+			return filteredFeed[i].Source < filteredFeed[j].Source
+		})
+		mixedFeed = filteredFeed
+	case "unseen":
+		sort.Slice(filteredFeed, func(i, j int) bool {
+			if filteredFeed[i].Seen != filteredFeed[j].Seen {
+				return !filteredFeed[i].Seen // Unseen (false) comes before Seen (true)
+			}
+			return filteredFeed[i].Added > filteredFeed[j].Added
+		})
+		mixedFeed = filteredFeed
+	case "random":
+		r := rand.New(rand.NewSource(time.Now().UnixNano()))
+		r.Shuffle(len(filteredFeed), func(i, j int) {
+			filteredFeed[i], filteredFeed[j] = filteredFeed[j], filteredFeed[i]
+		})
+		mixedFeed = filteredFeed
+	default: // "smart" or empty
+		// Algoritmo de Feed: 50% nuevos, orden aleatorio estable por 1 hora (o forzado con refresh)
+		var unseen []models.Wallpaper
+		var seen []models.Wallpaper
+
+		for _, wp := range filteredFeed {
+			if !wp.Seen {
+				unseen = append(unseen, wp)
+			} else {
+				seen = append(seen, wp)
+			}
+		}
+
+		seed := time.Now().Truncate(time.Hour).UnixNano()
+		if refresh {
+			seed = time.Now().UnixNano()
+		}
+		r := rand.New(rand.NewSource(seed))
+
+		r.Shuffle(len(unseen), func(i, j int) { unseen[i], unseen[j] = unseen[j], unseen[i] })
+		r.Shuffle(len(seen), func(i, j int) { seen[i], seen[j] = seen[j], seen[i] })
+
+		// Interleave
+		uIdx, sIdx := 0, 0
+		for uIdx < len(unseen) || sIdx < len(seen) {
+			if uIdx < len(unseen) {
+				mixedFeed = append(mixedFeed, unseen[uIdx])
+				uIdx++
+			}
+			if sIdx < len(seen) {
+				mixedFeed = append(mixedFeed, seen[sIdx])
+				sIdx++
+			}
 		}
 	}
 
-	seed := time.Now().Truncate(time.Hour).UnixNano()
-	r := rand.New(rand.NewSource(seed))
-
-	r.Shuffle(len(unseen), func(i, j int) { unseen[i], unseen[j] = unseen[j], unseen[i] })
-	r.Shuffle(len(seen), func(i, j int) { seen[i], seen[j] = seen[j], seen[i] })
-
-	var mixedFeed []models.Wallpaper
-	uIdx, sIdx := 0, 0
-	for uIdx < len(unseen) || sIdx < len(seen) {
-		if uIdx < len(unseen) {
-			mixedFeed = append(mixedFeed, unseen[uIdx])
-			uIdx++
-		}
-		if sIdx < len(seen) {
-			mixedFeed = append(mixedFeed, seen[sIdx])
-			sIdx++
+	// Filter blacklist AFTER shuffle to maintain stable order for non-blacklisted items
+	var finalFeed []models.Wallpaper
+	for _, wp := range mixedFeed {
+		if !blacklistMap[wp.ID] {
+			finalFeed = append(finalFeed, wp)
 		}
 	}
 
 	start := (page - 1) * limit
 	end := start + limit
 
-	if start >= len(mixedFeed) {
+	if start >= len(finalFeed) {
 		return []models.Wallpaper{}, nil
 	}
-	if end > len(mixedFeed) {
-		end = len(mixedFeed)
+	if end > len(finalFeed) {
+		end = len(finalFeed)
 	}
 
-	result := mixedFeed[start:end]
+	result := finalFeed[start:end]
 
 	// Marcar los ítems mostrados como vistos (seen = true)
 	changed := false
@@ -289,7 +339,7 @@ func (c *Controller) GetFeed(page, limit int, search, theme, color string) ([]mo
 // SearchFeed searches the feed for wallpapers matching a query.
 func (c *Controller) SearchFeed(query string, page, limit int, theme string) ([]models.Wallpaper, error) {
 	// Reuse GetFeed with the search parameter
-	return c.GetFeed(page, limit, query, theme, "")
+	return c.GetFeed(page, limit, query, theme, "", "smart", false)
 }
 
 // PurgeFeed clears all entries from the feed.
@@ -890,11 +940,7 @@ func (c *Controller) AddToBlacklist(id string) error {
 	}
 	utils.Log.Info("Added wallpaper %s to blacklist", id)
 
-	// Rebuild index to reflect blacklist change
-	if feed, err := c.loadFeed(); err == nil {
-		c.rebuildColorsIndex(feed)
-	}
-	return nil
+	return c.RebuildColorIndex()
 }
 
 // RemoveFromBlacklist removes an ID from the blacklist.
@@ -927,11 +973,7 @@ func (c *Controller) RemoveFromBlacklist(id string) error {
 	}
 	utils.Log.Info("Removed wallpaper %s from blacklist", id)
 
-	// Rebuild index to reflect blacklist change
-	if feed, err := c.loadFeed(); err == nil {
-		c.rebuildColorsIndex(feed)
-	}
-	return nil
+	return c.RebuildColorIndex()
 }
 
 // GetBlacklist returns the current blacklist.
@@ -1506,7 +1548,20 @@ func (c *Controller) RebuildColorIndex() error {
 	if err != nil {
 		return err
 	}
-	return c.rebuildColorsIndex(feed)
+
+	blacklist, _ := c.loadBlacklist()
+	blacklistMap := make(map[string]bool)
+	for _, id := range blacklist {
+		blacklistMap[id] = true
+	}
+
+	var activeFeed []models.Wallpaper
+	for _, wp := range feed {
+		if !blacklistMap[wp.ID] {
+			activeFeed = append(activeFeed, wp)
+		}
+	}
+	return c.rebuildColorsIndex(activeFeed)
 }
 
 func (c *Controller) rebuildColorsIndex(feed []models.Wallpaper) error {

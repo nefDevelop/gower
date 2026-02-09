@@ -97,7 +97,7 @@ Gower puede indexar tus propios fondos de pantalla. Activa `index_wallpapers` en
 Si te cansas de una imagen local y quieres borrarla definitivamente de tu disco duro:
 
 ```bash
-gower delete <ID_LOCAL> --file
+gower wallpaper <ID_LOCAL> --delete --file
 ```
 
 ## ⚙️ Configuración
@@ -185,10 +185,10 @@ Busca fondos de pantalla en los proveedores configurados.
 - **Flags**:
   - `--provider <nombre>`: Usa un proveedor específico para la búsqueda.
   - `--all`: Busca en todos los proveedores habilitados simultáneamente.
-  - `--min-width <píxeles>`: Filtra por ancho mínimo de imagen.
-  - `--min-height <píxeles>`: Filtra por altura mínima de imagen.
-  - `--aspect-ratio <ratio>`: Filtra por proporción de aspecto (ej. "16:9").
-  - `--color <hex>`: Busca imágenes por un color dominante (código hexadecimal).
+  - `--min-width <píxeles>`: Filtra por ancho mínimo de imagen. //Solo válido en api que devuelvan esa informacion
+  - `--min-height <píxeles>`: Filtra por altura mínima de imagen. //Solo válido en api que devuelvan esa informacion
+  - `--aspect-ratio <ratio>`: Filtra por proporción de aspecto (ej. "16:9"). //Solo válido en api que devuelvan esa informacion
+  - `--color <hex>`: Busca imágenes por un color dominante (código hexadecimal). //Solo válido en api que devuelvan esa informacion
   - `--page, -p <número>`: Solicita una página específica de resultados.
   - `--force-update`: Fuerza una nueva búsqueda en el proveedor, ignorando la caché.
 
@@ -201,7 +201,15 @@ Gestiona el historial local de fondos de pantalla (feed).
   - `--limit, -l <número>`: Cantidad de ítems por página.
   - `--theme <dark|light>`: Filtra por tema.
   - `--color <hex>`: Filtra por color.
-    > **Algoritmo del Feed**: El comando `feed show` utiliza un algoritmo para presentarte una mezcla de fondos de pantalla nuevos y ya vistos (incluyendo los locales si `index_wallpapers` está activo). El orden se mantiene estable durante una hora para facilitar la navegación entre páginas, y luego se vuelve a barajar. Los fondos de pantalla que aparecen en una página se marcan automáticamente como "vistos".
+  - `--sort <modo>`: Ordena los resultados. Modos disponibles:
+    - `smart`: (Por defecto) Mezcla equilibrada y estable por 1 hora.
+    - `newest`: Más recientes primero.
+    - `oldest`: Más antiguos primero.
+    - `source`: Agrupados por proveedor.
+    - `unseen`: No vistos primero.
+    - `random`: Aleatorio puro (cambia en cada ejecución).
+  - `--refresh`: Fuerza una nueva mezcla aleatoria si se usa el orden `smart`.
+    > **Algoritmo Smart**: El modo `smart` presenta una mezcla equilibrada de fondos nuevos y vistos. El orden se mantiene **estable durante una hora** gracias a un sistema de caché, lo que facilita la navegación entre páginas incluso si eliminas elementos. Usa `--refresh` para barajar de nuevo inmediatamente.
 
 - `gower feed update`: Sincroniza el feed desde las cachés de los proveedores o realiza una nueva búsqueda si es necesario.
   - `--force`: Ignora los límites de frecuencia para forzar la actualización.
@@ -244,6 +252,7 @@ Descarga un fondo de pantalla a la caché o a un directorio específico.
   - `--random, -r`: Descarga un fondo de pantalla aleatorio.
   - `--theme <dark|light>`: Filtra por tema al descargar uno aleatorio.
   - `--from-favorites`: Descarga uno aleatorio solo de los favoritos.
+  - `--to-collection`: Guarda la imagen directamente en la carpeta de colección configurada (`paths.wallpapers`).
 
 #### `gower favorites`
 

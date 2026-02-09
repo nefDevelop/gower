@@ -25,6 +25,7 @@ var (
 	feedDetailed      bool
 	feedAll           bool
 	feedFromFavorites bool
+	feedSort          string
 )
 
 const (
@@ -74,7 +75,7 @@ var feedShowCmd = &cobra.Command{
 		}
 
 		// Mostrar feed normal
-		wallpapers, err := controller.GetFeed(feedPage, feedLimit, "", feedTheme, feedColor)
+		wallpapers, err := controller.GetFeed(feedPage, feedLimit, "", feedTheme, feedColor, feedSort, feedRefresh)
 		if err != nil {
 			cmd.Printf("Error getting feed: %v\n", err)
 			return
@@ -278,6 +279,7 @@ func init() {
 	feedShowCmd.Flags().StringVar(&feedTheme, "theme", "", "Filter by theme [dark|light]")
 	feedShowCmd.Flags().StringVar(&feedColor, "color", "", "Filter by color (hex)")
 	feedShowCmd.Flags().BoolVar(&feedRefresh, "refresh", false, "Refresh feed view")
+	feedShowCmd.Flags().StringVar(&feedSort, "sort", "smart", "Sort order [smart|newest|oldest|source]")
 
 	feedPurgeCmd.Flags().BoolVar(&feedForce, "force", false, "Force purge without confirmation")
 	feedUpdateCmd.Flags().BoolVar(&feedForce, "force", false, "Force update ignoring limits")
