@@ -137,7 +137,6 @@ func setupMocks(t *testing.T) (*MockController, *MockSetWallpaperChanger) {
 		setFromFavorites = false
 		setMultiMonitor = ""
 		setCommand = ""
-		setNoDownload = false
 		setTargetMonitor = ""
 	})
 

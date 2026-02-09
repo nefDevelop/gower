@@ -16,6 +16,7 @@ func resetFavoritesFlags() {
 	favNotes = ""
 	favColor = ""
 	favForce = false
+	favAll = false
 	favFile = ""
 }
 

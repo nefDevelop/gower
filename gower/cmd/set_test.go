@@ -24,7 +24,7 @@ func resetSetFlags() {
 	setFromFavorites = false
 	setMultiMonitor = ""
 	setCommand = ""
-	setNoDownload = false
+	setTargetMonitor = ""
 }
 
 func TestController_GetWallpaperAndDownload(t *testing.T) {
@@ -60,6 +60,7 @@ func TestSetUndoCommand(t *testing.T) {
 	_, cleanup := setupTestHomeWithState(t, &State{
 		CurrentWallpaperID:  "current-wp",
 		PreviousWallpaperID: "previous-wp",
+		PreviousWallpapers:  []string{"previous-wp", "previous-wp-2"},
 	})
 	defer cleanup()
 
@@ -78,6 +79,11 @@ func TestSetUndoCommand(t *testing.T) {
 		URL:    server.URL + "/image.jpg",
 		Source: "test",
 	})
+	ctrl.AddWallpaperToFeed(models.Wallpaper{
+		ID:     "previous-wp-2",
+		URL:    server.URL + "/image2.jpg",
+		Source: "test",
+	})
 
 	// Execute the undo command and capture output
 	// We need to re-initialize the root command for each test run to avoid state leakage
@@ -86,6 +92,8 @@ func TestSetUndoCommand(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Contains(t, output, "Wallpaper(s) set successfully")
+	assert.Contains(t, output, "Preparing wallpaper: previous-wp")
+	assert.Contains(t, output, "Preparing wallpaper: previous-wp-2")
 }
 
 // setupTestHomeWithState is a helper for tests that need a pre-configured state.json

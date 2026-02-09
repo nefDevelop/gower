@@ -156,11 +156,9 @@ gower [subcomando] [flags]
 
 Estas opciones se pueden usar con cualquier subcomando.
 
-- `--verbose`, `-v`: Habilita la salida detallada.
 - `--debug`: Habilita la salida de depuración para diagnósticos.
 - `--quiet`, `-q`: Suprime toda la salida excepto los errores.
 - `--json`: Formatea la salida como JSON en lugar de texto o tablas.
-- `--table`: Formatea la salida en una tabla (comportamiento por defecto).
 - `--no-color`: Desactiva la salida con colores.
 - `--config <ruta>`: Especifica la ruta al archivo de configuración.
 - `--dry-run`: Simula la ejecución de un comando sin realizar cambios reales en el sistema.
@@ -183,7 +181,6 @@ Busca fondos de pantalla en los proveedores configurados.
   - `--color <hex>`: Busca imágenes por un color dominante (código hexadecimal).
   - `--page, -p <número>`: Solicita una página específica de resultados.
   - `--force-update`: Fuerza una nueva búsqueda en el proveedor, ignorando la caché.
-  - `--save`: Guarda los resultados de la búsqueda directamente en el `feed.json`.
 
 #### `gower feed`
 
@@ -201,9 +198,9 @@ Gestiona el historial local de fondos de pantalla (feed).
 - `gower feed purge`: Elimina todo el historial del feed.
   - `--force`: Confirma la eliminación sin preguntar.
 - `gower feed stats`: Muestra estadísticas sobre el feed.
-- `gower feed analyze`: Analiza los ítems del feed para extraer metadatos y realizar mantenimiento de la caché. Repara nombres de archivo incorrectos y elimina ítems corruptos.
-  - `--all`: Analiza todos los ítems, no solo los nuevos.
-  - `--force`: Fuerza la regeneración de miniaturas y re-análisis de colores, incluso si ya existen.
+- `gower feed analyze`: Analiza los ítems del feed para extraer metadatos (colores, dimensiones) y realizar mantenimiento de la caché. Repara nombres de archivo incorrectos, elimina ítems corruptos y actualiza la información de color si falta.
+  - `--all`: Re-analiza todos los ítems para actualizar colores y metadatos, incluso si ya existen.
+  - `--force`: Fuerza la regeneración de miniaturas y re-análisis de colores.
   - `--quiet`: Suprime la salida de progreso en consola.
 - `gower feed random`: Obtiene un fondo de pantalla aleatorio del feed o de favoritos.
   - `--theme <dark|light>`: Filtra por tema.
@@ -215,18 +212,17 @@ Establece un fondo de pantalla.
 
 - **Uso**: `gower set [ID|URL|random] [flags]`
 - `gower set random`: Establece un fondo de pantalla aleatorio (equivalente a `gower set --random`).
-- `gower set undo`: Revierte al fondo de pantalla anterior.
+- `gower set undo`: Revierte al fondo de pantalla anterior. En modo multi-monitor, restaura la configuración completa de monitores.
 - **Flags**:
   - `--id <ID>`: ID del fondo de pantalla a establecer.
   - `--url <URL>`: URL directa de una imagen para establecer como fondo de pantalla.
   - `--random`, `-r`: Activa el modo aleatorio.
   - `--theme <dark|light|auto>`: Filtra por tema al buscar uno aleatorio.
-  - `--from-favorites`: Elige uno aleatorio solo de los favoritos.
+  - `--from-favorites`: Selecciona y descarga un fondo aleatorio de tus favoritos.
   - `--multi-monitor <clone|distinct>`: Define el comportamiento para múltiples monitores.
     - `clone`: El mismo fondo de pantalla se aplica a todos los monitores.
     - `distinct`: Se intentará aplicar un fondo de pantalla diferente a cada monitor. (Nota: La compatibilidad y el comportamiento exacto pueden variar según el entorno de escritorio. Algunos entornos pueden no soportar fondos de pantalla distintos por monitor o requerir configuraciones adicionales).
   - `--target-monitor <ID_monitor>`: Establece el fondo de pantalla solo en el monitor especificado por su ID (ej. "eDP-1", "DP-1"). Puedes ver los IDs de tus monitores con `gower status --monitors`. Este flag anula el comportamiento de `multi-monitor` para el fondo de pantalla actual.
-  - `--no-download`: No descarga la imagen, útil si ya existe localmente.
 
 #### `gower download`
 

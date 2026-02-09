@@ -18,7 +18,6 @@ var (
 	exploreColor       string
 	explorePage        int
 	exploreForceUpdate bool
-	exploreSave        bool
 )
 
 var exploreCmd = &cobra.Command{
@@ -39,7 +38,6 @@ func init() {
 	exploreCmd.Flags().StringVar(&exploreColor, "color", "", "Buscar por color (hex)")
 	exploreCmd.Flags().IntVarP(&explorePage, "page", "p", 1, "Paginación")
 	exploreCmd.Flags().BoolVar(&exploreForceUpdate, "force-update", false, "Forzar actualización")
-	exploreCmd.Flags().BoolVar(&exploreSave, "save", false, "Guardar resultados en feed.json")
 }
 
 func runExplore(cmd *cobra.Command, args []string) {
@@ -78,9 +76,7 @@ func runExplore(cmd *cobra.Command, args []string) {
 	}
 
 	if len(selectedProviders) == 0 {
-		if !config.Quiet {
-			cmd.Println("No enabled providers found or selected.")
-		}
+		cmd.Println("No enabled providers found or selected.")
 		return
 	}
 
@@ -159,18 +155,9 @@ func runExplore(cmd *cobra.Command, args []string) {
 	if config.JSONOutput {
 		data, _ := json.MarshalIndent(allWallpapers, "", "  ")
 		cmd.Println(string(data))
-	} else if !config.Quiet {
+	} else {
 		for _, w := range allWallpapers {
 			cmd.Printf("  - ID: %s | Res: %s | Source: %s | URL: %s\n", w.ID, w.Dimension, w.Source, w.URL)
-		}
-	}
-
-	if exploreSave {
-		count, err := controller.AddWallpapersToFeed(allWallpapers)
-		if err != nil {
-			cmd.Printf("Error saving to feed: %v\n", err)
-		} else if !config.Quiet && !config.JSONOutput {
-			cmd.Printf("Saved %d new wallpapers to feed.\n", count)
 		}
 	}
 }

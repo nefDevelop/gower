@@ -134,7 +134,7 @@ var feedStatsCmd = &cobra.Command{
 
 var feedAnalyzeCmd = &cobra.Command{
 	Use:   "analyze",
-	Short: "Analyze feed items",
+	Short: "Analyze feed items to extract metadata and colors",
 	Run: func(cmd *cobra.Command, args []string) {
 		cfg, err := loadConfig()
 		if err != nil {
@@ -251,7 +251,6 @@ var feedUpdateCmd = &cobra.Command{
 			// For simplicity, we can just invoke the runExplore function if we exported it or use executeCommand logic
 			// But since runExplore is in same package:
 			exploreAll = true
-			exploreSave = true                         // Ensure it saves to parser cache
 			runExplore(exploreCmd, []string{"random"}) // Search for "random" or generic
 
 			// Sync again

@@ -22,11 +22,9 @@ func TestGlobalFlags(t *testing.T) {
 	}
 
 	expectedFlags := []string{
-		"--verbose", "-v",
 		"--debug",
 		"--quiet", "-q",
 		"--json",
-		"--table",
 		"--no-color",
 		"--config",
 		"--dry-run",
