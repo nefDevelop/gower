@@ -12,7 +12,7 @@ import (
 )
 
 // Mock Controller for testing purposes
-type MockController struct {
+type MockSetController struct {
 	core.Controller
 	MockWallpaper        *models.Wallpaper
 	MockWallpaperError   error
@@ -25,15 +25,15 @@ type MockController struct {
 	MockWallpaperChanger *MockSetWallpaperChanger // Embed our mock changer
 }
 
-func (m *MockController) GetWallpaper(id string) (*models.Wallpaper, error) {
+func (m *MockSetController) GetWallpaper(id string) (*models.Wallpaper, error) {
 	return m.MockWallpaper, m.MockWallpaperError
 }
 
-func (m *MockController) DownloadWallpaper(wp models.Wallpaper) (string, error) {
+func (m *MockSetController) DownloadWallpaper(wp models.Wallpaper) (string, error) {
 	return m.MockDownloadPath, m.MockDownloadError
 }
 
-func (m *MockController) GetRandomFromFeed(theme string) (models.Wallpaper, error) {
+func (m *MockSetController) GetRandomFromFeed(theme string) (models.Wallpaper, error) {
 	return m.MockRandomWallpaper, m.MockRandomError
 }
 
@@ -64,10 +64,10 @@ func (m *MockSetWallpaperChanger) SetWallpapers(paths []string, monitors []core.
 }
 
 // Override NewController to return our mock
-var originalNewController = core.NewController
-var originalNewWallpaperChanger = core.NewWallpaperChanger
+var originalSetNewController = core.NewController
+var originalSetNewWallpaperChanger = core.NewWallpaperChanger
 
-func setupMocks(t *testing.T) (*MockController, *MockSetWallpaperChanger) {
+func setupMocks(t *testing.T) (*MockSetController, *MockSetWallpaperChanger) {
 	// Setup temp home for config
 	tmpDir, err := os.MkdirTemp("", "gower-test-set-monitor")
 	if err != nil {
@@ -87,10 +87,10 @@ func setupMocks(t *testing.T) (*MockController, *MockSetWallpaperChanger) {
 			MultiMonitor: "clone",
 		},
 	}
-	realCtrl := originalNewController(cfg)
+	realCtrl := originalSetNewController(cfg)
 
 	mockChanger := &MockSetWallpaperChanger{}
-	mockController := &MockController{
+	mockController := &MockSetController{
 		MockWallpaperChanger: mockChanger,
 		Controller:           *realCtrl,
 	}
@@ -122,8 +122,8 @@ func setupMocks(t *testing.T) (*MockController, *MockSetWallpaperChanger) {
 	saveState = func(s *State) error { return nil }
 
 	t.Cleanup(func() {
-		core.NewController = originalNewController
-		core.NewWallpaperChanger = originalNewWallpaperChanger
+		core.NewController = originalSetNewController
+		core.NewWallpaperChanger = originalSetNewWallpaperChanger
 		loadConfig = originalLoadConfig
 		loadState = originalLoadState
 		saveState = originalSaveState
