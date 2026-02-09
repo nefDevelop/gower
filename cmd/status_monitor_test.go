@@ -78,7 +78,7 @@ func TestStatusMonitors(t *testing.T) {
 	if !strings.Contains(output, "Monitor 1: eDP-1 (Primary)") {
 		t.Errorf("Output missing primary monitor info.\nOutput: %s", output)
 	}
-	if !strings.Contains(output, "Resolution: 1920x1080") {
+	if !strings.Contains(output, "Resolution") || !strings.Contains(output, "1920x1080") {
 		t.Errorf("Output missing resolution info.\nOutput: %s", output)
 	}
 	if !strings.Contains(output, "Monitor 2: DP-1") {

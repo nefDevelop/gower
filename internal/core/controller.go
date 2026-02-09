@@ -10,7 +10,6 @@ import (
 	"math/big"
 	"math/rand"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -585,10 +584,10 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 		w, h, err := c.ColorManager.GenerateThumbnail(src, thumbPath)
 		if err == nil {
 			// Check validity immediately after generation
-			if !c.isValidImage(w, h, checkResolution) {
-				utils.Log.Info("Removing invalid item %s (resolution %dx%d)", wp.ID, w, h)
+			if valid, reason := c.isValidImage(w, h, checkResolution); !valid {
+				utils.Log.Info("Removing invalid item %s (resolution %dx%d). Reason: %s", wp.ID, w, h, reason)
 				if progress != nil {
-					progress(fmt.Sprintf("Removing invalid item %s (resolution %dx%d)", wp.ID, w, h))
+					progress(fmt.Sprintf("Removing invalid item %s (resolution %dx%d). Reason: %s", wp.ID, w, h, reason))
 				}
 				os.Remove(thumbPath)
 				return wp, false, true
@@ -626,15 +625,11 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 		// Thumbnail exists, verify it matches current criteria (prune invalid items)
 		w, h, err := c.ColorManager.GetImageDimensions(thumbPath)
 		if err == nil {
-			checkResolution := false
-			if wp.Thumbnail == "" || wp.Thumbnail == wp.URL {
-				checkResolution = true
-			}
-
-			if !c.isValidImage(w, h, checkResolution) {
-				utils.Log.Info("Removing invalid item %s (resolution %dx%d)", wp.ID, w, h)
+			// When checking an existing thumbnail, we only validate aspect ratio, not resolution.
+			if valid, reason := c.isValidImage(w, h, false); !valid {
+				utils.Log.Info("Removing invalid item %s (resolution %dx%d). Reason: %s", wp.ID, w, h, reason)
 				if progress != nil {
-					progress(fmt.Sprintf("Removing invalid item %s (resolution %dx%d)", wp.ID, w, h))
+					progress(fmt.Sprintf("Removing invalid item %s (resolution %dx%d). Reason: %s", wp.ID, w, h, reason))
 				}
 				os.Remove(thumbPath)
 				return wp, false, true
@@ -1023,15 +1018,12 @@ func (c *Controller) GetWallpaperLocalPath(wp models.Wallpaper) (string, error) 
 	cacheDir := filepath.Join(appDir, "cache", "wallpapers")
 
 	// Determine filename
-	// Parse URL to safely get the extension from the path, ignoring query parameters.
-	parsedURL, err := url.Parse(wp.URL)
-	var ext string
-	if err == nil {
-		ext = filepath.Ext(parsedURL.Path)
-	} else {
-		// Fallback for invalid URLs, though less likely
-		ext = filepath.Ext(wp.URL)
+	// Get extension from URL, ignoring any query parameters
+	urlStr := wp.URL
+	if qIndex := strings.Index(urlStr, "?"); qIndex != -1 {
+		urlStr = urlStr[:qIndex]
 	}
+	ext := filepath.Ext(urlStr)
 
 	if ext == "" {
 		ext = ".jpg" // Default extension
@@ -1094,7 +1086,7 @@ func (c *Controller) DownloadWallpaper(wp models.Wallpaper) (string, error) {
 		utils.Log.Debug("Color analysis failed/skipped for %s: %v", wp.ID, err)
 	}
 
-	utils.Log.Info("Downloaded wallpaper: %s", wp.ID)
+	utils.Log.Info("Downloaded wallpaper %s to %s", wp.ID, filePath)
 	return filePath, nil
 }
 
@@ -1364,18 +1356,17 @@ func (c *Controller) SyncFeed() (int, int, error) {
 
 				// Usar thumbnail URL si existe para ahorrar ancho de banda
 				src := wp.Thumbnail
-				checkResolution := false
 				if src == "" || src == wp.URL {
 					src = wp.URL
-					checkResolution = true
 				}
 
 				// Generar thumbnail y analizar color
 				width, height, err := c.ColorManager.GenerateThumbnail(src, thumbPath)
 				if err == nil {
 					// Validar Ratio antes de continuar
-					if !c.isValidImage(width, height, checkResolution) {
-						utils.Log.Info("Rejected item %s: dimensions %dx%d do not match criteria. Removing thumbnail.", wp.ID, width, height)
+					// When creating thumbnails, we only validate aspect ratio, not absolute resolution.
+					if valid, reason := c.isValidImage(width, height, false); !valid {
+						utils.Log.Info("Rejected item %s: dimensions %dx%d do not match aspect ratio criteria. Reason: %s. Removing thumbnail.", wp.ID, width, height, reason)
 						os.Remove(thumbPath) // Limpiar thumbnail generado
 						continue
 					}
@@ -1549,20 +1540,20 @@ func (c *Controller) LoadColorPalettes() ([]string, []string, error) {
 	return data.FeedPalette, data.FavoritesPalette, nil
 }
 
-func (c *Controller) isValidImage(width, height int, checkResolution bool) bool {
+func (c *Controller) isValidImage(width, height int, checkResolution bool) (bool, string) {
 	if c.Config == nil {
-		return true
+		return true, ""
 	}
 
 	if checkResolution && c.Config.Search.MinWidth > 0 && width < c.Config.Search.MinWidth {
-		return false
+		return false, fmt.Sprintf("width %d is less than min_width %d", width, c.Config.Search.MinWidth)
 	}
 	if checkResolution && c.Config.Search.MinHeight > 0 && height < c.Config.Search.MinHeight {
-		return false
+		return false, fmt.Sprintf("height %d is less than min_height %d", height, c.Config.Search.MinHeight)
 	}
 
 	if c.Config.Search.AspectRatio == "" {
-		return true
+		return true, ""
 	}
 
 	target := c.Config.Search.AspectRatio
@@ -1582,7 +1573,11 @@ func (c *Controller) isValidImage(width, height int, checkResolution bool) bool 
 	}
 
 	if targetRatio == 0 {
-		return true
+		return true, ""
+	}
+
+	if height == 0 {
+		return false, "height is zero"
 	}
 
 	currentRatio := float64(width) / float64(height)
@@ -1591,7 +1586,11 @@ func (c *Controller) isValidImage(width, height int, checkResolution bool) bool 
 		diff = -diff
 	}
 
-	return diff <= c.Config.Search.Tolerance
+	if diff > c.Config.Search.Tolerance {
+		return false, fmt.Sprintf("aspect ratio %.2f is not within %.2f tolerance of %s", currentRatio, c.Config.Search.Tolerance, target)
+	}
+
+	return true, ""
 }
 
 func (c *Controller) isValidDimension(dimension string) bool {

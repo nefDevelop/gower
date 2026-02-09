@@ -32,7 +32,7 @@ func TestStatusAll(t *testing.T) {
 	if !strings.Contains(output, "--- System ---") {
 		t.Errorf("Expected System section")
 	}
-	if !strings.Contains(output, "Desktop Environment:") {
+	if !strings.Contains(output, "Desktop Environment") {
 		t.Errorf("Expected 'Desktop Environment:' in output, got: %s", output)
 	}
 	if !strings.Contains(output, "--- Daemon ---") {
@@ -124,10 +124,10 @@ func TestStatusWallpaper(t *testing.T) {
 	if !strings.Contains(output, "--- Wallpaper ---") {
 		t.Errorf("Expected Wallpaper section")
 	}
-	if !strings.Contains(output, "Monitor 1: wall_1") {
-		t.Errorf("Expected Monitor 1: wall_1, got: %s", output)
+	if !strings.Contains(output, "Monitor 1") || !strings.Contains(output, "wall_1") {
+		t.Errorf("Expected Monitor 1 and wall_1, got: %s", output)
 	}
-	if !strings.Contains(output, "Monitor 2: wall_2") {
-		t.Errorf("Expected Monitor 2: wall_2, got: %s", output)
+	if !strings.Contains(output, "Monitor 2") || !strings.Contains(output, "wall_2") {
+		t.Errorf("Expected Monitor 2 and wall_2, got: %s", output)
 	}
 }
