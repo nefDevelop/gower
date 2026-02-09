@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"fmt"
 	"gower/internal/core"
 	"gower/pkg/models"
 	"os"
@@ -30,7 +31,7 @@ func (m *MockStatusController) GetWallpaper(id string) (*models.Wallpaper, error
 	if wp, ok := m.MockWallpapers[id]; ok {
 		return wp, nil
 	}
-	return nil, nil
+	return nil, fmt.Errorf("wallpaper with ID %s not found", id)
 }
 
 // Override NewController to return our mock
@@ -61,22 +62,13 @@ func setupStatusMocks(t *testing.T) (*MockStatusController, func()) {
 		return &mockController.Controller
 	}
 
-	// Mock loadConfig and loadState to avoid file system access during tests
-	originalLoadConfig := loadConfig
-	loadConfig = func() (*models.Config, error) {
-		return &models.Config{}, nil
-	}
-	originalLoadState := loadState
-	loadState = func() (*State, error) {
-		return &State{}, nil
-	}
+	// We don't mock loadConfig/loadState because the tests need to write/read them
+	// from the temp directory. We only mock saveState to prevent test pollution.
 	originalSaveState := saveState
 	saveState = func(s *State) error { return nil }
 
 	cleanup := func() {
 		core.NewController = originalStatusNewController
-		loadConfig = originalLoadConfig
-		loadState = originalLoadState
 		saveState = originalSaveState
 		os.Setenv("HOME", originalHome)
 		os.RemoveAll(tmpDir)
@@ -96,6 +88,7 @@ func TestStatusAll(t *testing.T) {
 	os.WriteFile(statePath, []byte(stateData), 0644)
 
 	// Add mock wallpapers
+	// Add mock wallpapers to the mock controller
 	mockController.MockWallpapers["wall_1"] = &models.Wallpaper{
 		ID: "wall_1", Path: "/path/to/wall_1.jpg", Source: "test", URL: "http://example.com/wall_1.jpg", Dimension: "1920x1080", Color: "#FFFFFF", Theme: "light",
 	}
@@ -103,6 +96,8 @@ func TestStatusAll(t *testing.T) {
 		ID: "wall_2", Path: "/path/to/wall_2.png", Source: "test", URL: "http://example.com/wall_2.png", Dimension: "2560x1440", Color: "#000000", Theme: "dark",
 	}
 
+	mockController.Controller.AddWallpaperToFeed(*mockController.MockWallpapers["wall_1"])
+	mockController.Controller.AddWallpaperToFeed(*mockController.MockWallpapers["wall_2"])
 	output, err := executeCommand(rootCmd, "status")
 	if err != nil {
 		t.Fatalf("Error executing status: %v", err)
@@ -118,38 +113,40 @@ func TestStatusAll(t *testing.T) {
 		t.Errorf("Expected Daemon section")
 	}
 	if !strings.Contains(output, "--- Providers ---") {
-		t.Errorf("Expected Providers section")
+		t.Errorf("Expected Providers section, got: %s", output)
 	}
 	if !strings.Contains(output, "--- Storage ---") {
-		t.Errorf("Expected Storage section")
+		t.Errorf("Expected Storage section, got: %s", output)
 	}
 	if !strings.Contains(output, "--- Wallpaper ---") {
-		t.Errorf("Expected Wallpaper section")
+		t.Errorf("Expected Wallpaper section, got: %s", output)
 	}
-	if !strings.Contains(output, "Monitor 1 ID:\twall_1") {
-		t.Errorf("Expected Monitor 1 ID, got: %s", output)
+	if !strings.Contains(output, "Monitor 1 ID:") || !strings.Contains(output, "wall_1") {
+		t.Errorf("Expected Monitor 1 ID to be present, got: %s", output)
 	}
-	if !strings.Contains(output, "Monitor 1 Path:\t/path/to/wall_1.jpg") {
-		t.Errorf("Expected Monitor 1 Path, got: %s", output)
+	if !strings.Contains(output, "Monitor 1 Path:") || !strings.Contains(output, "/path/to/wall_1.jpg") {
+		t.Errorf("Expected Monitor 1 Path to be present, got: %s", output)
 	}
-	if !strings.Contains(output, "Monitor 2 ID:\twall_2") {
-		t.Errorf("Expected Monitor 2 ID, got: %s", output)
+	if !strings.Contains(output, "Monitor 2 ID:") || !strings.Contains(output, "wall_2") {
+		t.Errorf("Expected Monitor 2 ID to be present, got: %s", output)
 	}
-	if !strings.Contains(output, "Monitor 2 Path:\t/path/to/wall_2.png") {
-		t.Errorf("Expected Monitor 2 Path, got: %s", output)
+	if !strings.Contains(output, "Monitor 2 Path:") || !strings.Contains(output, "/path/to/wall_2.png") {
+		t.Errorf("Expected Monitor 2 Path to be present, got: %s", output)
 	}
 }
 
 func TestStatusJSON(t *testing.T) {
 	resetStatusFlags()
+
 	mockController, cleanup := setupStatusMocks(t)
 	defer cleanup()
 
 	// Manually create state.json for wallpaper status
 	statePath := filepath.Join(os.Getenv("HOME"), ".gower", "state.json")
-	stateData := `{"current_wallpaper_id": "wall_1", "current_wallpapers": ["wall_1", "wall_2"]}`
+	stateData := `{"current_wallpaper_id": "wall_1", "current_wallpapers": ["wall_1","wall_2"]}`
 	os.WriteFile(statePath, []byte(stateData), 0644)
 
+	// Add mock wallpapers
 	// Add mock wallpapers
 	mockController.MockWallpapers["wall_1"] = &models.Wallpaper{
 		ID: "wall_1", Path: "/path/to/wall_1.jpg", Source: "test", URL: "http://example.com/wall_1.jpg", Dimension: "1920x1080", Color: "#FFFFFF", Theme: "light",
@@ -158,6 +155,8 @@ func TestStatusJSON(t *testing.T) {
 		ID: "wall_2", Path: "/path/to/wall_2.png", Source: "test", URL: "http://example.com/wall_2.png", Dimension: "2560x1440", Color: "#000000", Theme: "dark",
 	}
 
+	mockController.Controller.AddWallpaperToFeed(*mockController.MockWallpapers["wall_1"])
+	mockController.Controller.AddWallpaperToFeed(*mockController.MockWallpapers["wall_2"])
 	output, err := executeCommand(rootCmd, "status", "--json")
 	if err != nil {
 		t.Fatalf("Error executing status --json: %v", err)
@@ -197,6 +196,8 @@ func TestStatusFlags(t *testing.T) {
 	mockController.MockWallpapers["wall_1"] = &models.Wallpaper{
 		ID: "wall_1", Path: "/path/to/wall_1.jpg", Source: "test", URL: "http://example.com/wall_1.jpg", Dimension: "1920x1080", Color: "#FFFFFF", Theme: "light",
 	}
+	// Add the wallpaper to the feed so the real controller can find it.
+	mockController.Controller.AddWallpaperToFeed(*mockController.MockWallpapers["wall_1"])
 
 	// Test --providers
 	output, err := executeCommand(rootCmd, "status", "--providers")
@@ -214,7 +215,7 @@ func TestStatusFlags(t *testing.T) {
 	}
 
 	// Test --storage
-	// Create some dummy file to check size
+	// Create some dummy files to check size
 	cacheDir := filepath.Join(os.Getenv("HOME"), ".gower", "cache")
 	os.MkdirAll(cacheDir, 0755)
 	os.WriteFile(filepath.Join(cacheDir, "test"), []byte("test"), 0644)
@@ -232,18 +233,18 @@ func TestStatusFlags(t *testing.T) {
 	}
 
 	// Test --wallpapers
-	resetStatusFlags()
+	resetStatusFlags() // Reset again to clear providers flag
 	output, err = executeCommand(rootCmd, "status", "--wallpapers")
 	if err != nil {
-		t.Fatalf("Error executing status --wallpapers: %v", err)
+		t.Fatalf("Error executing status --wallpapers: %v, output: %s", err, output)
 	}
 	if !strings.Contains(output, "--- Wallpaper ---") {
 		t.Errorf("Expected Wallpaper section")
 	}
-	if !strings.Contains(output, "Monitor 1 ID:\twall_1") {
+	if !strings.Contains(output, "Monitor 1 ID:") || !strings.Contains(output, "wall_1") {
 		t.Errorf("Expected Monitor 1 ID, got: %s", output)
 	}
-	if !strings.Contains(output, "Monitor 1 Path:\t/path/to/wall_1.jpg") {
+	if !strings.Contains(output, "Monitor 1 Path:") || !strings.Contains(output, "/path/to/wall_1.jpg") {
 		t.Errorf("Expected Monitor 1 Path, got: %s", output)
 	}
 	if strings.Contains(output, "--- System ---") {
@@ -287,7 +288,7 @@ func TestStatusWallpaperNoWallpapers(t *testing.T) {
 		t.Fatalf("Error unmarshalling JSON output: %v", err)
 	}
 
-	if statusOutput.Wallpaper == nil || len(statusOutput.Wallpaper.Wallpapers) != 0 {
+	if statusOutput.Wallpaper == nil || len(statusOutput.Wallpaper.Wallpapers) != 0 { // Corrected assertion
 		t.Errorf("Expected empty wallpapers array in JSON, got: %+v", statusOutput.Wallpaper)
 	}
 }

@@ -301,7 +301,9 @@ func getDaemonStatus() *DaemonStatus {
 func getWallpaperStatus() *CurrentWallpaperStatus {
 	state, err := loadState()
 	if err != nil {
-		return nil
+		// If state can't be loaded, we can't determine wallpaper status.
+		fmt.Fprintf(os.Stderr, "Error loading state for wallpaper status: %v\n", err)
+		return &CurrentWallpaperStatus{Wallpapers: []models.Wallpaper{}}
 	}
 
 	var wallpapers []models.Wallpaper
@@ -334,10 +336,6 @@ func getWallpaperStatus() *CurrentWallpaperStatus {
 		if wp != nil {
 			wallpapers = append(wallpapers, *wp)
 		}
-	}
-
-	if len(wallpapers) == 0 {
-		return nil
 	}
 
 	return &CurrentWallpaperStatus{
