@@ -576,7 +576,7 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 		src := wp.Thumbnail
 		checkResolution := false
 		if src == "" || src == wp.URL {
-			if localPath, found := c.findWallpaperCacheFile(wp); found {
+			if localPath, found := c.FindWallpaperCacheFile(wp); found {
 				src = localPath // Use local file if available, it's faster
 			}
 			checkResolution = true
@@ -665,7 +665,7 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 	// 4. Check and fix main wallpaper filename if it exists
 	expectedPath, err := c.GetWallpaperLocalPath(wp)
 	if err == nil {
-		actualPath, found := c.findWallpaperCacheFile(wp)
+		actualPath, found := c.FindWallpaperCacheFile(wp)
 		if found && actualPath != expectedPath {
 			// Check if expected path already exists to avoid overwrite error on rename
 			if _, err := os.Stat(expectedPath); os.IsNotExist(err) {
@@ -967,6 +967,39 @@ func (c *Controller) RemoveFromFeed(id string) error {
 	return nil
 }
 
+// DeleteWallpaper removes a wallpaper from the feed and optionally deletes the file from disk.
+func (c *Controller) DeleteWallpaper(id string, deleteFile bool) error {
+	wp, err := c.GetWallpaper(id)
+	if err != nil {
+		return err
+	}
+
+	if err := c.RemoveFromFeed(id); err != nil {
+		return err
+	}
+
+	if deleteFile {
+		if wp.Source == "local" {
+			// Delete local file
+			if err := os.Remove(wp.URL); err != nil {
+				return fmt.Errorf("failed to delete local file: %w", err)
+			}
+			utils.Log.Info("Deleted local file: %s", wp.URL)
+		} else {
+			// Delete cached file
+			if path, found := c.FindWallpaperCacheFile(*wp); found {
+				os.Remove(path)
+			}
+		}
+
+		appDir, _ := GetAppDir()
+		thumbPath := filepath.Join(appDir, "cache", "thumbs", wp.ID+".jpg")
+		os.Remove(thumbPath)
+	}
+
+	return nil
+}
+
 // GetFeedWallpapers returns all wallpapers in the feed.
 func (c *Controller) GetFeedWallpapers() ([]models.Wallpaper, error) {
 	return c.loadFeed()
@@ -1141,9 +1174,9 @@ func (c *Controller) GetCachedWallpapers(includeFavorites bool, theme string) ([
 	return result, nil
 }
 
-// findWallpaperCacheFile finds the local cache file for a wallpaper, even if it has a bad name.
+// FindWallpaperCacheFile finds the local cache file for a wallpaper, even if it has a bad name.
 // It returns the full path to the file and a boolean indicating if it was found.
-func (c *Controller) findWallpaperCacheFile(wp models.Wallpaper) (string, bool) {
+func (c *Controller) FindWallpaperCacheFile(wp models.Wallpaper) (string, bool) {
 	appDir, err := GetAppDir()
 	if err != nil {
 		return "", false
