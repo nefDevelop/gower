@@ -90,6 +90,16 @@ Para cambiar automáticamente tu fondo de pantalla cada 30 minutos:
 gower daemon --interval 30m
 ```
 
+### 5. Gestión de Archivos Locales
+
+Gower puede indexar tus propios fondos de pantalla. Activa `index_wallpapers` en la configuración y apunta `wallpapers` a tu carpeta.
+
+Si te cansas de una imagen local y quieres borrarla definitivamente de tu disco duro:
+
+```bash
+gower delete <ID_LOCAL> --file
+```
+
 ## ⚙️ Configuración
 
 Gower busca un archivo de configuración `config.json` en las siguientes ubicaciones:

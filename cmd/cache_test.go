@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gower/internal/core"
+	"gower/pkg/models"
 )
 
 func TestCacheCleanCmd(t *testing.T) {
@@ -16,7 +19,9 @@ func TestCacheCleanCmd(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	// Set the user home directory to the temporary directory
-	os.Setenv("HOME", tmpDir)
+	// Use t.Setenv for automatic restoration
+	t.Setenv("HOME", tmpDir)
+	t.Setenv("USERPROFILE", tmpDir) // for Windows
 
 	// Create some dummy files and directories in the cache
 	cacheDir := filepath.Join(tmpDir, ".gower", "cache")
@@ -63,7 +68,8 @@ func TestCacheSizeCmd(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	// Set the user home directory to the temporary directory
-	os.Setenv("HOME", tmpDir)
+	t.Setenv("HOME", tmpDir)
+	t.Setenv("USERPROFILE", tmpDir) // for Windows
 
 	// Create a dummy file with a known size
 	cacheDir := filepath.Join(tmpDir, ".gower", "cache")
@@ -92,5 +98,58 @@ func TestCacheSizeCmd(t *testing.T) {
 	expectedSize := "Cache size: 1.00 MB"
 	if !strings.Contains(output, expectedSize) {
 		t.Errorf("Expected output to contain '%s', but got '%s'", expectedSize, output)
+	}
+}
+
+func TestCachePruneCmd(t *testing.T) {
+	tmpDir := setupTestHome(t)
+	defer os.RemoveAll(tmpDir)
+
+	executeCommand(rootCmd, "config", "init")
+
+	// Setup:
+	// - 1 wallpaper in feed, with a cached file
+	// - 1 orphaned wallpaper file
+	// - 1 orphaned thumbnail file
+
+	cfg, _ := loadConfig()
+	ctrl := core.NewController(cfg)
+	wpInFeed := models.Wallpaper{ID: "keep_me", URL: "http://example.com/keep.jpg"}
+	ctrl.AddWallpaperToFeed(wpInFeed)
+
+	appDir, _ := core.GetAppDir()
+	wallpapersDir := filepath.Join(appDir, "cache", "wallpapers")
+	thumbsDir := filepath.Join(appDir, "cache", "thumbs")
+	os.MkdirAll(wallpapersDir, 0755)
+	os.MkdirAll(thumbsDir, 0755)
+
+	// Create files
+	os.WriteFile(filepath.Join(wallpapersDir, "keep_me.jpg"), []byte("data"), 0644)
+	os.WriteFile(filepath.Join(wallpapersDir, "delete_me.jpg"), []byte("data"), 0644)
+	os.WriteFile(filepath.Join(thumbsDir, "keep_me.jpg"), []byte("data"), 0644)
+	os.WriteFile(filepath.Join(thumbsDir, "delete_me_thumb.jpg"), []byte("data"), 0644)
+
+	// Execute prune
+	output, err := executeCommand(rootCmd, "cache", "prune")
+	if err != nil {
+		t.Fatalf("Command failed: %v", err)
+	}
+
+	if !strings.Contains(output, "Pruning complete. Removed 2 orphaned file(s).") {
+		t.Errorf("Expected success message with 2 files removed, got: %s", output)
+	}
+
+	// Verify files
+	if _, err := os.Stat(filepath.Join(wallpapersDir, "keep_me.jpg")); os.IsNotExist(err) {
+		t.Error("Expected keep_me.jpg to exist, but it was deleted")
+	}
+	if _, err := os.Stat(filepath.Join(wallpapersDir, "delete_me.jpg")); !os.IsNotExist(err) {
+		t.Error("Expected delete_me.jpg to be deleted, but it exists")
+	}
+	if _, err := os.Stat(filepath.Join(thumbsDir, "keep_me.jpg")); os.IsNotExist(err) {
+		t.Error("Expected keep_me.jpg thumb to exist, but it was deleted")
+	}
+	if _, err := os.Stat(filepath.Join(thumbsDir, "delete_me_thumb.jpg")); !os.IsNotExist(err) {
+		t.Error("Expected delete_me_thumb.jpg to be deleted, but it exists")
 	}
 }
