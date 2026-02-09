@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"syscall"
+	"text/tabwriter"
 
 	"gower/internal/core"
 
@@ -124,13 +125,20 @@ func runStatus(cmd *cobra.Command, args []string) {
 		return
 	}
 
+	// Helper to create a new tabwriter
+	newTabWriter := func() *tabwriter.Writer {
+		return tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 3, ' ', 0)
+	}
+
 	// Text output
 	if output.System != nil {
 		cmd.Println("--- System ---")
-		cmd.Printf("OS: %s\n", output.System.OS)
-		cmd.Printf("Arch: %s\n", output.System.Arch)
-		cmd.Printf("Desktop Environment: %s\n", output.System.DesktopEnv)
-		cmd.Printf("Home: %s\n", output.System.HomeDir)
+		w := newTabWriter()
+		fmt.Fprintf(w, "OS:\t%s\n", output.System.OS)
+		fmt.Fprintf(w, "Arch:\t%s\n", output.System.Arch)
+		fmt.Fprintf(w, "Desktop Environment:\t%s\n", output.System.DesktopEnv)
+		fmt.Fprintf(w, "Home:\t%s\n", output.System.HomeDir)
+		w.Flush()
 		cmd.Println("Dependencies:")
 		// Sort keys for consistent output
 		depKeys := make([]string, 0, len(output.System.Dependencies))
@@ -139,14 +147,16 @@ func runStatus(cmd *cobra.Command, args []string) {
 		}
 		sort.Strings(depKeys)
 
+		w = newTabWriter()
 		for _, dep := range depKeys {
 			installed := output.System.Dependencies[dep]
 			status := colorize("Not Found", colorRed)
 			if installed {
 				status = colorize("Installed", colorGreen)
 			}
-			cmd.Printf("  %s: %s\n", dep, status)
+			fmt.Fprintf(w, "  %s:\t%s\n", dep, status)
 		}
+		w.Flush()
 		cmd.Println()
 	}
 
@@ -156,27 +166,33 @@ func runStatus(cmd *cobra.Command, args []string) {
 		if output.Daemon.Running {
 			state = colorize(fmt.Sprintf("Running (PID: %d)", output.Daemon.PID), colorGreen)
 		}
-		cmd.Printf("Status: %s\n", state)
+		w := newTabWriter()
+		fmt.Fprintf(w, "Status:\t%s\n", state)
+		w.Flush()
 		cmd.Println()
 	}
 
 	if output.Wallpaper != nil {
 		cmd.Println("--- Wallpaper ---")
+		w := newTabWriter()
 		if len(output.Wallpaper.IDs) > 0 {
 			for i, id := range output.Wallpaper.IDs {
-				cmd.Printf("Monitor %d: %s\n", i+1, id)
+				fmt.Fprintf(w, "Monitor %d:\t%s\n", i+1, id)
 			}
 		} else {
-			cmd.Printf("Current ID: %s\n", output.Wallpaper.ID)
+			fmt.Fprintf(w, "Current ID:\t%s\n", output.Wallpaper.ID)
 		}
+		w.Flush()
 		cmd.Println()
 	}
 
 	if output.Providers != nil {
 		cmd.Println("--- Providers ---")
-		cmd.Printf("Wallhaven: %v\n", colorizeBool(output.Providers.Wallhaven))
-		cmd.Printf("Reddit: %v\n", colorizeBool(output.Providers.Reddit))
-		cmd.Printf("Nasa: %v\n", colorizeBool(output.Providers.Nasa))
+		w := newTabWriter()
+		fmt.Fprintf(w, "Wallhaven:\t%v\n", colorizeBool(output.Providers.Wallhaven))
+		fmt.Fprintf(w, "Reddit:\t%v\n", colorizeBool(output.Providers.Reddit))
+		fmt.Fprintf(w, "Nasa:\t%v\n", colorizeBool(output.Providers.Nasa))
+		w.Flush()
 		if len(output.Providers.Generic) > 0 {
 			cmd.Println("Manual Providers:")
 			keys := make([]string, 0, len(output.Providers.Generic))
@@ -184,18 +200,22 @@ func runStatus(cmd *cobra.Command, args []string) {
 				keys = append(keys, k)
 			}
 			sort.Strings(keys)
+			w = newTabWriter()
 			for _, name := range keys {
-				cmd.Printf("  %s: %v\n", name, colorizeBool(output.Providers.Generic[name]))
+				fmt.Fprintf(w, "  %s:\t%v\n", name, colorizeBool(output.Providers.Generic[name]))
 			}
+			w.Flush()
 		}
 		cmd.Println()
 	}
 
 	if output.Storage != nil {
 		cmd.Println("--- Storage ---")
-		cmd.Printf("Cache: %s\n", output.Storage.CacheSize)
-		cmd.Printf("Data: %s\n", output.Storage.DataSize)
-		cmd.Printf("Total: %s\n", output.Storage.TotalSize)
+		w := newTabWriter()
+		fmt.Fprintf(w, "Cache:\t%s\n", output.Storage.CacheSize)
+		fmt.Fprintf(w, "Data:\t%s\n", output.Storage.DataSize)
+		fmt.Fprintf(w, "Total:\t%s\n", output.Storage.TotalSize)
+		w.Flush()
 		cmd.Println()
 	}
 
@@ -207,8 +227,10 @@ func runStatus(cmd *cobra.Command, args []string) {
 				primary = " (Primary)"
 			}
 			cmd.Printf("  Monitor %d: %s%s\n", i+1, mon.Name, primary)
-			cmd.Printf("    Resolution: %dx%d\n", mon.Width, mon.Height)
-			cmd.Printf("    Position: %d,%d\n", mon.X, mon.Y)
+			w := newTabWriter()
+			fmt.Fprintf(w, "    Resolution:\t%dx%d\n", mon.Width, mon.Height)
+			fmt.Fprintf(w, "    Position:\t%d,%d\n", mon.X, mon.Y)
+			w.Flush()
 		}
 		cmd.Println()
 	}
