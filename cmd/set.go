@@ -22,7 +22,6 @@ var (
 	setFromFavorites bool
 	setMultiMonitor  string
 	setCommand       string
-	setNoDownload    bool
 	setTargetMonitor string
 )
 
@@ -48,8 +47,6 @@ func init() {
 		"multi-monitor mode [clone|distinct]")
 	setCmd.Flags().StringVar(&setCommand, "command", "",
 		"custom wallpaper command")
-	setCmd.Flags().BoolVar(&setNoDownload, "no-download", false,
-		"don't download, use existing file")
 	setCmd.Flags().StringVar(&setTargetMonitor, "target-monitor", "",
 		"set wallpaper on a specific monitor (e.g., 'eDP-1')")
 
@@ -274,19 +271,34 @@ func runSetUndo(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("could not load state: %w", err)
 	}
 
-	if state.PreviousWallpaperID == "" {
-		return fmt.Errorf("no previous wallpaper found in state")
+	var wallpapers []models.Wallpaper
+
+	// Try to use PreviousWallpapers if available (multi-monitor support)
+	if len(state.PreviousWallpapers) > 0 {
+		for _, id := range state.PreviousWallpapers {
+			wp, err := controller.GetWallpaper(id)
+			if err != nil {
+				cmd.Printf("Warning: could not retrieve previous wallpaper '%s': %v\n", id, err)
+				continue
+			}
+			wallpapers = append(wallpapers, *wp)
+		}
+	} else if state.PreviousWallpaperID != "" {
+		wp, err := controller.GetWallpaper(state.PreviousWallpaperID)
+		if err != nil {
+			return fmt.Errorf("could not get previous wallpaper '%s': %w", state.PreviousWallpaperID, err)
+		}
+		wallpapers = append(wallpapers, *wp)
 	}
 
-	wp, err := controller.GetWallpaper(state.PreviousWallpaperID)
-	if err != nil {
-		return fmt.Errorf("could not get previous wallpaper '%s': %w", state.PreviousWallpaperID, err)
+	if len(wallpapers) == 0 {
+		return fmt.Errorf("no previous wallpaper found in state")
 	}
 
 	// When we undo, we don't want to update the state again in the same way,
 	// so we call a slightly different application function or pass a flag.
 	// For simplicity, we'll just apply it without a state change.
-	return applyWallpapers(cmd, controller, []models.Wallpaper{*wp}, []core.Monitor{}, cfg)
+	return applyWallpapers(cmd, controller, wallpapers, []core.Monitor{}, cfg)
 }
 
 func applyWallpapers(cmd *cobra.Command, controller *core.Controller, wallpapers []models.Wallpaper, monitors []core.Monitor, cfg *models.Config) error {
@@ -301,14 +313,10 @@ func applyWallpapers(cmd *cobra.Command, controller *core.Controller, wallpapers
 			lum := controller.ColorManager.GetLuminance(wp.Color)
 			cmd.Printf("   [DEBUG] Color: %s | Luminance: %.2f | Dark: %v\n", wp.Color, lum, lum < 100)
 		}
-		if !setNoDownload {
-			var err error
-			localPaths[i], err = controller.DownloadWallpaper(wp)
-			if err != nil {
-				return fmt.Errorf("error downloading wallpaper %s: %w", wp.ID, err)
-			}
-		} else {
-			localPaths[i] = wp.URL
+		var err error
+		localPaths[i], err = controller.DownloadWallpaper(wp)
+		if err != nil {
+			return fmt.Errorf("error downloading wallpaper %s: %w", wp.ID, err)
 		}
 	}
 
@@ -361,13 +369,28 @@ func applyWallpapers(cmd *cobra.Command, controller *core.Controller, wallpapers
 		for _, wp := range wallpapers {
 			ids = append(ids, wp.ID)
 		}
-		state.CurrentWallpapers = ids
 
 		// Only update state if the current wallpaper(s) are different from the last recorded.
-		// For simplicity, we compare the ID of the first wallpaper.
+		// We compare both the primary ID and the full list to detect changes in distinct mode.
+		changed := false
 		if state.CurrentWallpaperID != wallpapers[0].ID {
+			changed = true
+		} else if len(state.CurrentWallpapers) != len(ids) {
+			changed = true
+		} else {
+			for i, id := range ids {
+				if state.CurrentWallpapers[i] != id {
+					changed = true
+					break
+				}
+			}
+		}
+
+		if changed {
 			state.PreviousWallpaperID = state.CurrentWallpaperID
+			state.PreviousWallpapers = state.CurrentWallpapers
 			state.CurrentWallpaperID = wallpapers[0].ID // Store the ID of the first wallpaper
+			state.CurrentWallpapers = ids
 		}
 		if err := saveState(state); err != nil {
 			cmd.Printf("Warning: could not save state: %v\n", err)

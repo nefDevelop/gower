@@ -11,14 +11,12 @@ import (
 
 // CLIConfig holds all global command line flags
 type CLIConfig struct {
-	Verbose     bool
-	Debug       bool
-	Quiet       bool
-	JSONOutput  bool
-	TableOutput bool
-	NoColor     bool
-	ConfigFile  string
-	DryRun      bool
+	Debug      bool
+	Quiet      bool
+	JSONOutput bool
+	NoColor    bool
+	ConfigFile string
+	DryRun     bool
 }
 
 var config CLIConfig
@@ -55,11 +53,9 @@ func init() {
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
-	rootCmd.PersistentFlags().BoolVarP(&config.Verbose, "verbose", "v", false, "Habilita la salida detallada.")
 	rootCmd.PersistentFlags().BoolVar(&config.Debug, "debug", false, "Habilita la salida de depuración.")
 	rootCmd.PersistentFlags().BoolVarP(&config.Quiet, "quiet", "q", false, "Suprime toda la salida excepto los errores.")
 	rootCmd.PersistentFlags().BoolVar(&config.JSONOutput, "json", false, "Formatea la salida como JSON.")
-	rootCmd.PersistentFlags().BoolVar(&config.TableOutput, "table", false, "Output en tabla (default).")
 	rootCmd.PersistentFlags().BoolVar(&config.NoColor, "no-color", false, "Desactivar colores en output.")
 	rootCmd.PersistentFlags().StringVar(&config.ConfigFile, "config", "", "Ruta al archivo de configuración.")
 	rootCmd.PersistentFlags().BoolVar(&config.DryRun, "dry-run", false, "Simula la ejecución sin realizar cambios.")

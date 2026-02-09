@@ -46,6 +46,7 @@ func TestSaveAndLoadState(t *testing.T) {
 		CurrentWallpaperID:  "wall_123",
 		PreviousWallpaperID: "wall_abc",
 		CurrentWallpapers:   []string{"wall_123", "wall_456"},
+		PreviousWallpapers:  []string{"wall_abc", "wall_def"},
 	}
 
 	// 2. Save the state
@@ -61,6 +62,7 @@ func TestSaveAndLoadState(t *testing.T) {
 	assert.Equal(t, "wall_123", loadedState.CurrentWallpaperID)
 	assert.Equal(t, "wall_abc", loadedState.PreviousWallpaperID)
 	assert.Equal(t, []string{"wall_123", "wall_456"}, loadedState.CurrentWallpapers)
+	assert.Equal(t, []string{"wall_abc", "wall_def"}, loadedState.PreviousWallpapers)
 }
 
 func TestLoadState_NonExistent(t *testing.T) {

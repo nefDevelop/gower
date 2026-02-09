@@ -15,6 +15,7 @@ type State struct {
 	CurrentWallpaperID  string   `json:"current_wallpaper_id"`
 	CurrentWallpapers   []string `json:"current_wallpapers,omitempty"`
 	PreviousWallpaperID string   `json:"previous_wallpaper_id"`
+	PreviousWallpapers  []string `json:"previous_wallpapers,omitempty"`
 }
 
 // stateFilePath returns the path to the state file.

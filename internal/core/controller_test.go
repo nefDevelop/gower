@@ -355,6 +355,70 @@ func TestController_AnalyzeFeed(t *testing.T) {
 	}
 }
 
+func TestController_AnalyzeFeed_Colors(t *testing.T) {
+	tmpDir := setupTestHome(t)
+	defer os.RemoveAll(tmpDir)
+
+	cfg := &models.Config{}
+	ctrl := NewController(cfg)
+
+	// Create dummy red image
+	srcImgPath := filepath.Join(tmpDir, "red.png")
+	createDummyImage(t, srcImgPath)
+
+	// Add item to feed with wrong color and missing color
+	wp1 := models.Wallpaper{ID: "test_wrong_color", URL: srcImgPath, Thumbnail: srcImgPath, Color: "#0000FF"} // Blue, but image is red
+	wp2 := models.Wallpaper{ID: "test_missing_color", URL: srcImgPath, Thumbnail: srcImgPath, Color: ""}
+
+	ctrl.AddWallpaperToFeed(wp1)
+	ctrl.AddWallpaperToFeed(wp2)
+
+	// Manually create a thumbnail for wp1 so it thinks it exists
+	thumbDir := filepath.Join(tmpDir, ".config", "gower", "cache", "thumbs")
+	os.MkdirAll(thumbDir, 0755)
+	input, _ := os.ReadFile(srcImgPath)
+	os.WriteFile(filepath.Join(thumbDir, "test_wrong_color.jpg"), input, 0644)
+
+	// 1. Analyze without --all. Should fix missing color (wp2), but NOT wrong color (wp1)
+	if err := ctrl.AnalyzeFeed(false, false, nil); err != nil {
+		t.Fatalf("AnalyzeFeed failed: %v", err)
+	}
+
+	feed, _ := ctrl.GetFeed(1, 10, "", "", "")
+	var res1, res2 models.Wallpaper
+	for _, w := range feed {
+		if w.ID == "test_wrong_color" {
+			res1 = w
+		}
+		if w.ID == "test_missing_color" {
+			res2 = w
+		}
+	}
+
+	if res1.Color != "#0000FF" {
+		t.Errorf("Expected wp1 color to remain #0000FF, got %s", res1.Color)
+	}
+	if res2.Color != "#FF0000" && res2.Color != "#FE0000" {
+		t.Errorf("Expected wp2 color to be red-ish, got %s", res2.Color)
+	}
+
+	// 2. Run AnalyzeFeed(true, false) -> --all=true. Should fix wp1.
+	if err := ctrl.AnalyzeFeed(true, false, nil); err != nil {
+		t.Fatalf("AnalyzeFeed --all failed: %v", err)
+	}
+
+	feed, _ = ctrl.GetFeed(1, 10, "", "", "")
+	for _, w := range feed {
+		if w.ID == "test_wrong_color" {
+			res1 = w
+		}
+	}
+
+	if res1.Color != "#FF0000" && res1.Color != "#FE0000" {
+		t.Errorf("Expected wp1 color to be updated to red-ish, got %s", res1.Color)
+	}
+}
+
 func TestController_AnalyzeFavorites(t *testing.T) {
 	tmpDir := setupTestHome(t)
 	defer os.RemoveAll(tmpDir)
