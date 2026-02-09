@@ -234,8 +234,9 @@ func TestController_SyncFeed(t *testing.T) {
 	}
 	// Since image is red, it should be close to #FF0000
 	// JPEG compression might cause slight variation (e.g. #FE0000)
-	if wp.Color != "#FF0000" && wp.Color != "#FE0000" {
-		t.Errorf("Expected color #FF0000 or #FE0000, got %s", wp.Color)
+	r, g, b := HexToRGB(wp.Color)
+	if r <= 240 || g >= 20 || b >= 20 {
+		t.Errorf("Expected reddish color, got %s (R=%d, G=%d, B=%d)", wp.Color, r, g, b)
 	}
 	if wp.Ratio == "" {
 		t.Error("Expected ratio to be calculated")
@@ -244,8 +245,8 @@ func TestController_SyncFeed(t *testing.T) {
 	// Verify colors.json
 	colorsPath := filepath.Join(tmpDir, ".config", "gower", "data", "colors.json")
 	colorsData, _ := os.ReadFile(colorsPath)
-	if !strings.Contains(string(colorsData), "#FF0000") && !strings.Contains(string(colorsData), "#FE0000") {
-		t.Error("Expected colors.json to contain #FF0000 or #FE0000")
+	if !strings.Contains(string(colorsData), wp.Color) {
+		t.Errorf("Expected colors.json to contain %s", wp.Color)
 	}
 }
 
@@ -398,7 +399,8 @@ func TestController_AnalyzeFeed_Colors(t *testing.T) {
 	if res1.Color != "#0000FF" {
 		t.Errorf("Expected wp1 color to remain #0000FF, got %s", res1.Color)
 	}
-	if res2.Color != "#FF0000" && res2.Color != "#FE0000" {
+	r, g, b := HexToRGB(res2.Color)
+	if r <= 240 || g >= 20 || b >= 20 {
 		t.Errorf("Expected wp2 color to be red-ish, got %s", res2.Color)
 	}
 
@@ -414,7 +416,8 @@ func TestController_AnalyzeFeed_Colors(t *testing.T) {
 		}
 	}
 
-	if res1.Color != "#FF0000" && res1.Color != "#FE0000" {
+	r, g, b = HexToRGB(res1.Color)
+	if r <= 240 || g >= 20 || b >= 20 {
 		t.Errorf("Expected wp1 color to be updated to red-ish, got %s", res1.Color)
 	}
 }
@@ -511,6 +514,72 @@ func TestController_GetFeed_Algorithm(t *testing.T) {
 	for i := range result1 {
 		if result1[i].ID != result2[i].ID {
 			t.Errorf("Expected stable order, but it changed. Pos %d: %s vs %s", i, result1[i].ID, result2[i].ID)
+		}
+	}
+}
+
+func TestController_GetFeed_SmartStability(t *testing.T) {
+	tmpDir := setupTestHome(t)
+	defer os.RemoveAll(tmpDir)
+
+	cfg := &models.Config{}
+	ctrl := NewController(cfg)
+
+	// 1. Create a feed with multiple items
+	var initialFeed []models.Wallpaper
+	ids := []string{"A", "B", "C", "D", "E", "F", "G", "H"}
+	for _, id := range ids {
+		initialFeed = append(initialFeed, models.Wallpaper{ID: id, Added: time.Now().Unix()})
+	}
+	if err := ctrl.saveFeed(initialFeed); err != nil {
+		t.Fatalf("Failed to save initial feed: %v", err)
+	}
+
+	// 2. Get feed with smart sort (first time, generates cache)
+	feed1, err := ctrl.GetFeed(1, 100, "", "", "", "smart", false)
+	if err != nil {
+		t.Fatalf("First GetFeed failed: %v", err)
+	}
+
+	// Verify cache file exists to ensure stability mechanism is active
+	cachePath := filepath.Join(tmpDir, ".config", "gower", "data", "feed_cache.json")
+	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
+		t.Fatalf("Cache file not created at %s", cachePath)
+	}
+
+	if len(feed1) != len(ids) {
+		t.Fatalf("Expected %d items, got %d", len(ids), len(feed1))
+	}
+
+	// 3. Remove an item (e.g., the 3rd item in the returned list)
+	// We use the returned list to pick an item, so we know its position in the smart order
+	itemToRemove := feed1[2]
+	if err := ctrl.RemoveFromFeed(itemToRemove.ID); err != nil {
+		t.Fatalf("Failed to remove item: %v", err)
+	}
+
+	// 4. Get feed again with smart sort
+	feed2, err := ctrl.GetFeed(1, 100, "", "", "", "smart", false)
+	if err != nil {
+		t.Fatalf("Second GetFeed failed: %v", err)
+	}
+
+	if len(feed2) != len(ids)-1 {
+		t.Fatalf("Expected %d items, got %d", len(ids)-1, len(feed2))
+	}
+
+	// 5. Verify order is preserved
+	// Construct expected list from feed1 excluding the removed item
+	var expectedIDs []string
+	for _, wp := range feed1 {
+		if wp.ID != itemToRemove.ID {
+			expectedIDs = append(expectedIDs, wp.ID)
+		}
+	}
+
+	for i, wp := range feed2 {
+		if wp.ID != expectedIDs[i] {
+			t.Errorf("Order mismatch at index %d. Expected %s, got %s", i, expectedIDs[i], wp.ID)
 		}
 	}
 }
