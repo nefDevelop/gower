@@ -39,7 +39,8 @@ var statusCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(statusCmd)
 	statusCmd.Flags().BoolVar(&statusJSON, "json", false, "Output in JSON")
-	statusCmd.Flags().BoolVar(&statusProviders, "providers", false, "Show providers status")	statusCmd.Flags().BoolVar(&statusStorage, "storage", false, "Show storage usage")
+	statusCmd.Flags().BoolVar(&statusProviders, "providers", false, "Show providers status")
+	statusCmd.Flags().BoolVar(&statusStorage, "storage", false, "Show storage usage")
 	statusCmd.Flags().BoolVar(&statusDaemon, "daemon", false, "Show daemon status")
 	statusCmd.Flags().BoolVar(&statusSystem, "system", false, "Show system information")
 	statusCmd.Flags().BoolVar(&statusMonitors, "monitors", false, "Show monitor information")
@@ -304,7 +305,12 @@ func getWallpaperStatus() *CurrentWallpaperStatus {
 	}
 
 	var wallpapers []models.Wallpaper
-	controller := core.NewController() // Assuming NewController initializes correctly
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading config for wallpaper status: %v\n", err)
+		return nil
+	}
+	controller := core.NewController(cfg)
 
 	// If multiple wallpapers are set (for multiple monitors)
 	if len(state.CurrentWallpapers) > 0 {

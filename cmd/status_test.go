@@ -21,12 +21,12 @@ func resetStatusFlags() {
 }
 
 // Mock Controller for testing purposes
-type MockController struct {
+type MockStatusController struct {
 	core.Controller
 	MockWallpapers map[string]*models.Wallpaper
 }
 
-func (m *MockController) GetWallpaper(id string) (*models.Wallpaper, error) {
+func (m *MockStatusController) GetWallpaper(id string) (*models.Wallpaper, error) {
 	if wp, ok := m.MockWallpapers[id]; ok {
 		return wp, nil
 	}
@@ -34,9 +34,9 @@ func (m *MockController) GetWallpaper(id string) (*models.Wallpaper, error) {
 }
 
 // Override NewController to return our mock
-var originalNewController = core.NewController
+var originalStatusNewController = core.NewController
 
-func setupStatusMocks(t *testing.T) (*MockController, func()) {
+func setupStatusMocks(t *testing.T) (*MockStatusController, func()) {
 	// Setup temp home for config
 	tmpDir, err := os.MkdirTemp("", "gower-test-status")
 	if err != nil {
@@ -50,13 +50,13 @@ func setupStatusMocks(t *testing.T) (*MockController, func()) {
 	os.MkdirAll(configDir, 0755)
 	os.WriteFile(filepath.Join(configDir, "config.json"), []byte("{}"), 0644)
 
-	mockController := &MockController{
+	mockController := &MockStatusController{
 		MockWallpapers: make(map[string]*models.Wallpaper),
 	}
 
 	core.NewController = func(cfg *models.Config) *core.Controller {
 		// We need a real controller for some parts, but override GetWallpaper
-		realCtrl := originalNewController(cfg)
+		realCtrl := originalStatusNewController(cfg)
 		mockController.Controller = *realCtrl
 		return &mockController.Controller
 	}
@@ -74,7 +74,7 @@ func setupStatusMocks(t *testing.T) (*MockController, func()) {
 	saveState = func(s *State) error { return nil }
 
 	cleanup := func() {
-		core.NewController = originalNewController
+		core.NewController = originalStatusNewController
 		loadConfig = originalLoadConfig
 		loadState = originalLoadState
 		saveState = originalSaveState
