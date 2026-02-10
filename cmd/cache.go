@@ -163,7 +163,7 @@ var cachePruneCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(cacheCmd)
+	systemCmd.AddCommand(cacheCmd)
 	cacheCmd.AddCommand(cacheCleanCmd)
 	cacheCmd.AddCommand(cacheSizeCmd)
 	cacheCmd.AddCommand(cachePruneCmd)

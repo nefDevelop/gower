@@ -123,64 +123,6 @@ var configResetCmd = &cobra.Command{
 	},
 }
 
-var configExportCmd = &cobra.Command{
-	Use:   "export [archivo]",
-	Short: "Exportar configuración",
-	Args:  cobra.MaximumNArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		ensureConfig()
-		path, _ := getConfigPath()
-		data, err := ioutil.ReadFile(path)
-		if err != nil {
-			cmd.Printf("Error leyendo configuración: %v\n", err)
-			return
-		}
-
-		if len(args) > 0 {
-			if err := ioutil.WriteFile(args[0], data, 0644); err != nil {
-				cmd.Printf("Error exportando: %v\n", err)
-				return
-			}
-			if !config.Quiet {
-				cmd.Printf("%s Configuración exportada a: %s\n", colorize(symbolCheck, colorGreen), args[0])
-			}
-		} else {
-			if !config.Quiet {
-				cmd.Println(string(data))
-			}
-		}
-	},
-}
-
-var configImportCmd = &cobra.Command{
-	Use:   "import <archivo>",
-	Short: "Importar configuración",
-	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		ensureConfig()
-		data, err := ioutil.ReadFile(args[0])
-		if err != nil {
-			cmd.Printf("Error leyendo archivo: %v\n", err)
-			return
-		}
-
-		var tmp models.Config
-		if err := json.Unmarshal(data, &tmp); err != nil {
-			cmd.Printf("Archivo de configuración inválido: %v\n", err)
-			return
-		}
-
-		path, _ := getConfigPath()
-		if err := ioutil.WriteFile(path, data, 0644); err != nil {
-			cmd.Printf("Error guardando configuración: %v\n", err)
-			return
-		}
-		if !config.Quiet {
-			cmd.Println(colorize(symbolCheck+" Configuración importada exitosamente.", colorGreen))
-		}
-	},
-}
-
 var configUpdateCmd = &cobra.Command{
 	Use:   "update",
 	Short: "Actualizar estructura del archivo de configuración",
@@ -497,8 +439,6 @@ func init() {
 	configCmd.AddCommand(configSetCmd)
 	configCmd.AddCommand(configGetCmd)
 	configCmd.AddCommand(configResetCmd)
-	configCmd.AddCommand(configExportCmd)
-	configCmd.AddCommand(configImportCmd)
 	configCmd.AddCommand(configUpdateCmd)
 
 	configInitCmd.Flags().String("wallhaven-api-key", "", "Wallhaven API key")

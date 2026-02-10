@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -266,73 +265,6 @@ var favoritesRemoveCmd = &cobra.Command{
 	},
 }
 
-var favoritesExportCmd = &cobra.Command{
-	Use:   "export",
-	Short: "Export favorite wallpapers to a file",
-	Args:  cobra.NoArgs,
-	Run: func(cmd *cobra.Command, args []string) {
-		ensureConfig()
-		favorites, err := loadFavorites()
-		if err != nil {
-			cmd.Printf("Error loading favorites: %v\n", err)
-			return
-		}
-
-		data, err := json.MarshalIndent(favorites, "", "  ")
-		if err != nil {
-			cmd.Printf("Error marshalling favorites: %v\n", err)
-			return
-		}
-
-		if favFile != "" {
-			if err := ioutil.WriteFile(favFile, data, 0644); err != nil {
-				cmd.Printf("Error exporting favorites to %s: %v\n", favFile, err)
-				return
-			}
-			cmd.Printf("Favorites exported to %s.\n", favFile)
-		} else {
-			cmd.Println(string(data))
-		}
-	},
-}
-
-var favoritesImportCmd = &cobra.Command{
-	Use:   "import",
-	Short: "Import favorite wallpapers from a file",
-	Args:  cobra.NoArgs,
-	Run: func(cmd *cobra.Command, args []string) {
-		ensureConfig()
-		filePath := favFile
-		if filePath == "" {
-			cmd.Println("Error: --file flag is required for import")
-			os.Exit(1)
-		}
-
-		data, err := ioutil.ReadFile(filePath)
-		if err != nil {
-			cmd.Printf("Error reading import file %s: %v\n", filePath, err)
-			return
-		}
-
-		var importedFavorites []FavoriteWallpaper
-		if err := json.Unmarshal(data, &importedFavorites); err != nil {
-			cmd.Printf("Error unmarshalling import file: %v\n", err)
-			return
-		}
-
-		if err := saveFavorites(importedFavorites); err != nil {
-			cmd.Printf("Error saving favorites: %v\n", err)
-			return
-		}
-
-		if cfg, err := loadConfig(); err == nil {
-			core.NewController(cfg).RebuildColorIndex()
-		}
-
-		cmd.Printf("Favorites imported successfully from %s. Total favorites: %d\n", filePath, len(importedFavorites))
-	},
-}
-
 var favoritesAnalyzeCmd = &cobra.Command{
 	Use:   "analyze",
 	Short: "Analyze favorites items",
@@ -419,8 +351,6 @@ func init() {
 	favoritesCmd.AddCommand(favoritesListCmd)
 	favoritesCmd.AddCommand(favoritesAddCmd)
 	favoritesCmd.AddCommand(favoritesRemoveCmd)
-	favoritesCmd.AddCommand(favoritesExportCmd)
-	favoritesCmd.AddCommand(favoritesImportCmd)
 	favoritesCmd.AddCommand(favoritesAnalyzeCmd)
 
 	favoritesListCmd.Flags().IntVar(&favPage, "page", 1, "Page number")
@@ -433,9 +363,6 @@ func init() {
 
 	favoritesAnalyzeCmd.Flags().BoolVar(&favAll, "all", false, "Analyze all items, not just new ones")
 	favoritesAnalyzeCmd.Flags().BoolVar(&favForce, "force", false, "Force regeneration of thumbnails")
-
-	favoritesExportCmd.Flags().StringVar(&favFile, "file", "", "Output file path")
-	favoritesImportCmd.Flags().StringVar(&favFile, "file", "", "Input file path")
 }
 
 func copyFile(src, dst string) error {

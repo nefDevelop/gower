@@ -170,6 +170,36 @@ var exportFeedCmd = &cobra.Command{
 	},
 }
 
+var exportFavoritesCmd = &cobra.Command{
+	Use:   "favorites",
+	Short: "Export favorite wallpapers",
+	Args:  cobra.NoArgs,
+	Run: func(cmd *cobra.Command, args []string) {
+		ensureConfig()
+		favorites, err := loadFavorites()
+		if err != nil {
+			cmd.Printf("Error loading favorites: %v\n", err)
+			return
+		}
+
+		data, err := json.MarshalIndent(favorites, "", "  ")
+		if err != nil {
+			cmd.Printf("Error marshalling favorites: %v\n", err)
+			return
+		}
+
+		if exportFile != "" {
+			if err := ioutil.WriteFile(exportFile, data, 0644); err != nil {
+				cmd.Printf("Error exporting favorites to %s: %v\n", exportFile, err)
+				return
+			}
+			cmd.Printf("Favorites exported to %s.\n", exportFile)
+		} else {
+			cmd.Println(string(data))
+		}
+	},
+}
+
 func exportAllToZip(cmd *cobra.Command, filename string, includeImages bool) error {
 	f, err := os.Create(filename)
 	if err != nil {
@@ -250,10 +280,12 @@ func init() {
 	exportCmd.AddCommand(exportAllCmd)
 	exportCmd.AddCommand(exportConfigCmd)
 	exportCmd.AddCommand(exportFeedCmd)
+	exportCmd.AddCommand(exportFavoritesCmd)
 
 	exportAllCmd.Flags().StringVar(&exportFile, "file", "", "Output zip file path")
 	exportAllCmd.Flags().BoolVar(&exportIncludeImages, "include-images", false, "Include downloaded images in export")
 
 	exportConfigCmd.Flags().StringVar(&exportFile, "file", "", "Output file path")
 	exportFeedCmd.Flags().StringVar(&exportFile, "file", "", "Output file path")
+	exportFavoritesCmd.Flags().StringVar(&exportFile, "file", "", "Output file path")
 }

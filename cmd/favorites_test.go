@@ -136,7 +136,7 @@ func TestFavoritesExportAndImport(t *testing.T) {
 	exportFile := filepath.Join(tmpDir, "favorites_backup.json")
 
 	// Export favorites
-	output, err := executeCommand(rootCmd, "favorites", "export", "--file", exportFile)
+	output, err := executeCommand(rootCmd, "export", "favorites", "--file", exportFile)
 	if err != nil {
 		t.Fatalf("Error executing favorites export: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestFavoritesExportAndImport(t *testing.T) {
 	executeCommand(rootCmd, "favorites", "remove", "fav-id-2")
 
 	// Import favorites
-	output, err = executeCommand(rootCmd, "favorites", "import", "--file", exportFile)
+	output, err = executeCommand(rootCmd, "import", "favorites", "--file", exportFile)
 	if err != nil {
 		t.Fatalf("Error executing favorites import: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestFavoritesExportAndImport(t *testing.T) {
 	data, _ := json.MarshalIndent(newImportFavs, "", "  ")
 	os.WriteFile(newImportFile, data, 0644)
 
-	output, err = executeCommand(rootCmd, "favorites", "import", "--file", newImportFile)
+	output, err = executeCommand(rootCmd, "import", "favorites", "--file", newImportFile)
 	if err != nil {
 		t.Fatalf("Error executing favorites import: %v", err)
 	}

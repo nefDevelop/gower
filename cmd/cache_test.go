@@ -37,7 +37,7 @@ func TestCacheCleanCmd(t *testing.T) {
 	dummyFile.Close()
 
 	// Execute the command
-	_, err = executeCommand(rootCmd, "cache", "clean")
+	_, err = executeCommand(rootCmd, "system", "cache", "clean")
 	if err != nil {
 		t.Fatalf("Command failed: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestCacheSizeCmd(t *testing.T) {
 	dummyFile.Close()
 
 	// Execute the command
-	output, err := executeCommand(rootCmd, "cache", "size")
+	output, err := executeCommand(rootCmd, "system", "cache", "size")
 	if err != nil {
 		t.Fatalf("Command failed: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestCachePruneCmd(t *testing.T) {
 	os.WriteFile(filepath.Join(thumbsDir, "delete_me_thumb.jpg"), []byte("data"), 0644)
 
 	// Execute prune
-	output, err := executeCommand(rootCmd, "cache", "prune")
+	output, err := executeCommand(rootCmd, "system", "cache", "prune")
 	if err != nil {
 		t.Fatalf("Command failed: %v", err)
 	}

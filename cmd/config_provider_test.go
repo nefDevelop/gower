@@ -134,6 +134,22 @@ func TestConfigProviderReddit(t *testing.T) {
 		t.Errorf("Expected success message, got: %s", output)
 	}
 
+	// Test Add with Sort
+	subWithSort := "wallpapers"
+	sort := "top"
+	output, err = executeCommand(rootCmd, "config", "provider", "reddit", "add", subWithSort, sort)
+	if err != nil {
+		t.Fatalf("Error executing reddit add with sort: %v", err)
+	}
+	// Verify it was added correctly in config
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("Error loading config: %v", err)
+	}
+	if !strings.Contains(cfg.Providers.Reddit.Subreddit, subWithSort+":"+sort) {
+		t.Errorf("Expected subreddit with sort '%s:%s' in config, got: %s", subWithSort, sort, cfg.Providers.Reddit.Subreddit)
+	}
+
 	// Test Remove
 	output, err = executeCommand(rootCmd, "config", "provider", "reddit", "remove", sub)
 	if err != nil {
@@ -141,5 +157,24 @@ func TestConfigProviderReddit(t *testing.T) {
 	}
 	if !strings.Contains(output, "Removed 'cyberpunk'") {
 		t.Errorf("Expected removed message, got: %s", output)
+	}
+
+	// Test Remove with Sort (should find it by name ignoring the :sort suffix)
+	output, err = executeCommand(rootCmd, "config", "provider", "reddit", "remove", subWithSort)
+	if err != nil {
+		t.Fatalf("Error executing reddit remove: %v", err)
+	}
+	if !strings.Contains(output, "Removed 'wallpapers'") {
+		t.Errorf("Expected removed message for wallpapers, got: %s", output)
+	}
+
+	// Test Global Sort
+	output, err = executeCommand(rootCmd, "config", "provider", "reddit", "sort", "new")
+	if err != nil {
+		t.Fatalf("Error executing reddit sort: %v", err)
+	}
+	cfg, _ = loadConfig()
+	if cfg.Providers.Reddit.Sort != "new" {
+		t.Errorf("Expected global sort 'new', got: %s", cfg.Providers.Reddit.Sort)
 	}
 }
