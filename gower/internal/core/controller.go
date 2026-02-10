@@ -115,6 +115,14 @@ func (c *Controller) getFeedPath() (string, error) {
 	return filepath.Join(appDir, "data", "feed.json"), nil
 }
 
+func (c *Controller) getFeedCachePath() (string, error) {
+	appDir, err := GetAppDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(appDir, "data", "feed_cache.json"), nil
+}
+
 func (c *Controller) getBlacklistPath() (string, error) {
 	appDir, err := GetAppDir()
 	if err != nil {
@@ -256,36 +264,92 @@ func (c *Controller) GetFeed(page, limit int, search, theme, color, sortMode str
 		mixedFeed = filteredFeed
 	default: // "smart" or empty
 		// Algoritmo de Feed: 50% nuevos, orden aleatorio estable por 1 hora (o forzado con refresh)
-		var unseen []models.Wallpaper
-		var seen []models.Wallpaper
 
-		for _, wp := range filteredFeed {
-			if !wp.Seen {
-				unseen = append(unseen, wp)
+		cachePath, _ := c.getFeedCachePath()
+		currentHour := time.Now().Truncate(time.Hour).Unix()
+		var cachedIDs []string
+		useCache := false
+		shouldCache := search == "" && theme == "" && color == ""
+
+		if !refresh && cachePath != "" && shouldCache {
+			var cache FeedCache
+			if err := c.feedManager.ReadJSON(cachePath, &cache); err == nil {
+				if cache.Hour == currentHour {
+					cachedIDs = cache.IDs
+					useCache = true
+				}
+			}
+		}
+
+		if useCache {
+			wpMap := make(map[string]models.Wallpaper)
+			for _, wp := range filteredFeed {
+				wpMap[wp.ID] = wp
+			}
+
+			for _, id := range cachedIDs {
+				if wp, exists := wpMap[id]; exists {
+					mixedFeed = append(mixedFeed, wp)
+					delete(wpMap, id)
+				}
+			}
+
+			var remaining []models.Wallpaper
+			for _, wp := range filteredFeed {
+				if _, exists := wpMap[wp.ID]; exists {
+					remaining = append(remaining, wp)
+				}
+			}
+			mixedFeed = append(mixedFeed, remaining...)
+		} else {
+			var unseen []models.Wallpaper
+			var seen []models.Wallpaper
+
+			for _, wp := range filteredFeed {
+				if !wp.Seen {
+					unseen = append(unseen, wp)
+				} else {
+					seen = append(seen, wp)
+				}
+			}
+
+			var seed int64
+			if shouldCache {
+				seed = time.Now().UnixNano()
 			} else {
-				seen = append(seen, wp)
+				seed = time.Now().Truncate(time.Hour).UnixNano()
+				if refresh {
+					seed = time.Now().UnixNano()
+				}
 			}
-		}
+			r := rand.New(rand.NewSource(seed))
 
-		seed := time.Now().Truncate(time.Hour).UnixNano()
-		if refresh {
-			seed = time.Now().UnixNano()
-		}
-		r := rand.New(rand.NewSource(seed))
+			r.Shuffle(len(unseen), func(i, j int) { unseen[i], unseen[j] = unseen[j], unseen[i] })
+			r.Shuffle(len(seen), func(i, j int) { seen[i], seen[j] = seen[j], seen[i] })
 
-		r.Shuffle(len(unseen), func(i, j int) { unseen[i], unseen[j] = unseen[j], unseen[i] })
-		r.Shuffle(len(seen), func(i, j int) { seen[i], seen[j] = seen[j], seen[i] })
-
-		// Interleave
-		uIdx, sIdx := 0, 0
-		for uIdx < len(unseen) || sIdx < len(seen) {
-			if uIdx < len(unseen) {
-				mixedFeed = append(mixedFeed, unseen[uIdx])
-				uIdx++
+			// Interleave
+			uIdx, sIdx := 0, 0
+			for uIdx < len(unseen) || sIdx < len(seen) {
+				if uIdx < len(unseen) {
+					mixedFeed = append(mixedFeed, unseen[uIdx])
+					uIdx++
+				}
+				if sIdx < len(seen) {
+					mixedFeed = append(mixedFeed, seen[sIdx])
+					sIdx++
+				}
 			}
-			if sIdx < len(seen) {
-				mixedFeed = append(mixedFeed, seen[sIdx])
-				sIdx++
+
+			if cachePath != "" && shouldCache {
+				var ids []string
+				for _, wp := range mixedFeed {
+					ids = append(ids, wp.ID)
+				}
+				cache := FeedCache{
+					Hour: currentHour,
+					IDs:  ids,
+				}
+				_ = c.feedManager.WriteJSON(cachePath, cache)
 			}
 		}
 	}
