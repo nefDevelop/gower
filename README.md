@@ -177,6 +177,8 @@ Estas opciones se pueden usar con cualquier subcomando.
 
 ### Subcomandos
 
+#### `gower wallpaper`
+
 #### `gower explore`
 
 Busca fondos de pantalla en los proveedores configurados.
