@@ -43,7 +43,7 @@ var configProviderListCmd = &cobra.Command{
 
 		cmd.Println("Native Providers:")
 		cmd.Printf("  [Wallhaven] Enabled: %v\n", cfg.Providers.Wallhaven.Enabled)
-		cmd.Printf("  [Reddit]    Enabled: %v, Subreddits: %s\n", cfg.Providers.Reddit.Enabled, cfg.Providers.Reddit.Subreddit)
+		cmd.Printf("  [Reddit]    Enabled: %v, Sort: %s, Subreddits: %s\n", cfg.Providers.Reddit.Enabled, cfg.Providers.Reddit.Sort, cfg.Providers.Reddit.Subreddit)
 		cmd.Printf("  [Nasa]      Enabled: %v\n", cfg.Providers.Nasa.Enabled)
 
 		if len(cfg.GenericProviders) > 0 {
@@ -181,12 +181,21 @@ var configProviderRedditCmd = &cobra.Command{
 }
 
 var configProviderRedditAddCmd = &cobra.Command{
-	Use:   "add <subreddit>",
-	Short: "Add a subreddit to the list",
-	Args:  cobra.ExactArgs(1),
+	Use:   "add <subreddit> [sort]",
+	Short: "Add a subreddit to the list (optionally with sort: new, hot, top, mix)",
+	Args:  cobra.RangeArgs(1, 2),
 	Run: func(cmd *cobra.Command, args []string) {
 		ensureConfig()
 		sub := args[0]
+		sort := ""
+		if len(args) > 1 {
+			sort = strings.ToLower(args[1])
+			validSorts := map[string]bool{"new": true, "hot": true, "top": true, "controversial": true, "mix": true}
+			if !validSorts[sort] {
+				cmd.Printf("Invalid sort option: %s. Valid options: new, hot, top, controversial, mix.\n", sort)
+				return
+			}
+		}
 
 		cfg, err := loadConfig()
 		if err != nil {
@@ -194,16 +203,25 @@ var configProviderRedditAddCmd = &cobra.Command{
 			return
 		}
 
+		newItem := sub
+		if sort != "" {
+			newItem = sub + ":" + sort
+		}
+
 		current := cfg.Providers.Reddit.Subreddit
 		if current == "" {
-			cfg.Providers.Reddit.Subreddit = sub
+			cfg.Providers.Reddit.Subreddit = newItem
 		} else {
 			// Evitar duplicados simples
-			if strings.Contains(current, sub) {
-				cmd.Printf("Subreddit '%s' seems to be already in the list.\n", sub)
-				return
+			parts := strings.Split(current, "+")
+			for _, p := range parts {
+				pName := strings.Split(p, ":")[0]
+				if strings.EqualFold(pName, sub) {
+					cmd.Printf("Subreddit '%s' seems to be already in the list.\n", sub)
+					return
+				}
 			}
-			cfg.Providers.Reddit.Subreddit = current + "+" + sub
+			cfg.Providers.Reddit.Subreddit = current + "+" + newItem
 		}
 
 		if err := saveConfig(cfg); err != nil {
@@ -233,7 +251,8 @@ var configProviderRedditRemoveCmd = &cobra.Command{
 		var newParts []string
 		found := false
 		for _, p := range parts {
-			if p == sub {
+			pName := strings.Split(p, ":")[0]
+			if strings.EqualFold(pName, sub) {
 				found = true
 				continue
 			}
@@ -254,6 +273,35 @@ var configProviderRedditRemoveCmd = &cobra.Command{
 	},
 }
 
+var configProviderRedditSortCmd = &cobra.Command{
+	Use:   "sort <new|hot|top|mix>",
+	Short: "Set the sort order for Reddit provider",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		ensureConfig()
+		sort := strings.ToLower(args[0])
+		validSorts := map[string]bool{"new": true, "hot": true, "top": true, "controversial": true, "mix": true}
+
+		if !validSorts[sort] {
+			cmd.Printf("Invalid sort option: %s. Valid options: new, hot, top, controversial, mix.\n", sort)
+			return
+		}
+
+		cfg, err := loadConfig()
+		if err != nil {
+			cmd.Printf("Error loading config: %v\n", err)
+			return
+		}
+
+		cfg.Providers.Reddit.Sort = sort
+		if err := saveConfig(cfg); err != nil {
+			cmd.Printf("Error saving config: %v\n", err)
+			return
+		}
+		cmd.Printf("Reddit sort order updated to: %s\n", sort)
+	},
+}
+
 func init() {
 	configCmd.AddCommand(configProviderCmd)
 
@@ -264,6 +312,7 @@ func init() {
 
 	configProviderRedditCmd.AddCommand(configProviderRedditAddCmd)
 	configProviderRedditCmd.AddCommand(configProviderRedditRemoveCmd)
+	configProviderRedditCmd.AddCommand(configProviderRedditSortCmd)
 
 	configProviderAddCmd.Flags().StringVar(&providerKey, "key", "", "API Key for the provider")
 	configProviderAddCmd.Flags().StringVar(&providerResultsPath, "results-path", "data", "JSON path to results array")

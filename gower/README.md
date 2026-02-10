@@ -179,6 +179,14 @@ Estas opciones se pueden usar con cualquier subcomando.
 
 #### `gower wallpaper`
 
+Visualiza o gestiona un fondo de pantalla específico.
+
+- **Uso**: `gower wallpaper <ID> [flags]`
+- **Flags**:
+  - `--delete`: Elimina el fondo de pantalla del feed.
+  - `--file`: Elimina también el archivo físico del disco (usar con `--delete`).
+  - `--force`: Fuerza la eliminación del archivo sin confirmación.
+
 #### `gower explore`
 
 Busca fondos de pantalla en los proveedores configurados.
@@ -292,9 +300,14 @@ Gestiona la configuración de la aplicación.
 - `gower config get <clave>`: Obtiene el valor de una clave de configuración (ej. `providers.reddit.limit`).
 - `gower config set <clave=valor>`: Establece el valor de una clave de configuración.
 - `gower config reset`: Restablece la configuración a sus valores por defecto.
-- `gower config export [archivo]`: Exporta la configuración a un archivo o a la salida estándar.
-- `gower config import <archivo>`: Importa una configuración desde un archivo.
 - `gower config update`: Actualiza la estructura del archivo de configuración existente con nuevos campos.
+- `gower config provider`: Gestiona los proveedores de fondos de pantalla.
+  - `list`: Lista todos los proveedores configurados.
+  - `add <nombre> <url>`: Añade un proveedor genérico.
+  - `remove <nombre>`: Elimina un proveedor genérico.
+  - `reddit add <subreddit> [sort]`: Añade un subreddit a la lista de fuentes. Opcionalmente puedes especificar el orden (new, hot, top, mix).
+  - `reddit remove <subreddit>`: Elimina un subreddit de la lista.
+  - `reddit sort <mode>`: Establece el ordenamiento global por defecto para Reddit (new, hot, top, mix).
 
 #### `gower daemon`
 
@@ -323,12 +336,27 @@ Muestra un resumen del estado general de la aplicación.
   - `--wallpapers`: Muestra información detallada de los fondos de pantalla actuales, incluyendo sus rutas y metadatos, en formato JSON si se usa con `--json`.
   - `--json`: Muestra toda la información en formato JSON.
 
-#### `gower cache`
+#### `gower system`
 
-Gestiona la caché de la aplicación.
+Comandos de mantenimiento y utilidades del sistema.
 
-- `gower cache clean`: Limpia el contenido del directorio de caché (imágenes, miniaturas).
-- `gower cache size`: Muestra el tamaño actual ocupado por la caché.
+##### `gower system cache`
+
+- `gower system cache clean`: Limpia el contenido del directorio de caché (imágenes, miniaturas).
+- `gower system cache size`: Muestra el tamaño actual ocupado por la caché.
+- `gower system cache prune`: Elimina archivos de la caché que ya no están referenciados en el feed o favoritos (archivos huérfanos).
+
+##### `gower system storage`
+
+- `gower system storage verify`: Verifica la integridad de los archivos de datos (configuración, feed, favoritos, etc.).
+- `gower system storage repair`: Intenta reparar archivos corruptos utilizando copias de seguridad automáticas si están disponibles.
+
+#### `gower completion`
+
+Genera scripts de autocompletado para tu shell.
+
+- **Uso**: `gower completion [bash|zsh|fish|powershell]`
+- Ejemplo para bash: `source <(gower completion bash)`
 
 #### `gower export`
 
@@ -337,8 +365,16 @@ Exporta datos de la aplicación.
 - `gower export all`: Exporta toda la configuración, feed y favoritos.
   - `--file <ruta.zip>`: Exporta todo a un único archivo ZIP.
   - `--include-images`: Incluye las imágenes descargadas en el ZIP.
-- `gower export config --file <ruta>`: Exporta solo la configuración.
-- `gower export feed --file <ruta>`: Exporta solo el feed.
+- `gower export config`: Exporta solo la configuración.
+- `gower export feed`: Exporta solo el feed.
+- `gower export favorites`: Exporta solo los favoritos.
+
+#### `gower import`
+
+Importa datos de la aplicación.
+
+- `gower import config <archivo>`: Importa la configuración desde un archivo JSON.
+- `gower import favorites --file <archivo>`: Importa favoritos desde un archivo JSON.
 
 ## 🛠️ Construir desde el código fuente
 

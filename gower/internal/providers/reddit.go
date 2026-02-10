@@ -26,13 +26,13 @@ func (p *RedditProvider) GetName() string {
 }
 
 func (p *RedditProvider) Search(query string, opts SearchOptions) ([]models.Wallpaper, error) {
-	subreddit := p.Config.Subreddit
-	if subreddit == "" {
-		subreddit = "wallpapers"
+	subConfig := p.Config.Subreddit
+	if subConfig == "" {
+		subConfig = "wallpapers"
 	}
-	sort := p.Config.Sort
-	if sort == "" {
-		sort = "mix"
+	defaultSort := p.Config.Sort
+	if defaultSort == "" {
+		defaultSort = "mix"
 	}
 	limit := opts.Limit
 	if limit <= 0 {
@@ -42,33 +42,69 @@ func (p *RedditProvider) Search(query string, opts SearchOptions) ([]models.Wall
 		limit = 25
 	}
 
-	// Estrategia MIX: Combinar Hot, New y Top
-	if query == "" && sort == "mix" {
-		return p.searchMixed(subreddit, limit, opts)
+	// Agrupar subreddits por tipo de ordenamiento
+	groups := make(map[string][]string)
+	for _, item := range strings.Split(subConfig, "+") {
+		parts := strings.Split(item, ":")
+		sub := parts[0]
+		sort := defaultSort
+		if len(parts) > 1 && parts[1] != "" {
+			sort = parts[1]
+		}
+		groups[sort] = append(groups[sort], sub)
 	}
 
-	// Pedimos más items a la API (hasta 100) para compensar el filtrado posterior
-	apiLimit := 50
-	if limit > apiLimit {
-		apiLimit = limit
-	}
-	if apiLimit > 100 {
-		apiLimit = 100
+	var allWallpapers []models.Wallpaper
+
+	for sort, subs := range groups {
+		subreddit := strings.Join(subs, "+")
+
+		// Calcular límite API para este grupo
+		apiLimit := 50
+		if limit > apiLimit {
+			apiLimit = limit
+		}
+		if apiLimit > 100 {
+			apiLimit = 100
+		}
+
+		var wps []models.Wallpaper
+		var err error
+
+		if query == "" && sort == "mix" {
+			wps, err = p.searchMixed(subreddit, limit, opts)
+		} else {
+			var url string
+			timeParam := ""
+			if sort == "top" || sort == "controversial" {
+				timeParam = "&t=all"
+			}
+
+			if query != "" {
+				url = fmt.Sprintf("https://www.reddit.com/r/%s/search.json?q=%s&restrict_sr=1&sort=%s&limit=%d%s", subreddit, query, sort, apiLimit, timeParam)
+			} else {
+				url = fmt.Sprintf("https://www.reddit.com/r/%s/%s.json?limit=%d%s", subreddit, sort, apiLimit, timeParam)
+			}
+			wps, err = p.fetchFromReddit(url, limit, opts)
+		}
+
+		if err == nil {
+			allWallpapers = append(allWallpapers, wps...)
+		} else {
+			utils.Log.Error("Error fetching from reddit group %s (sort: %s): %v", subreddit, sort, err)
+		}
 	}
 
-	var url string
-	timeParam := ""
-	if sort == "top" || sort == "controversial" {
-		timeParam = "&t=all" // Si es top, traemos los mejores de todos los tiempos para asegurar resultados
+	// Mezclar resultados si hay múltiples grupos
+	if len(allWallpapers) > limit {
+		rand.Seed(time.Now().UnixNano())
+		rand.Shuffle(len(allWallpapers), func(i, j int) {
+			allWallpapers[i], allWallpapers[j] = allWallpapers[j], allWallpapers[i]
+		})
+		return allWallpapers[:limit], nil
 	}
 
-	if query != "" {
-		url = fmt.Sprintf("https://www.reddit.com/r/%s/search.json?q=%s&restrict_sr=1&sort=%s&limit=%d%s", subreddit, query, sort, apiLimit, timeParam)
-	} else {
-		url = fmt.Sprintf("https://www.reddit.com/r/%s/%s.json?limit=%d%s", subreddit, sort, apiLimit, timeParam)
-	}
-
-	return p.fetchFromReddit(url, limit, opts)
+	return allWallpapers, nil
 }
 
 func (p *RedditProvider) searchMixed(subreddit string, limit int, opts SearchOptions) ([]models.Wallpaper, error) {

@@ -107,7 +107,7 @@ var storageRepairCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(storageCmd)
+	systemCmd.AddCommand(storageCmd)
 	storageCmd.AddCommand(storageVerifyCmd)
 	storageCmd.AddCommand(storageRepairCmd)
 }

@@ -116,12 +116,12 @@ func TestConfigExportAndImport(t *testing.T) {
 	exportFile := filepath.Join(tmpDir, "backup.json")
 
 	// Test Export
-	exportOutput, err := executeCommand(rootCmd, "config", "export", exportFile)
+	exportOutput, err := executeCommand(rootCmd, "export", "config", "--file", exportFile)
 	if err != nil {
 		t.Fatalf("Error ejecutando export: %v", err)
 	}
 
-	expectedExportOutput := fmt.Sprintf("Configuración exportada a: %s", exportFile)
+	expectedExportOutput := fmt.Sprintf("Configuration exported to: %s", exportFile)
 	if !strings.Contains(exportOutput, expectedExportOutput) {
 		t.Errorf("Expected output to contain '%s', got '%s'", expectedExportOutput, exportOutput)
 	}
@@ -134,13 +134,13 @@ func TestConfigExportAndImport(t *testing.T) {
 	executeCommand(rootCmd, "config", "set", "behavior.theme=light")
 
 	// Test Import (debería restaurar 'dark' que es lo que se exportó)
-	importOutput, err := executeCommand(rootCmd, "config", "import", exportFile)
+	importOutput, err := executeCommand(rootCmd, "import", "config", exportFile)
 	if err != nil {
 		t.Fatalf("Error ejecutando import: %v", err)
 	}
 
-	if !strings.Contains(importOutput, "Configuración importada exitosamente.") {
-		t.Errorf("Expected output to contain 'Configuración importada exitosamente.', got '%s'", importOutput)
+	if !strings.Contains(importOutput, "Configuration imported successfully") {
+		t.Errorf("Expected output to contain 'Configuration imported successfully', got '%s'", importOutput)
 	}
 
 	output, _ := executeCommand(rootCmd, "config", "get", "behavior.theme")

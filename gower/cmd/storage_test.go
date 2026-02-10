@@ -36,7 +36,7 @@ func TestStorageVerifyCmd_AllGood(t *testing.T) {
 		}
 	}
 
-	output, err := executeCommand(rootCmd, "storage", "verify")
+	output, err := executeCommand(rootCmd, "system", "storage", "verify")
 	if err != nil {
 		t.Fatalf("Command failed: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestStorageVerifyCmd_MissingFile(t *testing.T) {
 	_, cleanup := setupStorageTest(t)
 	defer cleanup()
 
-	output, err := executeCommand(rootCmd, "storage", "verify")
+	output, err := executeCommand(rootCmd, "system", "storage", "verify")
 	if err != nil {
 		t.Fatalf("Command failed: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestStorageVerifyCmd_CorruptFile(t *testing.T) {
 		t.Fatalf("Failed to write test file: %v", err)
 	}
 
-	output, err := executeCommand(rootCmd, "storage", "verify")
+	output, err := executeCommand(rootCmd, "system", "storage", "verify")
 	if err != nil {
 		t.Fatalf("Command failed: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestStorageRepairCmd_FromBackup(t *testing.T) {
 		t.Fatalf("Failed to write backup file: %v", err)
 	}
 
-	output, err := executeCommand(rootCmd, "storage", "repair")
+	output, err := executeCommand(rootCmd, "system", "storage", "repair")
 	if err != nil {
 		t.Fatalf("Command failed: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestStorageRepairCmd_NoBackup(t *testing.T) {
 		t.Fatalf("Failed to write corrupt file: %v", err)
 	}
 
-	output, err := executeCommand(rootCmd, "storage", "repair")
+	output, err := executeCommand(rootCmd, "system", "storage", "repair")
 	if err != nil {
 		t.Fatalf("Command failed: %v", err)
 	}
