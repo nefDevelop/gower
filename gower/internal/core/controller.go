@@ -408,7 +408,10 @@ func (c *Controller) SearchFeed(query string, page, limit int, theme string) ([]
 
 // PurgeFeed clears all entries from the feed.
 func (c *Controller) PurgeFeed() error {
-	return c.saveFeed([]models.Wallpaper{})
+	if err := c.saveFeed([]models.Wallpaper{}); err != nil {
+		return err
+	}
+	return c.RebuildColorIndex()
 }
 
 // AnalyzeFeed analyzes the feed items, regenerates thumbnails/colors if needed, and rebuilds the color index.
@@ -418,6 +421,12 @@ func (c *Controller) AnalyzeFeed(all bool, force bool, progress func(string)) er
 		return err
 	}
 	utils.Log.Info("Analyzing feed: %d items found", len(feed))
+
+	if c.Config.Paths.IndexWallpapers {
+		utils.Log.Debug("Local wallpaper indexing is ENABLED (Path: %s)", c.Config.Paths.Wallpapers)
+	} else {
+		utils.Log.Debug("Local wallpaper indexing is DISABLED")
+	}
 
 	// Index local wallpapers if enabled
 	if c.Config.Paths.IndexWallpapers && c.Config.Paths.Wallpapers != "" {
@@ -505,6 +514,7 @@ func (c *Controller) AnalyzeFeed(all bool, force bool, progress func(string)) er
 // indexLocalWallpapers scans the configured wallpapers directory and updates the feed.
 func (c *Controller) indexLocalWallpapers(feed *[]models.Wallpaper) (int, int, error) {
 	localDir := c.Config.Paths.Wallpapers
+	utils.Log.Debug("Scanning local directory: %s", localDir)
 	files, err := os.ReadDir(localDir)
 	if err != nil {
 		return 0, 0, err
@@ -727,6 +737,44 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 					wp.Theme = "light"
 				}
 				changed = true
+
+				// Rename local file with [d] or [l] tag if enabled
+				if wp.Source == "local" && c.Config.Paths.IndexWallpapers {
+					localPath := wp.URL
+					dir := filepath.Dir(localPath)
+					filename := filepath.Base(localPath)
+					ext := filepath.Ext(filename)
+					nameWithoutExt := strings.TrimSuffix(filename, ext)
+
+					cleanName := nameWithoutExt
+					// Remove existing tags from end of filename
+					if strings.HasSuffix(cleanName, " [d]") {
+						cleanName = strings.TrimSuffix(cleanName, " [d]")
+					} else if strings.HasSuffix(cleanName, " [l]") {
+						cleanName = strings.TrimSuffix(cleanName, " [l]")
+					}
+
+					newTag := "[l]"
+					if wp.Theme == "dark" {
+						newTag = "[d]"
+					}
+
+					var newFilename string
+					if cleanName == "" {
+						newFilename = fmt.Sprintf("%s%s", newTag, ext)
+					} else {
+						newFilename = fmt.Sprintf("%s %s%s", cleanName, newTag, ext)
+					}
+
+					newPath := filepath.Join(dir, newFilename)
+					if localPath != newPath {
+						if err := os.Rename(localPath, newPath); err == nil {
+							utils.Log.Info("Renaming local file: %s -> %s", filename, newFilename)
+							wp.URL = newPath
+							wp.Thumbnail = newPath
+						}
+					}
+				}
 			}
 		} else {
 			utils.Log.Error("Failed to generate thumbnail for %s: %v", wp.ID, err)
@@ -767,6 +815,45 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 					}
 					changed = true
 				}
+
+				// Rename local file with [d] or [l] tag if enabled (for existing items)
+				if wp.Source == "local" && c.Config.Paths.IndexWallpapers {
+					localPath := wp.URL
+					dir := filepath.Dir(localPath)
+					filename := filepath.Base(localPath)
+					ext := filepath.Ext(filename)
+					nameWithoutExt := strings.TrimSuffix(filename, ext)
+
+					cleanName := nameWithoutExt
+					// Remove existing tags from end of filename
+					if strings.HasSuffix(cleanName, " [d]") {
+						cleanName = strings.TrimSuffix(cleanName, " [d]")
+					} else if strings.HasSuffix(cleanName, " [l]") {
+						cleanName = strings.TrimSuffix(cleanName, " [l]")
+					}
+
+					newTag := "[l]"
+					if wp.Theme == "dark" {
+						newTag = "[d]"
+					}
+
+					var newFilename string
+					if cleanName == "" {
+						newFilename = fmt.Sprintf("%s%s", newTag, ext)
+					} else {
+						newFilename = fmt.Sprintf("%s %s%s", cleanName, newTag, ext)
+					}
+
+					newPath := filepath.Join(dir, newFilename)
+					if localPath != newPath {
+						if err := os.Rename(localPath, newPath); err == nil {
+							utils.Log.Info("Renaming local file: %s -> %s", filename, newFilename)
+							wp.URL = newPath
+							wp.Thumbnail = newPath
+							changed = true
+						}
+					}
+				}
 			} else {
 				utils.Log.Error("Failed to analyze color for %s: %v", wp.ID, err)
 				if progress != nil {
@@ -777,26 +864,32 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 	}
 
 	// 4. Check and fix main wallpaper filename if it exists
-	expectedPath, err := c.GetWallpaperLocalPath(wp)
-	if err == nil {
-		actualPath, found := c.FindWallpaperCacheFile(wp)
-		if found && actualPath != expectedPath {
-			// Check if expected path already exists to avoid overwrite error on rename
-			if _, err := os.Stat(expectedPath); os.IsNotExist(err) {
-				utils.Log.Info("Renaming cached wallpaper from %s to %s", filepath.Base(actualPath), filepath.Base(expectedPath))
-				if progress != nil {
-					progress(fmt.Sprintf("Renaming cached wallpaper from %s to %s", filepath.Base(actualPath), filepath.Base(expectedPath)))
+	if wp.Source != "local" {
+		expectedPath, err := c.GetWallpaperLocalPath(wp)
+		if err == nil {
+			actualPath, found := c.FindWallpaperCacheFile(wp)
+
+			// Safety check: Only rename if the file is actually inside the cache directory.
+			// This prevents moving user's local files even if Source is mislabeled.
+			isInsideCache := strings.Contains(actualPath, filepath.Join("cache", "wallpapers"))
+			if found && actualPath != expectedPath && isInsideCache {
+				// Check if expected path already exists to avoid overwrite error on rename
+				if _, err := os.Stat(expectedPath); os.IsNotExist(err) {
+					utils.Log.Info("Renaming cached wallpaper from %s to %s", filepath.Base(actualPath), filepath.Base(expectedPath))
+					if progress != nil {
+						progress(fmt.Sprintf("Renaming cached wallpaper from %s to %s", filepath.Base(actualPath), filepath.Base(expectedPath)))
+					}
+					if err := os.Rename(actualPath, expectedPath); err != nil {
+						utils.Log.Error("Failed to rename %s: %v", filepath.Base(actualPath), err)
+					}
+				} else if actualPath != expectedPath {
+					// Expected path exists, and it's not the same file. Remove the old one with the bad name.
+					utils.Log.Info("Warning: Found duplicate for %s. Removing old file with incorrect name: %s", wp.ID, filepath.Base(actualPath))
+					if progress != nil {
+						progress(fmt.Sprintf("Warning: Found duplicate for %s. Removing old file with incorrect name: %s", wp.ID, filepath.Base(actualPath)))
+					}
+					os.Remove(actualPath)
 				}
-				if err := os.Rename(actualPath, expectedPath); err != nil {
-					utils.Log.Error("Failed to rename %s: %v", filepath.Base(actualPath), err)
-				}
-			} else if actualPath != expectedPath {
-				// Expected path exists, and it's not the same file. Remove the old one with the bad name.
-				utils.Log.Info("Warning: Found duplicate for %s. Removing old file with incorrect name: %s", wp.ID, filepath.Base(actualPath))
-				if progress != nil {
-					progress(fmt.Sprintf("Warning: Found duplicate for %s. Removing old file with incorrect name: %s", wp.ID, filepath.Base(actualPath)))
-				}
-				os.Remove(actualPath)
 			}
 		}
 	}
@@ -1103,7 +1196,7 @@ func (c *Controller) DeleteWallpaper(id string, deleteFile bool) error {
 		os.Remove(thumbPath)
 	}
 
-	return nil
+	return c.RebuildColorIndex()
 }
 
 // GetFeedWallpapers returns all wallpapers in the feed.
@@ -1381,6 +1474,12 @@ func (c *Controller) SyncFeed() (int, int, error) {
 	addedLocal := 0
 	removedLocal := 0
 	var newLocalWallpapers []models.Wallpaper
+
+	if c.Config.Paths.IndexWallpapers {
+		utils.Log.Debug("Local wallpaper indexing is ENABLED (Path: %s)", c.Config.Paths.Wallpapers)
+	} else {
+		utils.Log.Debug("Local wallpaper indexing is DISABLED")
+	}
 
 	if c.Config.Paths.IndexWallpapers && c.Config.Paths.Wallpapers != "" {
 		prevLen := len(feed)
