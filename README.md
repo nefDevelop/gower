@@ -221,6 +221,7 @@ Gestiona el historial local de fondos de pantalla (feed).
   - `--refresh`: Fuerza una nueva mezcla aleatoria si se usa el orden `smart`.
     > **Algoritmo Smart**: El modo `smart` presenta una mezcla equilibrada de fondos nuevos y vistos. El orden se mantiene **estable durante una hora** gracias a un sistema de caché, lo que facilita la navegación entre páginas incluso si eliminas elementos. Usa `--refresh` para barajar de nuevo inmediatamente.
 
+- `gower feed get colors`: Devuelve la paleta de colores dominante de los fondos de pantalla del feed almacenada en `colors.json`.
 - `gower feed update`: Sincroniza el feed desde las cachés de los proveedores o realiza una nueva búsqueda si es necesario.
   - `--force`: Ignora los límites de frecuencia para forzar la actualización.
 - `gower feed purge`: Elimina todo el historial del feed.
@@ -272,6 +273,7 @@ Gestiona la lista de fondos de pantalla favoritos.
   - `--page <número>`: Página a mostrar.
   - `--limit <número>`: Ítems por página.
   - `--color <hex>`: Filtra por color.
+- `gower favorites get colors`: Devuelve la paleta de colores dominante de los fondos de pantalla favoritos almacenada en `colors.json`.
 - `gower favorites add <ID>`: Añade un fondo de pantalla a favoritos.
   - Si `behavior.save_favorites_to_folder` es `true`, la imagen se copiará a tu carpeta de wallpapers para persistencia.
   - `--notes <texto>`: Añade notas personales al favorito.
@@ -297,7 +299,7 @@ Gestiona la configuración de la aplicación.
 
 - `gower config init`: Crea la estructura de configuración y el archivo `config.json` inicial.
 - `gower config show`: Muestra la configuración actual en formato JSON.
-- `gower config get <clave>`: Obtiene el valor de una clave de configuración (ej. `providers.reddit.limit`).
+- `gower config get <clave>`: Obtiene el valor de una clave de configuración (ej. `providers.reddit.limit`). También puede usar la clave especial `config-folder` para obtener la ruta del directorio de configuración.
 - `gower config set <clave=valor>`: Establece el valor de una clave de configuración.
 - `gower config reset`: Restablece la configuración a sus valores por defecto.
 - `gower config update`: Actualiza la estructura del archivo de configuración existente con nuevos campos.

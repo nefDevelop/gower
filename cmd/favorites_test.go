@@ -283,3 +283,53 @@ func TestFavoritesAddWithPersistence(t *testing.T) {
 		t.Errorf("Favorite was not copied to wallpapers folder")
 	}
 }
+
+func TestFavoritesGetColors(t *testing.T) {
+	resetFavoritesFlags()
+	tmpDir := setupTestHome(t)
+	defer os.RemoveAll(tmpDir)
+
+	executeCommand(rootCmd, "config", "init")
+
+	// Manually create colors.json with favorite palette entries
+	colorsPath := filepath.Join(tmpDir, ".config", "gower", "data", "colors.json")
+	expectedColors := []string{"#FF0000", "#00FF00", "#0000FF"}
+	paletteJSON := `{"feed_palette": [], "favorites_palette": ["#FF0000", "#00FF00", "#0000FF"]}`
+	if err := os.WriteFile(colorsPath, []byte(paletteJSON), 0644); err != nil {
+		t.Fatalf("Failed to write colors.json for test: %v", err)
+	}
+
+	// Test plain output
+	output, err := executeCommand(rootCmd, "favorites", "get", "colors")
+	if err != nil {
+		t.Fatalf("Error executing favorites get colors: %v", err)
+	}
+
+	for _, color := range expectedColors {
+		if !strings.Contains(output, color) {
+			t.Errorf("Expected color %s in output, got: %s", color, output)
+		}
+	}
+
+	// Test JSON output
+	config.JSONOutput = true
+	output, err = executeCommand(rootCmd, "favorites", "get", "colors")
+	config.JSONOutput = false // Reset for other tests
+	if err != nil {
+		t.Fatalf("Error executing favorites get colors with JSON output: %v", err)
+	}
+
+	var actualColors []string
+	if err := json.Unmarshal([]byte(output), &actualColors); err != nil {
+		t.Fatalf("Failed to unmarshal JSON output: %v", err)
+	}
+
+	if len(actualColors) != len(expectedColors) {
+		t.Errorf("Expected %d colors, got %d", len(expectedColors), len(actualColors))
+	}
+	for i, color := range expectedColors {
+		if actualColors[i] != color {
+			t.Errorf("Expected color %s at index %d, got %s", color, i, actualColors[i])
+		}
+	}
+}

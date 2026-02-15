@@ -211,3 +211,26 @@ func TestConfigFromFavorites(t *testing.T) {
 		t.Errorf("Expected 'true', got '%s'", output)
 	}
 }
+
+func TestConfigGetConfigFolder(t *testing.T) {
+	tmpDir := setupTestEnv(t)
+	defer os.RemoveAll(tmpDir)
+
+	executeCommand(rootCmd, "config", "init")
+
+	output, err := executeCommand(rootCmd, "config", "get", "config-folder")
+	if err != nil {
+		t.Fatalf("Error executing config get config-folder: %v", err)
+	}
+
+	expectedConfigDir := ""
+	if runtime.GOOS == "windows" {
+		expectedConfigDir = filepath.Join(tmpDir, "gower")
+	} else {
+		expectedConfigDir = filepath.Join(tmpDir, ".config", "gower")
+	}
+
+	if strings.TrimSpace(output) != expectedConfigDir {
+		t.Errorf("Expected config folder '%s', got '%s'", expectedConfigDir, strings.TrimSpace(output))
+	}
+}

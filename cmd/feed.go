@@ -263,6 +263,33 @@ var feedUpdateCmd = &cobra.Command{
 	},
 }
 
+var feedGetColorsCmd = &cobra.Command{
+	Use:   "get colors",
+	Short: "Get the color palette of feed wallpapers from colors.json",
+	Run: func(cmd *cobra.Command, args []string) {
+		ensureConfig() // Ensure config is loaded or initialized
+
+		palettes, err := loadColorPalettes()
+		if err != nil {
+			cmd.Printf("Error loading color palettes: %v\n", err)
+			return
+		}
+
+		if config.JSONOutput {
+			data, _ := json.MarshalIndent(palettes.FeedPalette, "", "  ")
+			cmd.Println(string(data))
+		} else {
+			if len(palettes.FeedPalette) == 0 {
+				cmd.Println("No feed colors found in palette.")
+				return
+			}
+			for _, color := range palettes.FeedPalette {
+				cmd.Println(color)
+			}
+		}
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(feedCmd)
 
@@ -273,6 +300,7 @@ func init() {
 	feedCmd.AddCommand(feedStatsCmd)
 	feedCmd.AddCommand(feedAnalyzeCmd)
 	feedCmd.AddCommand(feedRandomCmd)
+	feedCmd.AddCommand(feedGetColorsCmd)
 
 	feedShowCmd.Flags().IntVarP(&feedPage, "page", "p", 1, "Page number")
 	feedShowCmd.Flags().IntVarP(&feedLimit, "limit", "l", 20, "Items per page")
