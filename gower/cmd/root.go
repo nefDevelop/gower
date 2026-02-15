@@ -3,9 +3,9 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"os/exec" // Added for executing the GUI app
+	"os/exec"       // Added for executing the GUI app
 	"path/filepath" // Added for path manipulation
-	"runtime"  // Added for checking OS
+	"runtime"       // Added for checking OS
 
 	"gower/internal/utils"
 
@@ -53,13 +53,13 @@ interface to manage your wallpapers.`,
 		guiAppPath := ""
 		switch runtime.GOOS {
 		case "windows":
-			guiAppPath = "gower-gui/windows/windows.exe" // Assuming build output is 'windows.exe' relative to gower executable
+			guiAppPath = filepath.Join("gower-gui", "windows", "windows.exe") // Assuming build output is 'windows.exe' relative to gower executable
 		case "linux":
-			guiAppPath = "gower-gui/linux/windows" // Wails default app name is 'windows' for linux target
+			guiAppPath = filepath.Join("gower-gui", "linux", "windows") // Wails default app name is 'windows' for linux target
 		case "darwin":
 			// For macOS, Wails builds an app bundle. We'll need to specify the executable inside.
 			// This might need adjustment based on final Wails build output for macOS.
-			guiAppPath = "gower-gui/darwin/windows.app/Contents/MacOS/windows" // Wails default app name is 'windows' for darwin target
+			guiAppPath = filepath.Join("gower-gui", "darwin", "windows.app", "Contents", "MacOS", "windows") // Wails default app name is 'windows' for darwin target
 		default:
 			fmt.Println("Unsupported operating system for GUI:", runtime.GOOS)
 			os.Exit(1)
@@ -71,13 +71,12 @@ interface to manage your wallpapers.`,
 			fmt.Printf("Error getting current executable path: %v\n", err)
 			os.Exit(1)
 		}
-		
+
 		// The Wails app executable is expected to be in a sibling directory to the gower executable.
 		// e.g., if gower is in /usr/local/bin/gower, Wails app is in /usr/local/bin/gower-gui/windows/windows.exe
 		// So we go one level up from gower's directory, then into gower-gui/<os>/
 		baseDir := filepath.Dir(exePath)
 		absGuiAppPath := filepath.Join(baseDir, guiAppPath)
-
 
 		// Check if the GUI executable exists
 		if _, err := os.Stat(absGuiAppPath); os.IsNotExist(err) {
@@ -99,7 +98,6 @@ interface to manage your wallpapers.`,
 		fmt.Println("Gower GUI launched successfully.")
 	},
 }
-
 
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.

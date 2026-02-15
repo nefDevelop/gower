@@ -4,13 +4,13 @@ import (
 	"fmt" // Add this import
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
 func TestConfigInit(t *testing.T) {
-	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	tmpDir := setupTestEnv(t)
 
 	output, err := executeCommand(rootCmd, "config", "init")
 	if err != nil {
@@ -21,15 +21,22 @@ func TestConfigInit(t *testing.T) {
 		t.Errorf("Salida inesperada: %s", output)
 	}
 
-	configPath := filepath.Join(tmpDir, ".config", "gower", "config.json")
+	var configPath string
+	if runtime.GOOS == "windows" {
+		// En Windows, UserConfigDir apunta a APPDATA
+		configPath = filepath.Join(tmpDir, "gower", "config.json")
+	} else {
+		// En Linux/macOS, apunta a HOME/.config
+		configPath = filepath.Join(tmpDir, ".config", "gower", "config.json")
+	}
+
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		t.Errorf("El archivo de configuración no fue creado")
 	}
 }
 
 func TestConfigShow(t *testing.T) {
-	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	_ = setupTestEnv(t) // No necesitamos la ruta del dir, solo configurar el entorno
 
 	executeCommand(rootCmd, "config", "init")
 
@@ -44,8 +51,7 @@ func TestConfigShow(t *testing.T) {
 }
 
 func TestConfigSetAndGet(t *testing.T) {
-	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	_ = setupTestEnv(t)
 
 	executeCommand(rootCmd, "config", "init")
 
@@ -83,8 +89,7 @@ func TestConfigSetAndGet(t *testing.T) {
 }
 
 func TestConfigReset(t *testing.T) {
-	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	_ = setupTestEnv(t)
 
 	executeCommand(rootCmd, "config", "init")
 	// Cambiamos un valor
@@ -108,8 +113,7 @@ func TestConfigReset(t *testing.T) {
 }
 
 func TestConfigExportAndImport(t *testing.T) {
-	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	tmpDir := setupTestEnv(t)
 
 	executeCommand(rootCmd, "config", "init")
 
@@ -150,12 +154,19 @@ func TestConfigExportAndImport(t *testing.T) {
 }
 
 func TestConfigUpdate(t *testing.T) {
-	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	tmpDir := setupTestEnv(t)
 
 	// 1. Crear un archivo de configuración parcial/antiguo manualmente
-	configDir := filepath.Join(tmpDir, ".config", "gower")
-	os.MkdirAll(configDir, 0755)
+	var configDir string
+	if runtime.GOOS == "windows" {
+		configDir = filepath.Join(tmpDir, "gower")
+	} else {
+		configDir = filepath.Join(tmpDir, ".config", "gower")
+	}
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("Failed to create config dir for test: %v", err)
+	}
+
 	configFile := filepath.Join(configDir, "config.json")
 	// Este JSON carece de "from_favorites"
 	oldJSON := []byte(`{"behavior":{"theme":"dark","change_interval":60}}`)
@@ -184,8 +195,7 @@ func TestConfigUpdate(t *testing.T) {
 }
 
 func TestConfigFromFavorites(t *testing.T) {
-	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	_ = setupTestEnv(t)
 
 	executeCommand(rootCmd, "config", "init")
 

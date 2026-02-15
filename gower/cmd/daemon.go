@@ -5,10 +5,8 @@ import (
 	"math/rand"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"strconv"
-	"syscall"
 	"time"
 
 	"gower/internal/core"
@@ -55,13 +53,47 @@ var daemonStatusCmd = &cobra.Command{
 var daemonPauseCmd = &cobra.Command{
 	Use:   "pause",
 	Short: "Pause the daemon",
-	Run:   func(cmd *cobra.Command, args []string) { sendSignal(cmd, syscall.SIGUSR1, "paused") },
+	Run: func(cmd *cobra.Command, args []string) {
+		pidFile := getPidFilePath()
+		if _, err := os.Stat(pidFile); os.IsNotExist(err) {
+			if !config.Quiet {
+				cmd.Println("Daemon not running.")
+			}
+			return
+		}
+		pauseFile := getPauseFilePath()
+		if f, err := os.Create(pauseFile); err != nil {
+			cmd.Printf("Error creating pause signal: %v\n", err)
+		} else {
+			f.Close()
+			if !config.Quiet {
+				cmd.Println("Daemon pause signal sent.")
+			}
+		}
+	},
 }
 
 var daemonResumeCmd = &cobra.Command{
 	Use:   "resume",
 	Short: "Resume the daemon",
-	Run:   func(cmd *cobra.Command, args []string) { sendSignal(cmd, syscall.SIGUSR2, "resumed") },
+	Run: func(cmd *cobra.Command, args []string) {
+		pidFile := getPidFilePath()
+		if _, err := os.Stat(pidFile); os.IsNotExist(err) {
+			if !config.Quiet {
+				cmd.Println("Daemon not running.")
+			}
+			return
+		}
+		pauseFile := getPauseFilePath()
+		if err := os.Remove(pauseFile); err != nil {
+			if !os.IsNotExist(err) {
+				cmd.Printf("Error removing pause signal: %v\n", err)
+			}
+		}
+		if !config.Quiet {
+			cmd.Println("Daemon resume signal sent.")
+		}
+	},
 }
 
 func init() {
@@ -89,6 +121,16 @@ func init() {
 func getPidFilePath() string {
 	appDir, _ := core.GetAppDir()
 	return filepath.Join(appDir, "gower.pid")
+}
+
+func getPauseFilePath() string {
+	appDir, _ := core.GetAppDir()
+	return filepath.Join(appDir, "gower.pause")
+}
+
+func getStopFilePath() string {
+	appDir, _ := core.GetAppDir()
+	return filepath.Join(appDir, "gower.stop")
 }
 
 func runDaemonStart(cmd *cobra.Command, args []string) {
@@ -139,6 +181,10 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 
 	cleanupLogs()
 
+	// Cleanup any stale control files on start
+	os.Remove(getStopFilePath())
+	os.Remove(getPauseFilePath())
+
 	// Print configuration details
 	cfg, err := loadConfig()
 	if err != nil {
@@ -174,11 +220,12 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1, syscall.SIGUSR2)
+	changeIntervalTicker := time.NewTicker(time.Duration(daemonInterval) * time.Minute)
+	defer changeIntervalTicker.Stop()
 
-	ticker := time.NewTicker(time.Duration(daemonInterval) * time.Minute)
-	defer ticker.Stop()
+	// Ticker to check for control signals (pause, stop)
+	controlTicker := time.NewTicker(2 * time.Second)
+	defer controlTicker.Stop()
 
 	paused := false
 
@@ -187,29 +234,37 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 
 	for {
 		select {
-		case sig := <-sigs:
-			switch sig {
-			case syscall.SIGINT, syscall.SIGTERM:
+		case <-controlTicker.C:
+			// Check for stop signal
+			if _, err := os.Stat(getStopFilePath()); err == nil {
 				if !config.Quiet {
 					cmd.Println("Stopping daemon...")
 				}
 				utils.Log.Info("Stopping daemon...")
+				os.Remove(getStopFilePath()) // Clean up
 				return
-			case syscall.SIGUSR1:
-				if !config.Quiet {
-					cmd.Println("Daemon paused.")
-				}
-				utils.Log.Info("Daemon paused.")
-				paused = true
-			case syscall.SIGUSR2:
-				if !config.Quiet {
-					cmd.Println("Daemon resumed.")
-				}
-				utils.Log.Info("Daemon resumed.")
-				paused = false
-				changeWallpaper(cmd)
 			}
-		case <-ticker.C:
+
+			// Check for pause signal
+			if _, err := os.Stat(getPauseFilePath()); err == nil {
+				if !paused {
+					if !config.Quiet {
+						cmd.Println("Daemon paused.")
+					}
+					utils.Log.Info("Daemon paused.")
+					paused = true
+				}
+			} else {
+				if paused {
+					if !config.Quiet {
+						cmd.Println("Daemon resumed.")
+					}
+					utils.Log.Info("Daemon resumed.")
+					paused = false
+				}
+			}
+
+		case <-changeIntervalTicker.C:
 			if !paused {
 				changeWallpaper(cmd)
 			}
@@ -359,24 +414,35 @@ func changeWallpaper(cmd *cobra.Command) {
 
 func runDaemonStop(cmd *cobra.Command, args []string) {
 	pidFile := getPidFilePath()
-	data, err := os.ReadFile(pidFile)
-	if err != nil {
+	if _, err := os.Stat(pidFile); os.IsNotExist(err) {
 		if !config.Quiet {
 			cmd.Println("Daemon not running (no pid file).")
 		}
+		// If forcing, try to remove control files anyway
+		if daemonForce {
+			os.Remove(getStopFilePath())
+			os.Remove(getPauseFilePath())
+		}
 		return
 	}
-	pid, _ := strconv.Atoi(string(data))
 
-	proc, err := os.FindProcess(pid)
-	if err == nil {
-		proc.Signal(syscall.SIGTERM)
+	// Create stop file
+	stopFile := getStopFilePath()
+	if f, err := os.Create(stopFile); err != nil {
+		cmd.Printf("Error creating stop signal: %v\n", err)
+	} else {
+		f.Close()
 		if !config.Quiet {
 			cmd.Println("Stop signal sent.")
 		}
 	}
+
 	if daemonForce {
+		// Also remove pid file to allow immediate restart
 		os.Remove(pidFile)
+		if !config.Quiet {
+			cmd.Println("Forcing stop: removed pid file.")
+		}
 	}
 }
 
@@ -386,20 +452,17 @@ func runDaemonStatus(cmd *cobra.Command, args []string) {
 	running := false
 	pid := 0
 
+	// The presence of the PID file is our primary indicator.
+	// The daemon is responsible for cleaning it up on exit.
 	if err == nil {
+		running = true
 		pid, _ = strconv.Atoi(string(data))
-		proc, err := os.FindProcess(pid)
-		if err == nil {
-			if err := proc.Signal(syscall.Signal(0)); err == nil {
-				running = true
-			}
-		}
 	}
 
 	if daemonJSON {
 		status := map[string]interface{}{
 			"running": running,
-			"pid":     pid,
+			"pid":     pid, // Will be 0 if not running
 		}
 		jsonOut, _ := json.Marshal(status)
 		cmd.Println(string(jsonOut))
@@ -408,25 +471,6 @@ func runDaemonStatus(cmd *cobra.Command, args []string) {
 			cmd.Printf("Daemon is running (PID: %d)\n", pid)
 		} else {
 			cmd.Println("Daemon is stopped.")
-		}
-	}
-}
-
-func sendSignal(cmd *cobra.Command, sig syscall.Signal, action string) {
-	pidFile := getPidFilePath()
-	data, err := os.ReadFile(pidFile)
-	if err != nil {
-		if !config.Quiet {
-			cmd.Println("Daemon not running.")
-		}
-		return
-	}
-	pid, _ := strconv.Atoi(string(data))
-	proc, err := os.FindProcess(pid)
-	if err == nil {
-		proc.Signal(sig)
-		if !config.Quiet {
-			cmd.Printf("Daemon %s.\n", action)
 		}
 	}
 }
