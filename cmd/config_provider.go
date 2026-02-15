@@ -197,32 +197,45 @@ var configProviderRedditAddCmd = &cobra.Command{
 			}
 		}
 
+		newItem := sub
+		if sort != "" {
+			newItem = sub + ":" + sort
+		}
+
 		cfg, err := loadConfig()
 		if err != nil {
 			cmd.Printf("Error loading config: %v\n", err)
 			return
 		}
 
-		newItem := sub
-		if sort != "" {
-			newItem = sub + ":" + sort
+		current := cfg.Providers.Reddit.Subreddit
+		// Evitar duplicados: verificar si el newItem (sub o sub:sort) ya existe exactamente
+		parts := strings.Split(current, "+")
+		if current == "" { // Handle initial empty case for parts
+			parts = []string{}
 		}
 
-		current := cfg.Providers.Reddit.Subreddit
-		if current == "" {
-			cfg.Providers.Reddit.Subreddit = newItem
-		} else {
-			// Evitar duplicados simples
-			parts := strings.Split(current, "+")
+		// Check for exact duplicate (e.g., "wallpapers:top" vs "wallpapers:top")
+		for _, p := range parts {
+			if strings.EqualFold(p, newItem) {
+				cmd.Printf("Subreddit '%s' (with specified sort) seems to be already in the list.\n", newItem)
+				return
+			}
+		}
+
+		// Special case: if adding a plain subreddit (e.g., "wallpapers") and a plain version of it already exists.
+		if sort == "" { // Only apply this check if the newItem itself has no sort
 			for _, p := range parts {
-				pName := strings.Split(p, ":")[0]
-				if strings.EqualFold(pName, sub) {
+				if strings.EqualFold(p, sub) && !strings.Contains(p, ":") { // Check if 'p' is also a plain subreddit and matches 'sub'
 					cmd.Printf("Subreddit '%s' seems to be already in the list.\n", sub)
 					return
 				}
 			}
-			cfg.Providers.Reddit.Subreddit = current + "+" + newItem
 		}
+
+		// If no duplicate was found, add the new item.
+		updatedSubreddits := append(parts, newItem)
+		cfg.Providers.Reddit.Subreddit = strings.Join(updatedSubreddits, "+")
 
 		if err := saveConfig(cfg); err != nil {
 			cmd.Printf("Error saving config: %v\n", err)

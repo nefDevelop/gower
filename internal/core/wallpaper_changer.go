@@ -7,6 +7,7 @@ import (
 	"gower/internal/utils"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 )
 
@@ -19,6 +20,9 @@ type WallpaperChanger struct {
 
 var NewWallpaperChanger = func(desktopEnv string, respectDarkMode ...bool) *WallpaperChanger {
 	env := strings.ToLower(desktopEnv)
+	if runtime.GOOS == "windows" {
+		env = "windows"
+	}
 	if env == "" {
 		env = DetectDesktopEnv()
 		utils.Log.Debug("Auto-detected desktop environment: %s", env)
@@ -157,6 +161,14 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 				utils.Log.Info("Test environment: Would set wallpaper %s for monitor %s", path, monitor.Name)
 				continue
 
+			case "windows":
+				// En Windows, la llamada al sistema aplica el fondo a todos los monitores
+				// según la configuración del usuario (expandir, rellenar, etc.).
+				if err := setWallpaperWindows(path); err != nil {
+					allErrs = append(allErrs, fmt.Errorf("failed to set wallpaper on Windows: %w", err))
+				}
+				continue // Continuar al siguiente monitor es irrelevante en Windows para el modo clon.
+
 			default:
 				err := fmt.Errorf("unsupported or undetected desktop environment '%s' for single/clone mode", wc.Env)
 				allErrs = append(allErrs, err)
@@ -182,6 +194,7 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 		// If fewer wallpapers than monitors, we cycle through them.
 
 		var allErrs []error
+	MonitorLoop:
 		for i, monitor := range monitors {
 			path := paths[i%len(paths)] // Cycle through wallpapers if fewer than monitors
 			utils.Log.Info("Setting wallpaper for monitor %s: %s", monitor.Name, path)
@@ -289,6 +302,14 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 				utils.Log.Info("Test environment: Would set wallpaper %s for monitor %s", path, monitor.Name)
 				continue
 
+			case "windows":
+				// El modo "distinct" es complejo en Windows y requiere APIs más avanzadas.
+				// Por ahora, nos comportamos como "clone" y establecemos el mismo fondo en todos lados.
+				utils.Log.Info("Warning: 'distinct' mode is not fully supported on Windows. Setting wallpaper for all monitors.")
+				if err := setWallpaperWindows(path); err != nil {
+					allErrs = append(allErrs, fmt.Errorf("failed to set wallpaper on Windows: %w", err))
+				}
+				break MonitorLoop // Salimos del bucle de monitores, ya que Windows lo aplica a todos.
 			default:
 				err := fmt.Errorf("unsupported or undetected desktop environment '%s' for distinct multi-monitor mode", wc.Env)
 				allErrs = append(allErrs, err)
@@ -332,6 +353,9 @@ var isProcessRunning = func(processName string) bool {
 
 // DetectDesktopEnv tries to determine the current desktop environment.
 func DetectDesktopEnv() string {
+	if runtime.GOOS == "windows" {
+		return "windows"
+	}
 	// 1. Check for running processes (most reliable indicator of an active session)
 	// Give priority to dedicated wallpaper managers like dms (Dank Material Shell) if they are running.
 	if isProcessRunning("swww-daemon") && commandExists("swww") {
@@ -437,6 +461,13 @@ func (wc *WallpaperChanger) DetectMonitors() ([]Monitor, error) {
 	utils.Log.Info("Detecting monitors for environment: %s", wc.Env)
 	if wc.DetectMonitorsFunc != nil {
 		return wc.DetectMonitorsFunc()
+	}
+
+	if runtime.GOOS == "windows" {
+		// La detección de monitores en Windows es compleja y requiere llamadas a la API de Windows.
+		// Por ahora, para simplificar, asumimos un solo monitor.
+		utils.Log.Info("Windows environment: Assuming single monitor. Full multi-monitor detection requires platform-specific API calls.")
+		return []Monitor{{ID: "default", Name: "default", Primary: true}}, nil
 	}
 
 	var monitors []Monitor

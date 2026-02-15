@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -29,10 +30,16 @@ func resetExploreFlags() {
 
 // createTestConfig crea un archivo config.json personalizado para un test.
 func createTestConfig(t *testing.T, dir string, config *models.Config) {
-	gowerDir := filepath.Join(dir, ".config", "gower")
-	if err := os.MkdirAll(gowerDir, 0755); err != nil {
-		t.Fatalf("Failed to create .gower dir: %v", err)
+	var gowerDir string
+	if runtime.GOOS == "windows" {
+		gowerDir = filepath.Join(dir, "gower")
+	} else {
+		gowerDir = filepath.Join(dir, ".config", "gower")
 	}
+	// La función que llama a esta ya ha creado el directorio base,
+	// así que solo necesitamos crear el directorio de la app dentro de él.
+	os.MkdirAll(gowerDir, 0755)
+
 	configPath := filepath.Join(gowerDir, "config.json")
 	data, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
@@ -45,8 +52,7 @@ func createTestConfig(t *testing.T, dir string, config *models.Config) {
 
 func TestExploreNativeProvider(t *testing.T) {
 	resetExploreFlags()
-	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	_ = setupTestEnv(t)
 
 	// Mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -79,8 +85,7 @@ func TestExploreNativeProvider(t *testing.T) {
 
 func TestExploreGenericProvider(t *testing.T) {
 	resetExploreFlags()
-	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	tmpDir := setupTestEnv(t)
 
 	// 1. Crear un mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -115,7 +120,13 @@ func TestExploreGenericProvider(t *testing.T) {
 	createTestConfig(t, tmpDir, &cfg)
 
 	// Create parser mapping file as GenericProvider relies on it
-	parserDir := filepath.Join(tmpDir, ".config", "gower", "data", "parser")
+	var appConfigDir string
+	if runtime.GOOS == "windows" {
+		appConfigDir = filepath.Join(tmpDir, "gower")
+	} else {
+		appConfigDir = filepath.Join(tmpDir, ".config", "gower")
+	}
+	parserDir := filepath.Join(appConfigDir, "data", "parser")
 	if err := os.MkdirAll(parserDir, 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -146,8 +157,7 @@ func TestExploreGenericProvider(t *testing.T) {
 
 func TestExploreAllProviders(t *testing.T) {
 	resetExploreFlags()
-	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	tmpDir := setupTestEnv(t)
 
 	// 1. Mock server para el genérico
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

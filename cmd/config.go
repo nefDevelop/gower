@@ -162,25 +162,34 @@ func getConfigPath() (string, error) {
 	if config.ConfigFile != "" {
 		return config.ConfigFile, nil
 	}
+
+	// Usar os.UserConfigDir() para una ruta estándar multiplataforma.
+	// ej., ~/.config en Linux, C:\Users\user\AppData\Roaming on Windows.
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		// Fallback al directorio home si el directorio de config no está disponible.
+		homeDir, errHome := os.UserHomeDir()
+		if errHome != nil {
+			return "", errHome
+		}
+		configDir = filepath.Join(homeDir, ".config")
+	}
+	primaryPath := filepath.Join(configDir, "gower", "config.json")
+
+	// Comprobar ubicación legacy por retrocompatibilidad.
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-
-	// 1. Check primary location: ~/.config/gower/config.json
-	xdgPath := filepath.Join(homeDir, ".config", "gower", "config.json")
-	if _, err := os.Stat(xdgPath); err == nil {
-		return xdgPath, nil
-	}
-
-	// 2. Check legacy location: ~/.gower/config.json
 	legacyPath := filepath.Join(homeDir, ".gower", "config.json")
+	if _, err := os.Stat(primaryPath); err == nil {
+		return primaryPath, nil
+	}
 	if _, err := os.Stat(legacyPath); err == nil {
 		return legacyPath, nil
 	}
-
-	// Default to primary for new configurations
-	return xdgPath, nil
+	// Por defecto, usar la ruta estándar para nuevas configuraciones.
+	return primaryPath, nil
 }
 
 var loadConfig = func() (*models.Config, error) {
@@ -396,12 +405,18 @@ func createConfigStructure(cmd *cobra.Command) error {
 }
 
 func runConfigInit(cmd *cobra.Command, args []string) {
-	homeDir, err := os.UserHomeDir()
+	// Usar la misma lógica que getConfigPath para encontrar el directorio correcto.
+	configDir, err := os.UserConfigDir()
 	if err != nil {
-		fmt.Printf("Error obteniendo directorio home: %v\n", err)
-		return
+		homeDir, errHome := os.UserHomeDir()
+		if errHome != nil {
+			fmt.Printf("Error getting user home or config directory: %v\n", errHome)
+			return
+		}
+		configDir = filepath.Join(homeDir, ".config")
 	}
-	configFile := filepath.Join(homeDir, ".config", "gower", "config.json")
+	baseDir := filepath.Join(configDir, "gower")
+	configFile := filepath.Join(baseDir, "config.json")
 
 	if _, err := os.Stat(configFile); !os.IsNotExist(err) {
 		if !config.Quiet {
