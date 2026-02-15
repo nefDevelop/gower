@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	"encoding/json"
 	"gower/internal/core"
 	"gower/pkg/models"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -87,7 +89,7 @@ func TestFeedStats(t *testing.T) {
 
 	cfg, _ := loadConfig()
 	ctrl := core.NewController(cfg)
-	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "1", Theme: "dark"})
+	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "1"})
 
 	output, err := executeCommand(rootCmd, "feed", "stats")
 	if err != nil {
@@ -152,5 +154,55 @@ func TestFeedRandom(t *testing.T) {
 	}
 	if !strings.Contains(output, "Displaying wallpaper") {
 		t.Errorf("Expected wallpaper display, got: %s", output)
+	}
+}
+
+func TestFeedGetColors(t *testing.T) {
+	resetFeedFlags()
+	tmpDir := setupTestHome(t)
+	defer os.RemoveAll(tmpDir)
+
+	executeCommand(rootCmd, "config", "init")
+
+	// Manually create colors.json with feed palette entries
+	colorsPath := filepath.Join(tmpDir, ".config", "gower", "data", "colors.json")
+	expectedColors := []string{"#AAAAAA", "#BBBBBB", "#CCCCCC"}
+	paletteJSON := `{"feed_palette": ["#AAAAAA", "#BBBBBB", "#CCCCCC"], "favorites_palette": []}`
+	if err := os.WriteFile(colorsPath, []byte(paletteJSON), 0644); err != nil {
+		t.Fatalf("Failed to write colors.json for test: %v", err)
+	}
+
+	// Test plain output
+	output, err := executeCommand(rootCmd, "feed", "get", "colors")
+	if err != nil {
+		t.Fatalf("Error executing feed get colors: %v", err)
+	}
+
+	for _, color := range expectedColors {
+		if !strings.Contains(output, color) {
+			t.Errorf("Expected color %s in output, got: %s", color, output)
+		}
+	}
+
+	// Test JSON output
+	config.JSONOutput = true
+	output, err = executeCommand(rootCmd, "feed", "get", "colors")
+	config.JSONOutput = false // Reset for other tests
+	if err != nil {
+		t.Fatalf("Error executing feed get colors with JSON output: %v", err)
+	}
+
+	var actualColors []string
+	if err := json.Unmarshal([]byte(output), &actualColors); err != nil {
+		t.Fatalf("Failed to unmarshal JSON output: %v", err)
+	}
+
+	if len(actualColors) != len(expectedColors) {
+		t.Errorf("Expected %d colors, got %d", len(expectedColors), len(actualColors))
+	}
+	for i, color := range expectedColors {
+		if actualColors[i] != color {
+			t.Errorf("Expected color %s at index %d, got %s", color, i, actualColors[i])
+		}
 	}
 }

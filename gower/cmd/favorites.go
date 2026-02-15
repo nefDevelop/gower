@@ -345,6 +345,72 @@ func saveFavorites(favorites []FavoriteWallpaper) error {
 	return manager.WriteJSON(path, favorites)
 }
 
+// ColorPalettes struct matches the structure of colors.json
+type ColorPalettes struct {
+	FeedPalette      []string `json:"feed_palette"`
+	FavoritesPalette []string `json:"favorites_palette"`
+}
+
+// getColorsFilePath returns the path to the colors.json file
+func getColorsFilePath() (string, error) {
+	appDir, err := core.GetAppDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(appDir, "data", "colors.json"), nil
+}
+
+// loadColorPalettes loads the ColorPalettes from colors.json
+func loadColorPalettes() (*ColorPalettes, error) {
+	path, err := getColorsFilePath()
+	if err != nil {
+		return nil, err
+	}
+
+	var palettes ColorPalettes
+	manager := utils.NewSecureJSONManager()
+
+	// If the file doesn't exist, return empty palettes without error
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return &ColorPalettes{
+			FeedPalette:      []string{},
+			FavoritesPalette: []string{},
+		}, nil
+	}
+
+	if err := manager.ReadJSON(path, &palettes); err != nil {
+		return nil, fmt.Errorf("error reading colors.json: %v", err)
+	}
+	return &palettes, nil
+}
+
+var favoritesGetColorsCmd = &cobra.Command{
+	Use:   "get colors",
+	Short: "Get the color palette of favorited wallpapers from colors.json",
+	Run: func(cmd *cobra.Command, args []string) {
+		ensureConfig() // Ensure config is loaded or initialized
+
+		palettes, err := loadColorPalettes()
+		if err != nil {
+			cmd.Printf("Error loading color palettes: %v\n", err)
+			return
+		}
+
+		if config.JSONOutput {
+			data, _ := json.MarshalIndent(palettes.FavoritesPalette, "", "  ")
+			cmd.Println(string(data))
+		} else {
+			if len(palettes.FavoritesPalette) == 0 {
+				cmd.Println("No favorite colors found in palette.")
+				return
+			}
+			for _, color := range palettes.FavoritesPalette {
+				cmd.Println(color)
+			}
+		}
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(favoritesCmd)
 
@@ -352,6 +418,7 @@ func init() {
 	favoritesCmd.AddCommand(favoritesAddCmd)
 	favoritesCmd.AddCommand(favoritesRemoveCmd)
 	favoritesCmd.AddCommand(favoritesAnalyzeCmd)
+	favoritesCmd.AddCommand(favoritesGetColorsCmd)
 
 	favoritesListCmd.Flags().IntVar(&favPage, "page", 1, "Page number")
 	favoritesListCmd.Flags().IntVar(&favLimit, "limit", 10, "Items per page")

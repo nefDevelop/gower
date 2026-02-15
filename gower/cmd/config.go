@@ -88,12 +88,28 @@ var configGetCmd = &cobra.Command{
 			cmd.Println(err)
 			return
 		}
+
+		key := args[0]
+
+		if key == "config-folder" {
+			configFilePath, err := getConfigPath()
+			if err != nil {
+				cmd.Printf("Error obteniendo ruta del archivo de configuración: %v\n", err)
+				return
+			}
+			configFolder := filepath.Dir(configFilePath)
+			if !config.Quiet {
+				cmd.Println(configFolder)
+			}
+			return
+		}
+
 		cfg, err := loadConfig()
 		if err != nil {
 			cmd.Printf("Error cargando configuración: %v\n", err)
 			return
 		}
-		val, err := getConfigValue(cfg, args[0])
+		val, err := getConfigValue(cfg, key)
 		if err != nil {
 			cmd.Printf("Error obteniendo valor: %v\n", err)
 			return
