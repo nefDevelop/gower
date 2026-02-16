@@ -89,7 +89,7 @@ func TestFeedStats(t *testing.T) {
 
 	cfg, _ := loadConfig()
 	ctrl := core.NewController(cfg)
-	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "1"})
+	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "1", Theme: "dark"})
 
 	output, err := executeCommand(rootCmd, "feed", "stats")
 	if err != nil {
