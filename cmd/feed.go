@@ -259,7 +259,20 @@ var feedUpdateCmd = &cobra.Command{
 			count, repaired, _ = controller.SyncFeed()
 		}
 
-		cmd.Printf("%s Feed updated. Added %d new wallpapers, repaired %d.\n", colorize(symbolCheck, colorGreen), count, repaired)
+		// Después de sincronizar nuevos elementos, analiza todo el feed para asegurar que todos los elementos
+		// cumplen con los criterios actuales. Esto eliminará los elementos que ya no coincidan con
+		// aspect_ratio, min_width, etc., debido a cambios en la configuración.
+		cmd.Println("Analyzing entire feed for validity and consistency...")
+		analyzeProgress := func(msg string) {
+			if !config.Quiet {
+				cmd.Printf("%s %s\n", colorize("::", colorBlue), msg)
+			}
+		}
+		if err := controller.AnalyzeFeed(true, false, analyzeProgress); err != nil { // 'true' para todos, 'false' para forzar regeneración de miniaturas
+			cmd.Printf("Warning: Error during post-sync feed analysis: %v\n", err)
+		}
+
+		cmd.Printf("%s Feed updated. Added %d new wallpapers, repaired %d. Feed analyzed for consistency.\n", colorize(symbolCheck, colorGreen), count, repaired)
 	},
 }
 

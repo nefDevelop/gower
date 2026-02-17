@@ -75,10 +75,7 @@ var NewController = func(config *models.Config) *Controller {
 	if config.Providers.Bing.Enabled {
 		providerManager.RegisterProvider(providers.NewBingProvider(config.Providers.Bing.Market))
 	}
-	if config.Providers.Unsplash.Enabled {
-		providerManager.RegisterProvider(providers.NewUnsplashProvider(config.Providers.Unsplash.APIKey))
-	}
-	// Register other native providers here...
+	// Unsplash provider was removed as it was not implemented.
 
 	// Register generic providers
 	jsonManager := utils.NewSecureJSONManager()
@@ -541,9 +538,9 @@ func (c *Controller) indexLocalWallpapers(feed *[]models.Wallpaper) (int, int, e
 			continue
 		}
 
-		// Generate ID: local_<filename_sanitized>
+		// Generate ID: <filename_sanitized>
 		safeName := strings.ReplaceAll(file.Name(), " ", "_")
-		id := "local_" + safeName
+		id := safeName
 		foundFiles[id] = true
 
 		if _, exists := localInFeed[id]; !exists {
@@ -670,13 +667,29 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 	changed := false
 	thumbPath := filepath.Join(thumbDir, wp.ID+".jpg")
 
+	// Helper function to delete associated files
+	deleteAssociatedFiles := func(wallpaper models.Wallpaper) {
+		// Always delete thumbnail
+		os.Remove(filepath.Join(thumbDir, wallpaper.ID+".jpg"))
+		utils.Log.Info("Deleted thumbnail: %s", filepath.Join(thumbDir, wallpaper.ID+".jpg"))
+
+		// Delete main cached file ONLY if it's NOT a local source.
+		// For local source, the main file is the user's original file, which we should not delete automatically.
+		if wallpaper.Source != "local" {
+			if path, found := c.FindWallpaperCacheFile(wallpaper); found {
+				os.Remove(path)
+				utils.Log.Info("Deleted cached wallpaper file: %s", path)
+			}
+		}
+	}
+
 	// 1. Validar dimensiones por metadatos (si existen) para limpiar items de baja resolución
 	if !c.isValidDimension(wp.Dimension) {
 		utils.Log.Info("Removing invalid item %s (dimension %s)", wp.ID, wp.Dimension)
 		if progress != nil {
 			progress(fmt.Sprintf("Removing invalid item %s (dimension %s)", wp.ID, wp.Dimension))
 		}
-		os.Remove(thumbPath)
+		deleteAssociatedFiles(wp)
 		return wp, false, true
 	}
 
@@ -713,7 +726,7 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 				if progress != nil {
 					progress(fmt.Sprintf("Removing invalid item %s (resolution %dx%d). Reason: %s", wp.ID, w, h, reason))
 				}
-				os.Remove(thumbPath)
+				deleteAssociatedFiles(wp)
 				return wp, false, true
 			}
 
@@ -793,7 +806,7 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 				if progress != nil {
 					progress(fmt.Sprintf("Removing invalid item %s (resolution %dx%d). Reason: %s", wp.ID, w, h, reason))
 				}
-				os.Remove(thumbPath)
+				deleteAssociatedFiles(wp)
 				return wp, false, true
 			}
 

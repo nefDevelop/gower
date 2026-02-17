@@ -13,7 +13,6 @@
   - Wallhaven
   - Reddit
   - NASA Picture of the Day
-  - Unsplash
   - Bing Wallpaper of the Day
   - Proveedores genéricos configurables (JSON API)
 - **Gestión de Historial (Feed)**: Lleva un registro de los fondos de pantalla que has visto, con opciones para buscar, filtrar y purgar.
