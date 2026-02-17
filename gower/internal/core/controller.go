@@ -7,6 +7,7 @@ import (
 	"gower/internal/utils"
 	"gower/pkg/models" // Import models package
 	"io"
+	"math"
 	"math/big"
 	"math/rand"
 	"net/http"
@@ -683,16 +684,6 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 		}
 	}
 
-	// 1. Validar dimensiones por metadatos (si existen) para limpiar items de baja resolución
-	if !c.isValidDimension(wp.Dimension) {
-		utils.Log.Info("Removing invalid item %s (dimension %s)", wp.ID, wp.Dimension)
-		if progress != nil {
-			progress(fmt.Sprintf("Removing invalid item %s (dimension %s)", wp.ID, wp.Dimension))
-		}
-		deleteAssociatedFiles(wp)
-		return wp, false, true
-	}
-
 	info, errStat := os.Stat(thumbPath)
 	thumbExists := errStat == nil && info.Size() > 0
 
@@ -711,17 +702,11 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 			progress(fmt.Sprintf("Generating thumbnail for %s", wp.ID))
 		}
 		src := wp.Thumbnail
-		checkResolution := false
-		if src == "" || src == wp.URL {
-			if localPath, found := c.FindWallpaperCacheFile(wp); found {
-				src = localPath // Use local file if available, it's faster
-			}
-			checkResolution = true
-		}
-		w, h, err := c.ColorManager.GenerateThumbnail(src, thumbPath)
+
+		w, h, err := c.ColorManager.GenerateThumbnail(src, thumbPath) // `checkResolution` will be ignored as we pass `false` below
 		if err == nil {
 			// Check validity immediately after generation
-			if valid, reason := c.isValidImage(w, h, checkResolution); !valid {
+			if valid, reason := c.isValidImage(w, h, false); !valid { // Solo validar aspect_ratio
 				utils.Log.Info("Removing invalid item %s (resolution %dx%d). Reason: %s", wp.ID, w, h, reason)
 				if progress != nil {
 					progress(fmt.Sprintf("Removing invalid item %s (resolution %dx%d). Reason: %s", wp.ID, w, h, reason))
@@ -739,6 +724,7 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 			// If we generated it, we can set ratio if missing
 			if wp.Ratio == "" && w > 0 && h > 0 {
 				wp.Ratio = calculateRatio(w, h)
+				wp.Dimension = fmt.Sprintf("%dx%d", w, h) // Always set original dimension if available
 				changed = true
 			}
 			// And we can analyze color
@@ -798,28 +784,58 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 		}
 	} else {
 		// Thumbnail exists, verify it matches current criteria (prune invalid items)
-		w, h, err := c.ColorManager.GetImageDimensions(thumbPath)
-		if err == nil {
-			// When checking an existing thumbnail, we only validate aspect ratio, not resolution.
-			if valid, reason := c.isValidImage(w, h, false); !valid {
-				utils.Log.Info("Removing invalid item %s (resolution %dx%d). Reason: %s", wp.ID, w, h, reason)
+		utils.Log.Debug("processWallpaperItem: Thumbnail exists for %s. wp.Dimension='%s'.", wp.ID, wp.Dimension)
+		var validationW, validationH int
+		var validationErr error
+		var validationSource string
+
+		// Prioritize original dimensions if available and valid
+		if wp.Dimension != "" { // Check if original dimension is stored
+			w, h, err := utils.ParseResolution(wp.Dimension)
+			if err == nil {
+				validationW, validationH = w, h
+				validationSource = "original resolution"
+			} else {
+				utils.Log.Error("Failed to parse original dimension '%s' for %s: %v. Attempting to use thumbnail dimensions for aspect ratio check.", wp.Dimension, wp.ID, err)
+				validationW, validationH, validationErr = c.ColorManager.GetImageDimensions(thumbPath)
+				validationSource = "thumbnail resolution (fallback from malformed original dimension)"
+			}
+		} else {
+			// If wp.Dimension is empty, try to get dimensions from the thumbnail
+			utils.Log.Debug("processWallpaperItem: wp.Dimension is empty for %s. Attempting to use thumbnail dimensions.", wp.ID)
+			validationW, validationH, validationErr = c.ColorManager.GetImageDimensions(thumbPath) // Use thumbnail dimensions
+			validationSource = "thumbnail resolution (wp.Dimension empty)"
+		}
+
+		if validationErr == nil {
+			if valid, reason := c.isValidImage(validationW, validationH, false); !valid { // Solo validar aspect_ratio
+				utils.Log.Info("Removing invalid item %s (%s %dx%d). Reason: %s", wp.ID, validationSource, validationW, validationH, reason)
 				if progress != nil {
-					progress(fmt.Sprintf("Removing invalid item %s (resolution %dx%d). Reason: %s", wp.ID, w, h, reason))
+					progress(fmt.Sprintf("Removing invalid item %s (%s %dx%d). Reason: %s", wp.ID, validationSource, validationW, validationH, reason))
 				}
 				deleteAssociatedFiles(wp)
 				return wp, false, true
 			}
-
-			if wp.Extension == "" {
-				wp.Extension = ".jpg"
-				changed = true
+		} else {
+			utils.Log.Error("Failed to get any dimensions for %s (original or thumbnail): %v. Marking as invalid.", wp.ID, validationErr)
+			if progress != nil {
+				progress(fmt.Sprintf("Removing invalid item %s (could not determine dimensions for aspect ratio check).", wp.ID))
 			}
+			deleteAssociatedFiles(wp)
+			return wp, false, true
 		}
 
-		// Re-analyze color if requested or missing
-		if all || wp.Color == "" {
+		// Ensure extension is set if it's missing
+		if wp.Extension == "" {
+			wp.Extension = ".jpg"
+			changed = true
+		}
+
+		// Re-analyze color if requested or missing, or if dimensions were just obtained from thumbnail
+		if all || wp.Color == "" || (validationSource == "thumbnail resolution (wp.Dimension empty)" && wp.Color == "") {
 			if color, err := c.ColorManager.AnalyzeColor(thumbPath); err == nil {
-				if wp.Color != color {
+				// Only update if color has changed or was missing
+				if wp.Color != color || wp.Theme == "" {
 					wp.Color = color
 					if c.ColorManager.IsDark(color) {
 						wp.Theme = "dark"
@@ -1599,9 +1615,6 @@ func (c *Controller) SyncFeed() (int, int, error) {
 			defer wg.Done()
 			for wp := range jobs {
 				// Filtrar por metadatos antes de intentar descargar nada
-				if !c.isValidDimension(wp.Dimension) {
-					continue
-				}
 
 				thumbPath := filepath.Join(thumbDir, wp.ID+".jpg")
 
@@ -1616,7 +1629,7 @@ func (c *Controller) SyncFeed() (int, int, error) {
 				if err == nil {
 					// Validar Ratio antes de continuar
 					// When creating thumbnails, we only validate aspect ratio, not absolute resolution.
-					if valid, reason := c.isValidImage(width, height, false); !valid {
+					if valid, reason := c.isValidImage(width, height, false); !valid { // Solo validar aspect_ratio
 						utils.Log.Info("Rejected item %s: dimensions %dx%d do not match aspect ratio criteria. Reason: %s. Removing thumbnail.", wp.ID, width, height, reason)
 						os.Remove(thumbPath) // Limpiar thumbnail generado
 						continue
@@ -1627,6 +1640,11 @@ func (c *Controller) SyncFeed() (int, int, error) {
 					// Calcular Ratio si falta
 					if wp.Ratio == "" && width > 0 && height > 0 {
 						wp.Ratio = calculateRatio(width, height)
+					}
+
+					// Populate wp.Dimension with original dimensions if not already set by provider
+					if wp.Dimension == "" && width > 0 && height > 0 {
+						wp.Dimension = fmt.Sprintf("%dx%d", width, height)
 					}
 
 					if color, err := c.ColorManager.AnalyzeColor(thumbPath); err == nil {
@@ -1805,18 +1823,33 @@ func (c *Controller) LoadColorPalettes() ([]string, []string, error) {
 }
 
 func (c *Controller) isValidImage(width, height int, checkResolution bool) (bool, string) {
+	utils.Log.Debug("isValidImage: Checking image %dx%d. Parameter checkResolution=%t.", width, height, checkResolution)
 	if c.Config == nil {
+		utils.Log.Debug("isValidImage: Config is nil, returning true.")
 		return true, ""
 	}
 
+	utils.Log.Debug("isValidImage: Configured min_width=%d, min_height=%d, aspect_ratio='%s', tolerance=%.2f.",
+		c.Config.Search.MinWidth, c.Config.Search.MinHeight, c.Config.Search.AspectRatio, c.Config.Search.Tolerance)
+
+	// Check min_width and min_height only if checkResolution is true
 	if checkResolution && c.Config.Search.MinWidth > 0 && width < c.Config.Search.MinWidth {
+		utils.Log.Debug("isValidImage: Fails min_width check: %d < %d", width, c.Config.Search.MinWidth)
 		return false, fmt.Sprintf("width %d is less than min_width %d", width, c.Config.Search.MinWidth)
 	}
 	if checkResolution && c.Config.Search.MinHeight > 0 && height < c.Config.Search.MinHeight {
+		utils.Log.Debug("isValidImage: Fails min_height check: %d < %d", height, c.Config.Search.MinHeight)
 		return false, fmt.Sprintf("height %d is less than min_height %d", height, c.Config.Search.MinHeight)
 	}
 
+	// If height is 0, we cannot calculate aspect ratio. Treat as invalid.
+	if height == 0 {
+		utils.Log.Debug("isValidImage: Height is 0, cannot calculate aspect ratio.")
+		return false, "height is zero, cannot calculate aspect ratio"
+	}
+
 	if c.Config.Search.AspectRatio == "" {
+		utils.Log.Debug("isValidImage: AspectRatio not configured, skipping aspect ratio check.")
 		return true, ""
 	}
 
@@ -1829,54 +1862,64 @@ func (c *Controller) isValidImage(width, height int, checkResolution bool) (bool
 			w, err1 := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
 			h, err2 := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
 			if err1 == nil && err2 == nil && h != 0 {
+				utils.Log.Debug("isValidImage: Parsed target aspect ratio '%s' to %.2f (W/H).", target, w/h)
 				targetRatio = w / h
+			} else {
+				utils.Log.Debug("isValidImage: Error parsing target aspect ratio '%s': %v, %v. Returning true.", target, err1, err2)
+				return true, "malformed aspect ratio config" // Malformed aspect ratio config, assume valid
 			}
+		} else {
+			utils.Log.Debug("isValidImage: Malformed target aspect ratio string '%s'. Returning true.", target)
+			return true, "malformed aspect ratio config string" // Malformed aspect ratio config, assume valid
 		}
 	} else {
-		targetRatio, _ = strconv.ParseFloat(target, 64)
+		var err error
+		targetRatio, err = strconv.ParseFloat(target, 64)
+		if err != nil {
+			utils.Log.Debug("isValidImage: Error parsing target aspect ratio '%s': %v. Returning true.", target, err)
+			return true, "malformed aspect ratio config" // Malformed aspect ratio config, assume valid
+		}
+		utils.Log.Debug("isValidImage: Parsed target aspect ratio '%s' to %.2f.", target, targetRatio)
 	}
 
-	if targetRatio == 0 {
-		return true, ""
-	}
+	currentRatio := float64(width) / float64(height) // height is guaranteed > 0 here
+	diff := math.Abs(currentRatio - targetRatio)
 
-	if height == 0 {
-		return false, "height is zero"
-	}
-
-	currentRatio := float64(width) / float64(height)
-	diff := currentRatio - targetRatio
-	if diff < 0 {
-		diff = -diff
-	}
-
+	utils.Log.Debug("isValidImage: Checking %dx%d (current ratio %.2f) against target %.2f with tolerance %.2f.", width, height, currentRatio, targetRatio, c.Config.Search.Tolerance)
 	if diff > c.Config.Search.Tolerance {
+		utils.Log.Debug("isValidImage: %dx%d (ratio %.2f) fails aspect ratio check (target %.2f, tolerance %.2f).", width, height, currentRatio, targetRatio, c.Config.Search.Tolerance)
 		return false, fmt.Sprintf("aspect ratio %.2f is not within %.2f tolerance of %s", currentRatio, c.Config.Search.Tolerance, target)
 	}
-
+	utils.Log.Debug("isValidImage: %dx%d (ratio %.2f) passes aspect ratio check (target %.2f, tolerance %.2f).", width, height, currentRatio, targetRatio, c.Config.Search.Tolerance)
 	return true, ""
 }
 
 func (c *Controller) isValidDimension(dimension string) bool {
 	if c.Config == nil || dimension == "" {
+		utils.Log.Debug("isValidDimension: Config is nil or dimension is empty, returning true.")
 		return true // Si no hay datos, asumimos válido (ej. NASA a veces)
 	}
 	parts := strings.Split(dimension, "x")
 	if len(parts) != 2 {
+		utils.Log.Debug("isValidDimension: Dimension string '%s' malformed, returning true.", dimension)
 		return true
 	}
 	w, err1 := strconv.Atoi(strings.TrimSpace(parts[0]))
 	h, err2 := strconv.Atoi(strings.TrimSpace(parts[1]))
 	if err1 != nil || err2 != nil {
+		utils.Log.Debug("isValidDimension: Error parsing dimensions '%s' (w: %v, h: %v), returning true.", dimension, err1, err2)
 		return true
 	}
 
 	if c.Config.Search.MinWidth > 0 && w < c.Config.Search.MinWidth {
+		utils.Log.Debug("isValidDimension: %s (w=%d) fails min_width (%d).", dimension, w, c.Config.Search.MinWidth)
 		return false
 	}
 	if c.Config.Search.MinHeight > 0 && h < c.Config.Search.MinHeight {
+		utils.Log.Debug("isValidDimension: %s (h=%d) fails min_height (%d).", dimension, h, c.Config.Search.MinHeight)
 		return false
 	}
+	utils.Log.Debug("isValidDimension: %s passes initial dimension check.", dimension)
 	return true
 }
 
