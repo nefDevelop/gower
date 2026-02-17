@@ -81,11 +81,11 @@ func TestWallpaperDeleteFile(t *testing.T) {
 	// Add to feed
 	cfg, _ := loadConfig()
 	ctrl := core.NewController(cfg)
-	wp := models.Wallpaper{ID: "local_local_image.jpg", URL: localFilePath, Source: "local"}
+	wp := models.Wallpaper{ID: "local_image.jpg", URL: localFilePath, Source: "local"}
 	ctrl.AddWallpaperToFeed(wp)
 
 	// Execute delete with --file and --force (to avoid interactive prompt in test)
-	output, err := executeCommand(rootCmd, "wallpaper", "local_local_image.jpg", "--delete", "--file", "--force")
+	output, err := executeCommand(rootCmd, "wallpaper", "local_image.jpg", "--delete", "--file", "--force")
 	if err != nil {
 		t.Fatalf("Command failed: %v", err)
 	}

@@ -6,7 +6,13 @@ import (
 	"gower/internal/utils"
 	"gower/pkg/models"
 	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
 )
+
+// BingBaseURL es la URL base para la API de Bing Image of the Day.
+var BingBaseURL = "https://www.bing.com/HPImageArchive.aspx"
 
 type BingProvider struct {
 	Market string
@@ -32,12 +38,22 @@ func (p *BingProvider) Search(query string, opts SearchOptions) ([]models.Wallpa
 	if limit > 8 {
 		limit = 8
 	}
+	u, err := url.Parse(BingBaseURL)
+	if err != nil {
+		return nil, err
+	}
 
-	url := fmt.Sprintf("https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=%d&mkt=%s", limit, p.Market)
+	q := u.Query()
+	q.Set("format", "js")                   // Solicitar formato JSON
+	q.Set("idx", strconv.Itoa(opts.Page-1)) // idx=0 es hoy, idx=1 es ayer, etc.
+	q.Set("n", "1")                         // Solo queremos una imagen
+	q.Set("mkt", p.Market)
 
-	utils.Log.Debug("Bing fetching: %s", url)
+	u.RawQuery = q.Encode()
 
-	resp, err := http.Get(url)
+	utils.Log.Debug("Bing fetching: %s", u.String())
+
+	resp, err := http.Get(u.String())
 	if err != nil {
 		return nil, err
 	}
@@ -49,10 +65,11 @@ func (p *BingProvider) Search(query string, opts SearchOptions) ([]models.Wallpa
 
 	var result struct {
 		Images []struct {
-			Startdate string `json:"startdate"`
-			Url       string `json:"url"`
-			Title     string `json:"title"`
+			Hsh       string `json:"hsh"` // Hash único, bueno para ID
+			URL       string `json:"url"` // URL relativa de la imagen
+			URLBase   string `json:"urlbase"`
 			Copyright string `json:"copyright"`
+			Drk       int    `json:"drk"` // 1 si es oscuro, 0 si es claro (no siempre presente o fiable)
 		} `json:"images"`
 	}
 
@@ -61,22 +78,39 @@ func (p *BingProvider) Search(query string, opts SearchOptions) ([]models.Wallpa
 	}
 
 	var wallpapers []models.Wallpaper
-	for _, img := range result.Images {
-		fullURL := "https://www.bing.com" + img.Url
+	for _, item := range result.Images {
+		fullURL := "https://www.bing.com" + item.URL
 
-		id := "bg_" + img.Startdate
-		if opts.ExcludeIDs != nil && opts.ExcludeIDs[id] {
-			continue
+		// Intentar extraer la resolución de la URL
+		dimension := ""
+		if strings.Contains(item.URL, "_") && strings.Contains(item.URL, ".jpg") {
+			parts := strings.Split(item.URL, "_")
+			if len(parts) > 1 {
+				resPart := parts[len(parts)-1] // Última parte después del último '_'
+				if strings.Contains(resPart, "x") {
+					resPart = strings.Split(resPart, ".jpg")[0]                             // Eliminar .jpg
+					if _, err := strconv.Atoi(strings.Split(resPart, "x")[0]); err == nil { // Verificar que es un número
+						dimension = resPart
+					}
+				}
+			}
 		}
 
-		wallpapers = append(wallpapers, models.Wallpaper{
-			ID:        id,
+		wp := models.Wallpaper{
+			ID:        "bing_" + item.Hsh, // Usamos el hash como ID único
 			URL:       fullURL,
-			Thumbnail: fullURL,
+			Thumbnail: fullURL, // Usamos la misma URL para el thumbnail
 			Source:    "bing",
-			Title:     img.Title,
-		})
+			Dimension: dimension,
+			// El tema se determinará en el análisis de color
+		}
+		wallpapers = append(wallpapers, wp)
 	}
 
 	return wallpapers, nil
+}
+
+// GetCategories no es aplicable para Bing Image of the Day.
+func (p *BingProvider) GetCategories() []string {
+	return []string{}
 }

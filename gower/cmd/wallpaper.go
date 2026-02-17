@@ -23,7 +23,7 @@ var wallpaperCmd = &cobra.Command{
   gower wallpaper wh_12345
 
   # Delete from feed and disk
-  gower wallpaper local_image.jpg --delete --file`,
+  gower wallpaper image.jpg --delete --file`,
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := ensureConfig(); err != nil {
