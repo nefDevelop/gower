@@ -197,3 +197,70 @@ func TestExploreAllProviders(t *testing.T) {
 		t.Errorf("Expected to see generic_test being consulted, got: %s", output)
 	}
 }
+
+func TestExploreGenericProvider_404(t *testing.T) {
+	resetExploreFlags()
+	tmpDir := setupTestEnv(t)
+
+	// 1. Crear un mock server que devuelve 404
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprintln(w, "Not Found")
+	}))
+	defer server.Close()
+
+	// 2. Crear una configuración personalizada con un proveedor genérico
+	// que apunta al mock server que devuelve 404.
+	cfg := getDefaultConfig()
+	cfg.GenericProviders = []models.GenericProviderConfig{
+		{
+			Name:    "generic_404_test",
+			Enabled: true,
+			APIURL:  server.URL, // Apuntar al mock server 404
+			ResponseMapping: models.ResponseMapping{
+				ResultsPath: "images",
+				IDPath:      "id",
+				URLPath:     "url",
+			},
+		},
+	}
+	createTestConfig(t, tmpDir, &cfg)
+
+	// Crear el archivo de mapeo del parser, ya que GenericProvider depende de él.
+	var appConfigDir string
+	if runtime.GOOS == "windows" {
+		appConfigDir = filepath.Join(tmpDir, "gower")
+	} else {
+		appConfigDir = filepath.Join(tmpDir, ".config", "gower")
+	}
+	parserDir := filepath.Join(appConfigDir, "data", "parser")
+	if err := os.MkdirAll(parserDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	mapping := cfg.GenericProviders[0].ResponseMapping
+	data, _ := json.Marshal(mapping)
+	if err := os.WriteFile(filepath.Join(parserDir, "generic_404_test.json"), data, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	testRootCmd, _, _ := newTestRootCmd()
+
+	// 3. Ejecutar el comando.
+	// Esperamos un error del comando porque el proveedor no será encontrado/registrado.
+	output, err := executeCommand(testRootCmd, "explore", "--provider", "generic_404_test", "searchterm")
+	if err == nil {
+		t.Fatalf("Se esperaba un error al explorar un proveedor genérico 404, pero se obtuvo nil. Salida: %s", output)
+	}
+
+	// 4. Verificar que la salida indica que el proveedor fue omitido y que el comando falló
+	// porque no pudo encontrar el proveedor.
+	expectedProviderNotFoundMsg := "provider not found: generic_404_test"
+	if !strings.Contains(err.Error(), expectedProviderNotFoundMsg) {
+		t.Errorf("Se esperaba que el mensaje de error del comando contuviera '%s', se obtuvo: %v", expectedProviderNotFoundMsg, err)
+	}
+
+	expectedLogMsg := fmt.Sprintf("El proveedor genérico generic_404_test (URL: %s) devolvió 404 Not Found. Se omite el registro.", server.URL)
+	if !strings.Contains(output, expectedLogMsg) { // Los mensajes de log van a stderr, que es capturado por `output`
+		t.Errorf("Se esperaba que la salida contuviera el mensaje de log '%s', se obtuvo: %s", expectedLogMsg, output)
+	}
+}
