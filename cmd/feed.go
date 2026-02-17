@@ -145,21 +145,6 @@ var feedAnalyzeCmd = &cobra.Command{
 		controller := core.NewController(cfg)
 
 		cmd.Println("Analyzing feed items...")
-		progress := func(msg string) {
-			if !config.Quiet {
-				if strings.Contains(msg, "Error") {
-					cmd.Printf("  %s %s\n", colorize(symbolCross, colorRed), msg)
-				} else if strings.Contains(msg, "Downloading") {
-					cmd.Printf("  %s %s\n", colorize("⬇", colorCyan), msg)
-				} else if strings.Contains(msg, "Deleting") || strings.Contains(msg, "Removing") {
-					cmd.Printf("  %s %s\n", colorize("🗑", colorRed), msg)
-				} else if strings.Contains(msg, "Skipping") {
-					cmd.Printf("  %s %s\n", colorize("⏭", colorYellow), msg)
-				} else {
-					cmd.Printf("%s %s\n", colorize("::", colorBlue), msg)
-				}
-			}
-		}
 
 		if err := controller.AnalyzeFeed(feedAll, feedForce, progress); err != nil {
 			cmd.Printf("Error analyzing feed: %v\n", err)
@@ -260,15 +245,8 @@ var feedUpdateCmd = &cobra.Command{
 		}
 
 		// Después de sincronizar nuevos elementos, analiza todo el feed para asegurar que todos los elementos
-		// cumplen con los criterios actuales. Esto eliminará los elementos que ya no coincidan con
-		// aspect_ratio, min_width, etc., debido a cambios en la configuración.
 		cmd.Println("Analyzing entire feed for validity and consistency...")
-		analyzeProgress := func(msg string) {
-			if !config.Quiet {
-				cmd.Printf("%s %s\n", colorize("::", colorBlue), msg)
-			}
-		}
-		if err := controller.AnalyzeFeed(true, false, analyzeProgress); err != nil { // 'true' para todos, 'false' para forzar regeneración de miniaturas
+		if err := controller.AnalyzeFeed(true, false, progress); err != nil { // 'true' para todos, 'false' para forzar regeneración de miniaturas
 			cmd.Printf("Warning: Error during post-sync feed analysis: %v\n", err)
 		}
 
@@ -301,6 +279,23 @@ var feedGetColorsCmd = &cobra.Command{
 			}
 		}
 	},
+}
+
+// progress is a helper function to display formatted progress messages.
+func progress(msg string) {
+	if !config.Quiet {
+		if strings.Contains(msg, "Error") {
+			rootCmd.Printf("  %s %s\n", colorize(symbolCross, colorRed), msg)
+		} else if strings.Contains(msg, "Downloading") {
+			rootCmd.Printf("  %s %s\n", colorize("⬇", colorCyan), msg)
+		} else if strings.Contains(msg, "Deleting") || strings.Contains(msg, "Removing") {
+			rootCmd.Printf("  %s %s\n", colorize("🗑", colorRed), msg)
+		} else if strings.Contains(msg, "Skipping") {
+			rootCmd.Printf("  %s %s\n", colorize("⏭", colorYellow), msg)
+		} else {
+			rootCmd.Printf("%s %s\n", colorize("::", colorBlue), msg)
+		}
+	}
 }
 
 func init() {

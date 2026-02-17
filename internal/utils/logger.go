@@ -46,7 +46,14 @@ func InitLogger(debug bool) error {
 		return err
 	}
 
-	Log = NewLogger(file, debug)
+	var writers []io.Writer
+	writers = append(writers, file) // Siempre escribir al archivo
+
+	if debug {
+		writers = append(writers, os.Stdout) // También escribir a la consola si el modo depuración está activado
+	}
+
+	Log = NewLogger(io.MultiWriter(writers...), debug)
 	return nil
 }
 
