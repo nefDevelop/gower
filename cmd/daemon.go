@@ -6,12 +6,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
+	"strconv" // Import syscall for process signal check
 	"time"
 
 	"gower/internal/core"
 	"gower/internal/utils"
 	"gower/pkg/models"
+
+	"syscall"
 
 	"github.com/spf13/cobra"
 )
@@ -136,19 +138,46 @@ func getStopFilePath() string {
 func runDaemonStart(cmd *cobra.Command, args []string) {
 	if !daemonForeground {
 		pidFile := getPidFilePath()
-		if _, err := os.Stat(pidFile); err == nil {
+		// Check if PID file exists and if the process is actually running
+		if _, err := os.Stat(pidFile); err == nil { // PID file exists
 			if !config.Quiet {
-				cmd.Println("Daemon appears to be running (pid file exists). Use stop or force.")
+				cmd.Println("Checking for existing daemon process...")
 			}
-			return
+			// PID file exists, read PID
+			pidData, readErr := os.ReadFile(pidFile)
+			if readErr == nil {
+				pid, _ := strconv.Atoi(string(pidData))
+				if pid > 0 {
+					proc, findErr := os.FindProcess(pid)
+					if findErr == nil {
+						// Send signal 0 to check if process is alive
+						if err := proc.Signal(syscall.Signal(0)); err == nil {
+							// Process is running
+							if !config.Quiet {
+								cmd.Printf("Daemon is already running with PID %d.\n", pid)
+							}
+							return // Exit, daemon is already running
+						}
+					}
+				}
+			}
+			// If we reach here, PID file exists but process is not running or PID is invalid.
+			// Clean up the stale PID file.
+			os.Remove(pidFile)
+			utils.Log.Info("Removed stale PID file: %s", pidFile)
+			if !config.Quiet {
+				cmd.Println("Found stale PID file, removed it. Attempting to start daemon.")
+			}
 		}
 
+		// Start the daemon in the background
 		exe, err := os.Executable()
 		if err != nil {
 			cmd.Printf("Error getting executable: %v\n", err)
 			return
 		}
-
+		// Pass --foreground to the child process so it runs in foreground mode
+		// and doesn't try to fork again.
 		procArgs := append(os.Args[1:], "--foreground")
 		command := exec.Command(exe, procArgs...)
 
@@ -162,19 +191,45 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 		return
 	}
 
+	// This block runs when --foreground is true (i.e., the background process itself)
 	pidFile := getPidFilePath()
-	if _, err := os.Stat(pidFile); err == nil {
+	// Double check if PID file exists and process is running, in case of race condition
+	if _, err := os.Stat(pidFile); err == nil { // PID file exists
 		if !config.Quiet {
-			cmd.Println("Daemon appears to be running (pid file exists). Use stop or force.")
+			cmd.Println("Checking for existing daemon process in foreground mode...")
 		}
-		return
+		pid := os.Getpid()
+		pidData, readErr := os.ReadFile(pidFile)
+		if readErr == nil {
+			existingPid, _ := strconv.Atoi(string(pidData))
+			if existingPid > 0 && existingPid != pid { // If PID file points to a different running process
+				proc, findErr := os.FindProcess(existingPid)
+				if findErr == nil {
+					if err := proc.Signal(syscall.Signal(0)); err == nil {
+						// Another daemon is already running, this is a duplicate foreground start
+						if !config.Quiet {
+							cmd.Printf("Another daemon is already running with PID %d. Exiting foreground start.\n", existingPid)
+						}
+						return
+					}
+				}
+			}
+		}
+		// If PID file exists but process is not running, or it was our own stale PID, remove it.
+		os.Remove(pidFile)
 	}
 
 	pid := os.Getpid()
-	os.WriteFile(pidFile, []byte(strconv.Itoa(pid)), 0644)
-	defer os.Remove(pidFile)
+	if err := os.WriteFile(pidFile, []byte(strconv.Itoa(pid)), 0644); err != nil {
+		cmd.Printf("Error writing PID file: %v\n", err)
+		return
+	}
+	defer func() {
+		os.Remove(pidFile) // Ensure PID file is removed on daemon exit
+		utils.Log.Info("Daemon stopped, PID file removed.")
+	}()
 
-	if !config.Quiet {
+	if !config.Quiet { // This message is for the foreground process itself
 		cmd.Printf("Daemon started with PID %d\n", pid)
 	}
 	utils.Log.Info("Daemon started with PID %d", pid)
