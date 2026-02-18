@@ -39,7 +39,7 @@ func TestBingProvider_Search(t *testing.T) {
 				}
 			]
 		}`
-		fmt.Fprintln(w, response)
+		_, _ = fmt.Fprintln(w, response)
 	}))
 	defer server.Close()
 

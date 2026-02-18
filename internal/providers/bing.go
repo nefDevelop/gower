@@ -46,7 +46,7 @@ func (p *BingProvider) Search(query string, opts SearchOptions) ([]models.Wallpa
 	q := u.Query()
 	q.Set("format", "js")                   // Solicitar formato JSON
 	q.Set("idx", strconv.Itoa(opts.Page-1)) // idx=0 es hoy, idx=1 es ayer, etc.
-	q.Set("n", "1")                         // Solo queremos una imagen
+	q.Set("n", strconv.Itoa(limit))         // Solicitar up to limit imágenes
 	q.Set("mkt", p.Market)
 
 	u.RawQuery = q.Encode()
@@ -57,7 +57,7 @@ func (p *BingProvider) Search(query string, opts SearchOptions) ([]models.Wallpa
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("bing api returned status: %d", resp.StatusCode)

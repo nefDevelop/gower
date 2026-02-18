@@ -71,7 +71,7 @@ func (cm *ColorManager) GenerateThumbnail(src, destPath string) (int, int, error
 		if errGet != nil {
 			return 0, 0, errGet
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != http.StatusOK {
 			return 0, 0, fmt.Errorf("failed to download image: %d", resp.StatusCode)
 		}
@@ -81,7 +81,7 @@ func (cm *ColorManager) GenerateThumbnail(src, destPath string) (int, int, error
 		if errOpen != nil {
 			return 0, 0, errOpen
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 		img, _, err = image.Decode(file)
 	}
 
@@ -116,7 +116,7 @@ func (cm *ColorManager) GenerateThumbnail(src, destPath string) (int, int, error
 	if err != nil {
 		return 0, 0, err
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 
 	return bounds.Dx(), bounds.Dy(), jpeg.Encode(out, dst, &jpeg.Options{Quality: 80})
 }
@@ -127,7 +127,7 @@ func (cm *ColorManager) GetImageDimensions(path string) (int, int, error) {
 	if err != nil {
 		return 0, 0, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	cfg, _, err := image.DecodeConfig(file)
 	if err != nil {
@@ -149,7 +149,7 @@ func (cm *ColorManager) AnalyzeColor(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	img, _, err := image.Decode(file)
 	if err != nil {
@@ -261,7 +261,6 @@ func (cm *ColorManager) GenerateDynamicPalette(colors []string, k int) []string 
 	}
 
 	// Initialize Centroids (Randomly pick k points)
-	rand.Seed(time.Now().UnixNano())
 	centroids := make([]Point, k)
 	perm := rand.Perm(len(points))
 	for i := 0; i < k; i++ {
@@ -275,7 +274,10 @@ func (cm *ColorManager) GenerateDynamicPalette(colors []string, k int) []string 
 			minDist := math.MaxFloat64
 			idx := 0
 			for i, c := range centroids {
-				dist := math.Sqrt(math.Pow(p.R-c.R, 2) + math.Pow(p.G-c.G, 2) + math.Pow(p.B-c.B, 2))
+				dx := p.R - c.R
+				dy := p.G - c.G
+				dz := p.B - c.B
+				dist := math.Sqrt(dx*dx + dy*dy + dz*dz)
 				if dist < minDist {
 					minDist = dist
 					idx = i

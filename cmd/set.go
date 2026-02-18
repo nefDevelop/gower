@@ -6,7 +6,6 @@ import (
 	"math/rand"
 	"os/exec"
 	"strings"
-	"time"
 
 	"gower/internal/core"
 	"gower/pkg/models"
@@ -150,7 +149,7 @@ func runSet(cmd *cobra.Command, args []string) error {
 			}
 		}
 		if !found {
-			return fmt.Errorf("monitor '%s' not found. Use 'gower status --monitors' to see available monitors.", setTargetMonitor)
+			return fmt.Errorf("monitor '%s' not found. Use 'gower status --monitors' to see available monitors", setTargetMonitor)
 		}
 	} else {
 		// If no target monitor is specified, pass an empty slice, which applyWallpapers will interpret as "all"
@@ -184,7 +183,7 @@ func runSetRandom(cmd *cobra.Command, args []string) error {
 	}
 
 	var wallpapers []models.Wallpaper
-	var numWallpapers int = 1 // Default to 1 wallpaper
+	var numWallpapers = 1 // Default to 1 wallpaper
 	var monitors []core.Monitor
 	var targetMonitorIndex = -1
 
@@ -210,7 +209,7 @@ func runSetRandom(cmd *cobra.Command, args []string) error {
 			}
 		}
 		if !found {
-			return fmt.Errorf("monitor '%s' not found. Use 'gower status --monitors' to see available monitors.", setTargetMonitor)
+			return fmt.Errorf("monitor '%s' not found. Use 'gower status --monitors' to see available monitors", setTargetMonitor)
 		}
 	} else if mmMode == "distinct" {
 		respectDark := true
@@ -243,7 +242,6 @@ func runSetRandom(cmd *cobra.Command, args []string) error {
 			if len(favorites) == 0 {
 				return fmt.Errorf("no favorites found")
 			}
-			rand.Seed(time.Now().UnixNano() + int64(i)) // Seed with i to get different randoms
 			fav := favorites[rand.Intn(len(favorites))]
 			wallpaper = fav.Wallpaper
 		} else {
@@ -333,7 +331,7 @@ func applyWallpapers(cmd *cobra.Command, controller *core.Controller, wallpapers
 		if len(localPaths) > 1 {
 			cmd.Printf("Warning: Custom command is used with multiple wallpapers. Only the first wallpaper will be passed to the command.\n")
 		}
-		finalCmd := strings.Replace(customCmdTpl, "%s", localPaths[0], -1)
+		finalCmd := strings.ReplaceAll(customCmdTpl, "%s", localPaths[0])
 		if !config.Quiet {
 			cmd.Printf("Running custom command: %s\n", finalCmd)
 		}

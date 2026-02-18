@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -119,7 +118,7 @@ var configProviderAddCmd = &cobra.Command{
 
 		parserFile := filepath.Join(parserDir, name+".json")
 		data, _ := json.MarshalIndent(mapping, "", "  ")
-		if err := ioutil.WriteFile(parserFile, data, 0644); err != nil {
+		if err := os.WriteFile(parserFile, data, 0644); err != nil {
 			cmd.Printf("Warning: Could not save parser config: %v\n", err)
 		}
 

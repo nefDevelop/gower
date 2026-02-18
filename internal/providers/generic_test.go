@@ -11,7 +11,7 @@ import (
 func TestGenericProvider_Search(t *testing.T) {
 	// Mock server
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, `{"results": [{"id": "123", "url": "http://example.com/img.jpg"}]}`)
+		_, _ = fmt.Fprintln(w, `{"results": [{"id": "123", "url": "http://example.com/img.jpg"}]}`)
 	}))
 	defer ts.Close()
 

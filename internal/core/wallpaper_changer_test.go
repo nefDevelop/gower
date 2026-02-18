@@ -32,17 +32,17 @@ func TestDetectDesktopEnv(t *testing.T) {
 
 	// Save original env var
 	originalEnv := os.Getenv("XDG_CURRENT_DESKTOP")
-	defer os.Setenv("XDG_CURRENT_DESKTOP", originalEnv)
+	defer func() { _ = os.Setenv("XDG_CURRENT_DESKTOP", originalEnv) }()
 
 	// Test GNOME
-	os.Setenv("XDG_CURRENT_DESKTOP", "GNOME")
+	_ = os.Setenv("XDG_CURRENT_DESKTOP", "GNOME")
 	env := DetectDesktopEnv()
 	if !strings.Contains(env, "gnome") {
 		t.Errorf("Expected to detect 'gnome', got '%s'", env)
 	}
 
 	// Test KDE
-	os.Setenv("XDG_CURRENT_DESKTOP", "KDE")
+	_ = os.Setenv("XDG_CURRENT_DESKTOP", "KDE")
 	env = DetectDesktopEnv()
 	if !strings.Contains(env, "kde") {
 		t.Errorf("Expected to detect 'kde', got '%s'", env)
@@ -59,7 +59,7 @@ func TestSetWallpaper(t *testing.T) {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
 	defer os.Remove(tmpfile.Name())
-	tmpfile.Close()
+	_ = tmpfile.Close()
 
 	testCases := []string{"kde", "gnome", "feh", "nitrogen", "sway", "niri", "dms", "swww", "awww", "unsupported"}
 

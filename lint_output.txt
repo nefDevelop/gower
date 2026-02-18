@@ -1,0 +1,135 @@
+cmd/blacklist.go:20:15: Error return value is not checked (errcheck)
+		ensureConfig()
+		            ^
+cmd/blacklist.go:56:15: Error return value is not checked (errcheck)
+		ensureConfig()
+		            ^
+cmd/blacklist.go:86:15: Error return value is not checked (errcheck)
+		ensureConfig()
+		            ^
+cmd/blacklist_test.go:12:20: Error return value of `os.RemoveAll` is not checked (errcheck)
+	defer os.RemoveAll(tmpDir)
+	                  ^
+cmd/cache_test.go:19:20: Error return value of `os.RemoveAll` is not checked (errcheck)
+	defer os.RemoveAll(tmpDir)
+	                  ^
+cmd/cache_test.go:30:13: Error return value of `os.MkdirAll` is not checked (errcheck)
+	os.MkdirAll(wallpapersDir, 0755)
+	           ^
+cmd/cache_test.go:31:13: Error return value of `os.MkdirAll` is not checked (errcheck)
+	os.MkdirAll(thumbsDir, 0755)
+	           ^
+cmd/cache_test.go:68:20: Error return value of `os.RemoveAll` is not checked (errcheck)
+	defer os.RemoveAll(tmpDir)
+	                  ^
+cmd/cache_test.go:77:13: Error return value of `os.MkdirAll` is not checked (errcheck)
+	os.MkdirAll(wallpapersDir, 0755)
+	           ^
+cmd/cache_test.go:118:25: Error return value of `ctrl.AddWallpaperToFeed` is not checked (errcheck)
+	ctrl.AddWallpaperToFeed(wpInFeed)
+	                       ^
+cmd/cache_test.go:127:14: Error return value of `os.WriteFile` is not checked (errcheck)
+	os.WriteFile(filepath.Join(wallpapersDir, "keep_me.jpg"), []byte("data"), 0644)
+	            ^
+cmd/cache_test.go:128:14: Error return value of `os.WriteFile` is not checked (errcheck)
+	os.WriteFile(filepath.Join(wallpapersDir, "delete_me.jpg"), []byte("data"), 0644)
+	            ^
+cmd/cache_test.go:129:14: Error return value of `os.WriteFile` is not checked (errcheck)
+	os.WriteFile(filepath.Join(thumbsDir, "keep_me.jpg"), []byte("data"), 0644)
+	            ^
+cmd/daemon.go:165:13: Error return value of `os.Remove` is not checked (errcheck)
+			os.Remove(pidFile)
+			         ^
+cmd/daemon.go:218:12: Error return value of `os.Remove` is not checked (errcheck)
+		os.Remove(pidFile)
+		         ^
+cmd/daemon.go:227:12: Error return value of `os.Remove` is not checked (errcheck)
+		os.Remove(pidFile) // Ensure PID file is removed on daemon exit
+		         ^
+cmd/daemon.go:487:10: Error return value of `f.Close` is not checked (errcheck)
+		f.Close()
+		       ^
+cmd/daemon_test.go:37:20: Error return value of `cmd.Process.Kill` is not checked (errcheck)
+			cmd.Process.Kill()
+			                ^
+cmd/daemon_test.go:70:20: Error return value of `cmd.Process.Kill` is not checked (errcheck)
+			cmd.Process.Kill()
+			                ^
+cmd/download.go:137:18: Error return value of `src.Close` is not checked (errcheck)
+		defer src.Close()
+		               ^
+cmd/download.go:164:18: Error return value of `dst.Close` is not checked (errcheck)
+		defer dst.Close()
+		               ^
+cmd/download_test.go:31:10: Error return value of `w.Write` is not checked (errcheck)
+		w.Write([]byte("fake image content"))
+		       ^
+cmd/download_test.go:39:25: Error return value of `ctrl.AddWallpaperToFeed` is not checked (errcheck)
+	ctrl.AddWallpaperToFeed(models.Wallpaper{
+	                       ^
+cmd/feed.go:378:14: Error return value of `fmt.Fprintln` is not checked (errcheck)
+	fmt.Fprintln(w, "ID\tRES\tTHEME\tSOURCE\tSEEN")
+	            ^
+cmd/set_monitor_test.go:77:11: Error return value of `os.Setenv` is not checked (errcheck)
+	os.Setenv("HOME", tmpDir)
+	         ^
+cmd/set_monitor_test.go:131:12: Error return value of `os.Setenv` is not checked (errcheck)
+		os.Setenv("HOME", originalHome)
+		         ^
+cmd/set_monitor_test.go:153:10: Error return value of `w.Write` is not checked (errcheck)
+		w.Write([]byte{
+		       ^
+cmd/set_monitor_test.go:169:46: Error return value of `mockController.Controller.AddWallpaperToFeed` is not checked (errcheck)
+	mockController.Controller.AddWallpaperToFeed(testWallpaper)
+	                                            ^
+cmd/set_monitor_test.go:215:46: Error return value of `mockController.Controller.AddWallpaperToFeed` is not checked (errcheck)
+	mockController.Controller.AddWallpaperToFeed(testWallpaper)
+	                                            ^
+cmd/set_monitor_test.go:244:10: Error return value of `w.Write` is not checked (errcheck)
+		w.Write([]byte{
+		       ^
+cmd/set_test.go:43:25: Error return value of `ctrl.AddWallpaperToFeed` is not checked (errcheck)
+	ctrl.AddWallpaperToFeed(wp)
+	                       ^
+cmd/set_test.go:105:11: Error return value of `os.Setenv` is not checked (errcheck)
+	os.Setenv("HOME", tempDir)
+	         ^
+cmd/status.go:156:15: Error return value of `fmt.Fprintf` is not checked (errcheck)
+			fmt.Fprintf(w, "  %s:\t%s\n", dep, status)
+			           ^
+cmd/status.go:169:14: Error return value of `fmt.Fprintf` is not checked (errcheck)
+		fmt.Fprintf(w, "Status:\t%s\n", state)
+		           ^
+cmd/status.go:178:15: Error return value of `fmt.Fprintf` is not checked (errcheck)
+			fmt.Fprintf(w, "Monitor %d ID:\t%s\n", i+1, wp.ID)
+			           ^
+cmd/status_test.go:99:46: Error return value of `mockController.Controller.AddWallpaperToFeed` is not checked (errcheck)
+	mockController.Controller.AddWallpaperToFeed(*mockController.MockWallpapers["wall_1"])
+	                                            ^
+cmd/wallpaper.go:54:15: Error return value of `fmt.Scanln` is not checked (errcheck)
+				fmt.Scanln(&confirm)
+				          ^
+internal/providers/bing.go:60:23: Error return value of `resp.Body.Close` is not checked (errcheck)
+	defer resp.Body.Close()
+	                     ^
+internal/providers/generic.go:34:23: Error return value of `resp.Body.Close` is not checked (errcheck)
+	defer resp.Body.Close()
+	                     ^
+internal/providers/nasa.go:56:23: Error return value of `resp.Body.Close` is not checked (errcheck)
+	defer resp.Body.Close()
+	                     ^
+internal/providers/reddit_test.go:86:15: Error return value of `fmt.Fprintln` is not checked (errcheck)
+		fmt.Fprintln(w, response)
+		            ^
+cmd/set_monitor_test.go:259:21: QF1008: could remove embedded field "Controller" from selector (staticcheck)
+	_ = mockController.Controller.AddWallpaperToFeed(mockController.MockRandomWallpaper)
+	                   ^
+cmd/set_monitor_test.go:264:21: QF1008: could remove embedded field "Controller" from selector (staticcheck)
+	_ = mockController.Controller.AddWallpaperToFeed(wp2)
+	                   ^
+cmd/storage_test.go:4:2: SA1019: "io/ioutil" has been deprecated since Go 1.19: As of Go 1.16, the same functionality is now provided by package [io] or package [os], and those implementations should be preferred in new code. See the specific function documentation for details. (staticcheck)
+	"io/ioutil"
+	^
+44 issues:
+* errcheck: 41
+* staticcheck: 3

@@ -45,12 +45,12 @@ func TestInitLogger_FileCreation(t *testing.T) {
 	// We keep it to ensure the production code path works.
 	tmpDir, err := os.MkdirTemp("", "gower-logger-init-test")
 	assert.NoError(t, err)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Temporarily override user home directory
 	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", originalHome)
+	_ = os.Setenv("HOME", tmpDir)
+	defer func() { _ = os.Setenv("HOME", originalHome) }()
 
 	// Reset global logger after test
 	defer func() { Log = nil }()

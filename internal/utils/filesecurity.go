@@ -82,14 +82,14 @@ func (m *SecureJSONManager) atomicWrite(filePath string, data []byte) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmpFile.Name()) // Clean up if something goes wrong before rename
+	defer func() { _ = os.Remove(tmpFile.Name()) }() // Clean up if something goes wrong before rename
 
 	if _, err := tmpFile.Write(data); err != nil {
-		tmpFile.Close()
+		_ = tmpFile.Close()
 		return err
 	}
 	if err := tmpFile.Sync(); err != nil {
-		tmpFile.Close()
+		_ = tmpFile.Close()
 		return err
 	}
 	if err := tmpFile.Close(); err != nil {

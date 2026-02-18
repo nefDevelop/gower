@@ -214,7 +214,7 @@ var favoritesAddCmd = &cobra.Command{
 		}
 
 		if cfg, err := loadConfig(); err == nil {
-			core.NewController(cfg).RebuildColorIndex()
+			_ = core.NewController(cfg).RebuildColorIndex()
 		}
 
 		cmd.Printf("Wallpaper %s added to favorites list.\n", wallpaperID)
@@ -258,7 +258,7 @@ var favoritesRemoveCmd = &cobra.Command{
 		}
 
 		if cfg, err := loadConfig(); err == nil {
-			core.NewController(cfg).RebuildColorIndex()
+			_ = core.NewController(cfg).RebuildColorIndex()
 		}
 
 		cmd.Printf("Wallpaper %s removed from favorites.\n", wallpaperID)
@@ -437,13 +437,13 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer sourceFile.Close()
+	defer func() { _ = sourceFile.Close() }()
 
 	destFile, err := os.Create(dst)
 	if err != nil {
 		return err
 	}
-	defer destFile.Close()
+	defer func() { _ = destFile.Close() }()
 
 	_, err = io.Copy(destFile, sourceFile)
 	return err
@@ -454,13 +454,13 @@ func downloadFile(url, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	out, err := os.Create(dst)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 
 	_, err = io.Copy(out, resp.Body)
 	return err

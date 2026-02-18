@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
@@ -57,11 +56,11 @@ var exportAllCmd = &cobra.Command{
 
 		// Export Config
 		configPath, _ := getConfigPath()
-		configData, err := ioutil.ReadFile(configPath)
+		configData, err := os.ReadFile(configPath)
 		if err != nil {
 			cmd.Printf("Warning: Could not read config.json: %v\n", err)
 		} else {
-			if err := ioutil.WriteFile(filepath.Join(destDir, "config.json"), configData, 0644); err != nil {
+			if err := os.WriteFile(filepath.Join(destDir, "config.json"), configData, 0644); err != nil {
 				cmd.Printf("Error exporting config.json: %v\n", err)
 			} else {
 				cmd.Printf("Exported config.json to %s\n", filepath.Join(destDir, "config.json"))
@@ -70,11 +69,11 @@ var exportAllCmd = &cobra.Command{
 
 		// Export Favorites
 		favoritesPath, _ := getFavoritesPath()
-		favoritesData, err := ioutil.ReadFile(favoritesPath)
+		favoritesData, err := os.ReadFile(favoritesPath)
 		if err != nil {
 			cmd.Printf("Warning: Could not read favorites.json: %v\n", err)
 		} else {
-			if err := ioutil.WriteFile(filepath.Join(destDir, "favorites.json"), favoritesData, 0644); err != nil {
+			if err := os.WriteFile(filepath.Join(destDir, "favorites.json"), favoritesData, 0644); err != nil {
 				cmd.Printf("Error exporting favorites.json: %v\n", err)
 			} else {
 				cmd.Printf("Exported favorites.json to %s\n", filepath.Join(destDir, "favorites.json"))
@@ -97,7 +96,7 @@ var exportAllCmd = &cobra.Command{
 			if err != nil {
 				cmd.Printf("Error marshalling feed data: %v\n", err)
 			} else {
-				if err := ioutil.WriteFile(filepath.Join(destDir, "feed.json"), feedData, 0644); err != nil {
+				if err := os.WriteFile(filepath.Join(destDir, "feed.json"), feedData, 0644); err != nil {
 					cmd.Printf("Error exporting feed.json: %v\n", err)
 				} else {
 					cmd.Printf("Exported feed.json to %s\n", filepath.Join(destDir, "feed.json"))
@@ -116,14 +115,14 @@ var exportConfigCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		ensureConfig()
 		configPath, _ := getConfigPath()
-		data, err := ioutil.ReadFile(configPath)
+		data, err := os.ReadFile(configPath)
 		if err != nil {
 			cmd.Printf("Error reading configuration: %v\n", err)
 			return
 		}
 
 		if exportFile != "" {
-			if err := ioutil.WriteFile(exportFile, data, 0644); err != nil {
+			if err := os.WriteFile(exportFile, data, 0644); err != nil {
 				cmd.Printf("Error exporting config to %s: %v\n", exportFile, err)
 				return
 			}
@@ -159,7 +158,7 @@ var exportFeedCmd = &cobra.Command{
 		}
 
 		if exportFile != "" {
-			if err := ioutil.WriteFile(exportFile, data, 0644); err != nil {
+			if err := os.WriteFile(exportFile, data, 0644); err != nil {
 				cmd.Printf("Error exporting feed to %s: %v\n", exportFile, err)
 				return
 			}
@@ -189,7 +188,7 @@ var exportFavoritesCmd = &cobra.Command{
 		}
 
 		if exportFile != "" {
-			if err := ioutil.WriteFile(exportFile, data, 0644); err != nil {
+			if err := os.WriteFile(exportFile, data, 0644); err != nil {
 				cmd.Printf("Error exporting favorites to %s: %v\n", exportFile, err)
 				return
 			}
@@ -205,17 +204,17 @@ func exportAllToZip(cmd *cobra.Command, filename string, includeImages bool) err
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	w := zip.NewWriter(f)
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	// Helper to add file
 	addFile := func(srcPath, zipName string) {
 		if srcPath == "" {
 			return
 		}
-		data, err := ioutil.ReadFile(srcPath)
+		data, err := os.ReadFile(srcPath)
 		if err != nil {
 			cmd.Printf("Warning: Could not read %s for zip: %v\n", srcPath, err)
 			return
@@ -225,7 +224,7 @@ func exportAllToZip(cmd *cobra.Command, filename string, includeImages bool) err
 			cmd.Printf("Warning: Could not create zip entry %s: %v\n", zipName, err)
 			return
 		}
-		zf.Write(data)
+		_, _ = zf.Write(data)
 	}
 
 	// Config
@@ -244,7 +243,7 @@ func exportAllToZip(cmd *cobra.Command, filename string, includeImages bool) err
 	if includeImages {
 		appDir, _ := core.GetAppDir()
 		cacheDir := filepath.Join(appDir, "cache", "wallpapers")
-		filepath.Walk(cacheDir, func(path string, info os.FileInfo, err error) error {
+		_ = filepath.Walk(cacheDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil || info.IsDir() {
 				return nil
 			}
@@ -258,7 +257,7 @@ func exportAllToZip(cmd *cobra.Command, filename string, includeImages bool) err
 			if err != nil {
 				return nil
 			}
-			defer srcFile.Close()
+			defer func() { _ = srcFile.Close() }()
 
 			// Create zip entry
 			zipPath := filepath.Join("images", rel)
@@ -266,7 +265,7 @@ func exportAllToZip(cmd *cobra.Command, filename string, includeImages bool) err
 			if err != nil {
 				return nil
 			}
-			io.Copy(zf, srcFile)
+			_, _ = io.Copy(zf, srcFile)
 			return nil
 		})
 	}

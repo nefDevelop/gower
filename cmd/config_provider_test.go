@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -82,7 +81,7 @@ func TestConfigProviderGenericAddAndRemove(t *testing.T) {
 		t.Errorf("Parser file not created at %s", parserPath)
 	}
 
-	data, err := ioutil.ReadFile(parserPath)
+	data, err := os.ReadFile(parserPath)
 	if err != nil {
 		t.Fatalf("Error reading parser file: %v", err)
 	}
@@ -137,7 +136,7 @@ func TestConfigProviderReddit(t *testing.T) {
 	// Test Add with Sort
 	subWithSort := "wallpapers"
 	sort := "top"
-	output, err = executeCommand(rootCmd, "config", "provider", "reddit", "add", subWithSort, sort)
+	_, err = executeCommand(rootCmd, "config", "provider", "reddit", "add", subWithSort, sort)
 	if err != nil {
 		t.Fatalf("Error executing reddit add with sort: %v", err)
 	}
@@ -169,7 +168,7 @@ func TestConfigProviderReddit(t *testing.T) {
 	}
 
 	// Test Global Sort
-	output, err = executeCommand(rootCmd, "config", "provider", "reddit", "sort", "new")
+	_, err = executeCommand(rootCmd, "config", "provider", "reddit", "sort", "new")
 	if err != nil {
 		t.Fatalf("Error executing reddit sort: %v", err)
 	}

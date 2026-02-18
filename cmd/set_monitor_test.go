@@ -74,7 +74,7 @@ func setupMocks(t *testing.T) (*MockSetController, *MockSetWallpaperChanger) {
 		t.Fatal(err)
 	}
 	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
+	_ = os.Setenv("HOME", tmpDir)
 
 	// Create config file
 	configDir := filepath.Join(tmpDir, ".gower")
@@ -128,7 +128,7 @@ func setupMocks(t *testing.T) (*MockSetController, *MockSetWallpaperChanger) {
 		loadState = originalLoadState
 		saveState = originalSaveState
 		// Reset flags
-		os.Setenv("HOME", originalHome)
+		_ = os.Setenv("HOME", originalHome)
 		os.RemoveAll(tmpDir)
 		setID = ""
 		setURL = ""
@@ -150,7 +150,7 @@ func TestSetTargetMonitor(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		// Return a 1x1 pixel PNG
-		w.Write([]byte{
+		_, _ = w.Write([]byte{
 			0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
 			0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
 			0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00,
@@ -166,7 +166,7 @@ func TestSetTargetMonitor(t *testing.T) {
 	mockController.MockWallpaper = &testWallpaper
 
 	// Add wallpaper to feed so GetWallpaper finds it
-	mockController.Controller.AddWallpaperToFeed(testWallpaper)
+	_ = mockController.AddWallpaperToFeed(testWallpaper)
 
 	// Mock monitors
 	mockChanger.MockMonitors = []core.Monitor{
@@ -192,7 +192,7 @@ func TestSetTargetMonitor(t *testing.T) {
 
 	call := mockChanger.SetWallpapersCalls[0]
 	// The real DownloadWallpaper will be called, so we expect the cache path
-	expectedPath, _ := mockController.Controller.GetWallpaperLocalPath(testWallpaper)
+	expectedPath, _ := mockController.GetWallpaperLocalPath(testWallpaper)
 	if len(call.Paths) != 1 || call.Paths[0] != expectedPath {
 		t.Errorf("SetWallpapers called with incorrect paths. Expected %s, got %v", expectedPath, call.Paths)
 	}
@@ -212,7 +212,7 @@ func TestSetTargetMonitorNotFound(t *testing.T) {
 	mockController.MockWallpaper = &testWallpaper
 
 	// Add to feed
-	mockController.Controller.AddWallpaperToFeed(testWallpaper)
+	_ = mockController.AddWallpaperToFeed(testWallpaper)
 
 	// Mock monitors
 	mockChanger.MockMonitors = []core.Monitor{
@@ -241,7 +241,7 @@ func TestSetDistinctRandomMultiMonitor(t *testing.T) {
 	// Mock server for image download
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte{
+		_, _ = w.Write([]byte{
 			0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
 			0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
 			0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00,
@@ -256,12 +256,12 @@ func TestSetDistinctRandomMultiMonitor(t *testing.T) {
 	mockController.MockRandomWallpaper = models.Wallpaper{ID: "random_id_1", URL: server.URL + "/rand1.jpg", Source: "test"}
 
 	// Add random wallpapers to feed so GetRandomFromFeed finds them
-	mockController.Controller.AddWallpaperToFeed(mockController.MockRandomWallpaper)
+	_ = mockController.AddWallpaperToFeed(mockController.MockRandomWallpaper)
 	// Add a second one for the second monitor
 	wp2 := mockController.MockRandomWallpaper
 	wp2.ID = "random_id_2"
 	wp2.URL = server.URL + "/rand2.jpg"
-	mockController.Controller.AddWallpaperToFeed(wp2)
+	_ = mockController.AddWallpaperToFeed(wp2)
 
 	// Mock monitors
 	mockChanger.MockMonitors = []core.Monitor{

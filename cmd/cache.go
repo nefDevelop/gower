@@ -31,8 +31,12 @@ var cacheCleanCmd = &cobra.Command{
 			return
 		}
 		// Recreate structure
-		os.MkdirAll(filepath.Join(cacheDir, "wallpapers"), 0755)
-		os.MkdirAll(filepath.Join(cacheDir, "thumbs"), 0755)
+		if err := os.MkdirAll(filepath.Join(cacheDir, "wallpapers"), 0755); err != nil {
+			cmd.Printf("Error recreating wallpapers cache: %v\n", err)
+		}
+		if err := os.MkdirAll(filepath.Join(cacheDir, "thumbs"), 0755); err != nil {
+			cmd.Printf("Error recreating thumbs cache: %v\n", err)
+		}
 
 		if !config.Quiet {
 			cmd.Println("Cache cleaned successfully.")

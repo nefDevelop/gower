@@ -18,7 +18,7 @@ func TestSecureJSONManager_WriteAndRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	manager := NewSecureJSONManager()
 	filePath := filepath.Join(tmpDir, "test.json")
@@ -49,7 +49,7 @@ func TestSecureJSONManager_Backup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	manager := NewSecureJSONManager()
 	// Force backup on every write for testing
@@ -92,7 +92,7 @@ func TestSecureJSONManager_RestoreFromBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	manager := NewSecureJSONManager()
 	filePath := filepath.Join(tmpDir, "test.json")
@@ -132,7 +132,7 @@ func TestSecureJSONManager_CorruptBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	manager := NewSecureJSONManager()
 	filePath := filepath.Join(tmpDir, "test.json")

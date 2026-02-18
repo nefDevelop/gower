@@ -67,7 +67,7 @@ var daemonPauseCmd = &cobra.Command{
 		if f, err := os.Create(pauseFile); err != nil {
 			cmd.Printf("Error creating pause signal: %v\n", err)
 		} else {
-			f.Close()
+			_ = f.Close()
 			if !config.Quiet {
 				cmd.Println("Daemon pause signal sent.")
 			}
@@ -115,9 +115,8 @@ func init() {
 	daemonStatusCmd.Flags().BoolVar(&daemonJSON, "json", false, "Output in JSON")
 }
 
-// init initializes the random seed once
+// init initializes randomness
 func init() {
-	rand.Seed(time.Now().UnixNano())
 }
 
 func getPidFilePath() string {
@@ -163,7 +162,7 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 			}
 			// If we reach here, PID file exists but process is not running or PID is invalid.
 			// Clean up the stale PID file.
-			os.Remove(pidFile)
+			_ = os.Remove(pidFile)
 			utils.Log.Info("Removed stale PID file: %s", pidFile)
 			if !config.Quiet {
 				cmd.Println("Found stale PID file, removed it. Attempting to start daemon.")
@@ -225,7 +224,7 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 		return
 	}
 	defer func() {
-		os.Remove(pidFile) // Ensure PID file is removed on daemon exit
+		_ = os.Remove(pidFile) // Ensure PID file is removed on daemon exit
 		utils.Log.Info("Daemon stopped, PID file removed.")
 	}()
 
@@ -237,8 +236,8 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 	cleanupLogs()
 
 	// Cleanup any stale control files on start
-	os.Remove(getStopFilePath())
-	os.Remove(getPauseFilePath())
+	_ = os.Remove(getStopFilePath())
+	_ = os.Remove(getPauseFilePath())
 
 	// Print configuration details
 	cfg, err := loadConfig()
@@ -396,7 +395,6 @@ func changeWallpaper(cmd *cobra.Command) {
 				utils.Log.Info("Daemon: No favorites found to set.")
 				return
 			}
-			rand.Seed(time.Now().UnixNano() + int64(i))
 			fav := favorites[rand.Intn(len(favorites))]
 			wallpaper = fav.Wallpaper
 		} else {
@@ -486,7 +484,7 @@ func runDaemonStop(cmd *cobra.Command, args []string) {
 	if f, err := os.Create(stopFile); err != nil {
 		cmd.Printf("Error creating stop signal: %v\n", err)
 	} else {
-		f.Close()
+		_ = f.Close()
 		if !config.Quiet {
 			cmd.Println("Stop signal sent.")
 		}

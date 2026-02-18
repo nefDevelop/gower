@@ -38,7 +38,7 @@ func TestWallhavenProvider_Search_WithMockServer(t *testing.T) {
 				}
 			]
 		}`
-		fmt.Fprintln(w, response)
+		_, _ = fmt.Fprintln(w, response)
 	}))
 	defer server.Close()
 

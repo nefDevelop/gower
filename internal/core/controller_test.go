@@ -31,7 +31,7 @@ func setupTestHome(t *testing.T) string {
 
 func TestController_AddAndGetFeed(t *testing.T) {
 	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cfg := &models.Config{}
 	ctrl := NewController(cfg)
@@ -67,12 +67,12 @@ func TestController_AddAndGetFeed(t *testing.T) {
 
 func TestController_PurgeFeed(t *testing.T) {
 	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cfg := &models.Config{}
 	ctrl := NewController(cfg)
 
-	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "1"})
+	_ = ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "1"})
 
 	if err := ctrl.PurgeFeed(); err != nil {
 		t.Fatalf("PurgeFeed failed: %v", err)
@@ -86,14 +86,14 @@ func TestController_PurgeFeed(t *testing.T) {
 
 func TestController_GetFeedStats(t *testing.T) {
 	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cfg := &models.Config{}
 	ctrl := NewController(cfg)
 
-	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "1", Theme: "dark"})
-	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "2", Theme: "light"})
-	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "3", Theme: "dark"})
+	_ = ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "1", Theme: "dark"})
+	_ = ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "2", Theme: "light"})
+	_ = ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "3", Theme: "dark"})
 
 	stats, err := ctrl.GetFeedStats()
 	if err != nil {
@@ -113,13 +113,13 @@ func TestController_GetFeedStats(t *testing.T) {
 
 func TestController_Blacklist(t *testing.T) {
 	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cfg := &models.Config{}
 	ctrl := NewController(cfg)
 
-	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "1"})
-	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "2"})
+	_ = ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "1"})
+	_ = ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "2"})
 
 	// Manually write blacklist file
 	blacklistPath := filepath.Join(tmpDir, ".config", "gower", "data", "blacklist.json")
@@ -159,7 +159,7 @@ func createDummyImage(t *testing.T, path string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	if err := png.Encode(f, img); err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func createDummyImage(t *testing.T, path string) {
 
 func TestController_SyncFeed(t *testing.T) {
 	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cfg := &models.Config{
 		Limits: models.LimitsConfig{
@@ -252,7 +252,7 @@ func TestController_SyncFeed(t *testing.T) {
 
 func TestController_GetWallpaper(t *testing.T) {
 	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cfg := &models.Config{}
 	ctrl := NewController(cfg)
@@ -270,8 +270,8 @@ func TestController_GetWallpaper(t *testing.T) {
 	feedData, _ := json.Marshal(feedWallpapers)
 	favData, _ := json.Marshal(favWallpapers)
 
-	os.WriteFile(feedPath, feedData, 0644)
-	os.WriteFile(favPath, favData, 0644)
+	_ = os.WriteFile(feedPath, feedData, 0644)
+	_ = os.WriteFile(favPath, favData, 0644)
 
 	// 2. Run tests
 	t.Run("finds wallpaper in feed", func(t *testing.T) {
@@ -307,7 +307,7 @@ func TestController_GetWallpaper(t *testing.T) {
 
 func TestController_AnalyzeFeed(t *testing.T) {
 	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cfg := &models.Config{}
 	ctrl := NewController(cfg)
@@ -358,7 +358,7 @@ func TestController_AnalyzeFeed(t *testing.T) {
 
 func TestController_AnalyzeFeed_Colors(t *testing.T) {
 	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cfg := &models.Config{}
 	ctrl := NewController(cfg)
@@ -371,14 +371,14 @@ func TestController_AnalyzeFeed_Colors(t *testing.T) {
 	wp1 := models.Wallpaper{ID: "test_wrong_color", URL: srcImgPath, Thumbnail: srcImgPath, Color: "#0000FF"} // Blue, but image is red
 	wp2 := models.Wallpaper{ID: "test_missing_color", URL: srcImgPath, Thumbnail: srcImgPath, Color: ""}
 
-	ctrl.AddWallpaperToFeed(wp1)
-	ctrl.AddWallpaperToFeed(wp2)
+	_ = ctrl.AddWallpaperToFeed(wp1)
+	_ = ctrl.AddWallpaperToFeed(wp2)
 
 	// Manually create a thumbnail for wp1 so it thinks it exists
 	thumbDir := filepath.Join(tmpDir, ".config", "gower", "cache", "thumbs")
-	os.MkdirAll(thumbDir, 0755)
+	_ = os.MkdirAll(thumbDir, 0755)
 	input, _ := os.ReadFile(srcImgPath)
-	os.WriteFile(filepath.Join(thumbDir, "test_wrong_color.jpg"), input, 0644)
+	_ = os.WriteFile(filepath.Join(thumbDir, "test_wrong_color.jpg"), input, 0644)
 
 	// 1. Analyze without --all. Should fix missing color (wp2), but NOT wrong color (wp1)
 	if err := ctrl.AnalyzeFeed(false, false, nil); err != nil {
@@ -424,7 +424,7 @@ func TestController_AnalyzeFeed_Colors(t *testing.T) {
 
 func TestController_AnalyzeFavorites(t *testing.T) {
 	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cfg := &models.Config{}
 	ctrl := NewController(cfg)
@@ -436,7 +436,7 @@ func TestController_AnalyzeFavorites(t *testing.T) {
 	// Manually create favorites.json
 	favPath := filepath.Join(tmpDir, ".config", "gower", "data", "favorites.json")
 	favContent := `[{"id":"fav1","url":"` + srcImgPath + `","source":"test"}]`
-	os.WriteFile(favPath, []byte(favContent), 0644)
+	_ = os.WriteFile(favPath, []byte(favContent), 0644)
 
 	// Analyze
 	if err := ctrl.AnalyzeFavorites(false, false, nil); err != nil {
@@ -452,7 +452,7 @@ func TestController_AnalyzeFavorites(t *testing.T) {
 
 func TestController_GetFeed_Algorithm(t *testing.T) {
 	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cfg := &models.Config{}
 	ctrl := NewController(cfg)
@@ -520,7 +520,7 @@ func TestController_GetFeed_Algorithm(t *testing.T) {
 
 func TestController_GetFeed_SmartStability(t *testing.T) {
 	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cfg := &models.Config{}
 	ctrl := NewController(cfg)

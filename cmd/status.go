@@ -3,7 +3,6 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -134,11 +133,11 @@ func runStatus(cmd *cobra.Command, args []string) {
 	if output.System != nil {
 		cmd.Println("--- System ---")
 		w := newTabWriter()
-		fmt.Fprintf(w, "OS:\t%s\n", output.System.OS)
-		fmt.Fprintf(w, "Arch:\t%s\n", output.System.Arch)
-		fmt.Fprintf(w, "Desktop Environment:\t%s\n", output.System.DesktopEnv)
-		fmt.Fprintf(w, "Home:\t%s\n", output.System.HomeDir)
-		w.Flush()
+		_, _ = fmt.Fprintf(w, "OS:\t%s\n", output.System.OS)
+		_, _ = fmt.Fprintf(w, "Arch:\t%s\n", output.System.Arch)
+		_, _ = fmt.Fprintf(w, "Desktop Environment:\t%s\n", output.System.DesktopEnv)
+		_, _ = fmt.Fprintf(w, "Home:\t%s\n", output.System.HomeDir)
+		_ = w.Flush()
 		cmd.Println("Dependencies:")
 		// Sort keys for consistent output
 		depKeys := make([]string, 0, len(output.System.Dependencies))
@@ -154,9 +153,9 @@ func runStatus(cmd *cobra.Command, args []string) {
 			if installed {
 				status = colorize("Installed", colorGreen)
 			}
-			fmt.Fprintf(w, "  %s:\t%s\n", dep, status)
+			_, _ = fmt.Fprintf(w, "  %s:\t%s\n", dep, status)
 		}
-		w.Flush()
+		_ = w.Flush()
 		cmd.Println()
 	}
 
@@ -167,8 +166,8 @@ func runStatus(cmd *cobra.Command, args []string) {
 			state = colorize(fmt.Sprintf("Running (PID: %d)", output.Daemon.PID), colorGreen)
 		}
 		w := newTabWriter()
-		fmt.Fprintf(w, "Status:\t%s\n", state)
-		w.Flush()
+		_, _ = fmt.Fprintf(w, "Status:\t%s\n", state)
+		_ = w.Flush()
 		cmd.Println()
 	}
 
@@ -176,15 +175,15 @@ func runStatus(cmd *cobra.Command, args []string) {
 		cmd.Println("--- Wallpaper ---")
 		w := newTabWriter()
 		for i, wp := range output.Wallpaper.Wallpapers {
-			fmt.Fprintf(w, "Monitor %d ID:\t%s\n", i+1, wp.ID)
-			fmt.Fprintf(w, "Monitor %d Path:\t%s\n", i+1, wp.Path)
-			fmt.Fprintf(w, "Monitor %d Source:\t%s\n", i+1, wp.Source)
-			fmt.Fprintf(w, "Monitor %d URL:\t%s\n", i+1, wp.URL)
-			fmt.Fprintf(w, "Monitor %d Dimension:\t%s\n", i+1, wp.Dimension)
-			fmt.Fprintf(w, "Monitor %d Color:\t%s\n", i+1, wp.Color)
-			fmt.Fprintf(w, "Monitor %d Theme:\t%s\n", i+1, wp.Theme)
+			_, _ = fmt.Fprintf(w, "Monitor %d ID:\t%s\n", i+1, wp.ID)
+			_, _ = fmt.Fprintf(w, "Monitor %d Path:\t%s\n", i+1, wp.Path)
+			_, _ = fmt.Fprintf(w, "Monitor %d Source:\t%s\n", i+1, wp.Source)
+			_, _ = fmt.Fprintf(w, "Monitor %d URL:\t%s\n", i+1, wp.URL)
+			_, _ = fmt.Fprintf(w, "Monitor %d Dimension:\t%s\n", i+1, wp.Dimension)
+			_, _ = fmt.Fprintf(w, "Monitor %d Color:\t%s\n", i+1, wp.Color)
+			_, _ = fmt.Fprintf(w, "Monitor %d Theme:\t%s\n", i+1, wp.Theme)
 		}
-		w.Flush()
+		_ = w.Flush()
 		cmd.Println()
 	} else if output.Wallpaper != nil {
 		cmd.Println("--- Wallpaper ---")
@@ -195,10 +194,10 @@ func runStatus(cmd *cobra.Command, args []string) {
 	if output.Providers != nil {
 		cmd.Println("--- Providers ---")
 		w := newTabWriter()
-		fmt.Fprintf(w, "Wallhaven:\t%v\n", colorizeBool(output.Providers.Wallhaven))
-		fmt.Fprintf(w, "Reddit:\t%v\n", colorizeBool(output.Providers.Reddit))
-		fmt.Fprintf(w, "Nasa:\t%v\n", colorizeBool(output.Providers.Nasa))
-		w.Flush()
+		_, _ = fmt.Fprintf(w, "Wallhaven:\t%v\n", colorizeBool(output.Providers.Wallhaven))
+		_, _ = fmt.Fprintf(w, "Reddit:\t%v\n", colorizeBool(output.Providers.Reddit))
+		_, _ = fmt.Fprintf(w, "Nasa:\t%v\n", colorizeBool(output.Providers.Nasa))
+		_ = w.Flush()
 		if len(output.Providers.Generic) > 0 {
 			cmd.Println("Manual Providers:")
 			keys := make([]string, 0, len(output.Providers.Generic))
@@ -209,9 +208,9 @@ func runStatus(cmd *cobra.Command, args []string) {
 
 			w = newTabWriter()
 			for _, name := range keys {
-				fmt.Fprintf(w, "  %s:\t%v\n", name, colorizeBool(output.Providers.Generic[name]))
+				_, _ = fmt.Fprintf(w, "  %s:\t%v\n", name, colorizeBool(output.Providers.Generic[name]))
 			}
-			w.Flush()
+			_ = w.Flush()
 		}
 		cmd.Println()
 	}
@@ -219,10 +218,10 @@ func runStatus(cmd *cobra.Command, args []string) {
 	if output.Storage != nil {
 		cmd.Println("--- Storage ---")
 		w := newTabWriter()
-		fmt.Fprintf(w, "Cache:\t%s\n", output.Storage.CacheSize)
-		fmt.Fprintf(w, "Data:\t%s\n", output.Storage.DataSize)
-		fmt.Fprintf(w, "Total:\t%s\n", output.Storage.TotalSize)
-		w.Flush()
+		_, _ = fmt.Fprintf(w, "Cache:\t%s\n", output.Storage.CacheSize)
+		_, _ = fmt.Fprintf(w, "Data:\t%s\n", output.Storage.DataSize)
+		_, _ = fmt.Fprintf(w, "Total:\t%s\n", output.Storage.TotalSize)
+		_ = w.Flush()
 		cmd.Println()
 	}
 
@@ -235,9 +234,9 @@ func runStatus(cmd *cobra.Command, args []string) {
 			}
 			cmd.Printf("  Monitor %d: %s%s\n", i+1, mon.Name, primary)
 			w := newTabWriter()
-			fmt.Fprintf(w, "    Resolution:\t%dx%d\n", mon.Width, mon.Height)
-			fmt.Fprintf(w, "    Position:\t%d,%d\n", mon.X, mon.Y)
-			w.Flush()
+			_, _ = fmt.Fprintf(w, "    Resolution:\t%dx%d\n", mon.Width, mon.Height)
+			_, _ = fmt.Fprintf(w, "    Position:\t%d,%d\n", mon.X, mon.Y)
+			_ = w.Flush()
 		}
 		cmd.Println()
 	}
@@ -282,7 +281,7 @@ func checkCommand(cmd string) bool {
 
 func getDaemonStatus() *DaemonStatus {
 	pidFile := getPidFilePath() // Defined in daemon.go
-	data, err := ioutil.ReadFile(pidFile)
+	data, err := os.ReadFile(pidFile)
 	running := false
 	pid := 0
 
@@ -302,14 +301,14 @@ func getWallpaperStatus() *CurrentWallpaperStatus {
 	state, err := loadState()
 	if err != nil {
 		// If state can't be loaded, we can't determine wallpaper status.
-		fmt.Fprintf(os.Stderr, "Error loading state for wallpaper status: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "Error loading state for wallpaper status: %v\n", err)
 		return &CurrentWallpaperStatus{Wallpapers: []models.Wallpaper{}}
 	}
 
 	var wallpapers []models.Wallpaper
 	cfg, err := loadConfig()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading config for wallpaper status: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "Error loading config for wallpaper status: %v\n", err)
 		return nil
 	}
 	controller := core.NewController(cfg)
@@ -320,7 +319,7 @@ func getWallpaperStatus() *CurrentWallpaperStatus {
 			wp, err := controller.GetWallpaper(id)
 			if err != nil {
 				// Log error but continue with other wallpapers
-				fmt.Fprintf(os.Stderr, "Error retrieving wallpaper %s: %v\n", id, err)
+				_, _ = fmt.Fprintf(os.Stderr, "Error retrieving wallpaper %s: %v\n", id, err)
 				continue
 			}
 			if wp != nil {
@@ -331,7 +330,7 @@ func getWallpaperStatus() *CurrentWallpaperStatus {
 		// Fallback for single wallpaper (older state format or single monitor setup)
 		wp, err := controller.GetWallpaper(state.CurrentWallpaperID)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error retrieving wallpaper %s: %v\n", state.CurrentWallpaperID, err)
+			_, _ = fmt.Fprintf(os.Stderr, "Error retrieving wallpaper %s: %v\n", state.CurrentWallpaperID, err)
 		}
 		if wp != nil {
 			wallpapers = append(wallpapers, *wp)
@@ -377,7 +376,7 @@ func getStorageStatus() *StorageStatus {
 
 func getDirSize(path string) int64 {
 	var size int64
-	filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}

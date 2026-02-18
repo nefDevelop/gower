@@ -32,8 +32,8 @@ func TestFeedShow(t *testing.T) {
 	// Pre-populate feed
 	cfg, _ := loadConfig()
 	ctrl := core.NewController(cfg)
-	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "test-seen", Theme: "dark", Seen: true})
-	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "test-unseen", Theme: "light", Seen: false})
+	_ = ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "test-seen", Theme: "dark", Seen: true})
+	_ = ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "test-unseen", Theme: "light", Seen: false})
 
 	// Test show all - first time
 	output, err := executeCommand(rootCmd, "feed", "show")
@@ -65,9 +65,9 @@ func TestFeedShow(t *testing.T) {
 
 	// Test filter
 	resetFeedFlags()
-	ctrl.PurgeFeed()
-	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "test-dark", Theme: "dark", Seen: false})
-	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "test-light", Theme: "light", Seen: false})
+	_ = ctrl.PurgeFeed()
+	_ = ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "test-dark", Theme: "dark", Seen: false})
+	_ = ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "test-light", Theme: "light", Seen: false})
 
 	output, err = executeCommand(rootCmd, "feed", "show", "--theme", "dark")
 	if err != nil {
@@ -89,7 +89,7 @@ func TestFeedStats(t *testing.T) {
 
 	cfg, _ := loadConfig()
 	ctrl := core.NewController(cfg)
-	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "1", Theme: "dark"})
+	_ = ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "1", Theme: "dark"})
 
 	output, err := executeCommand(rootCmd, "feed", "stats")
 	if err != nil {
@@ -111,7 +111,7 @@ func TestFeedPurge(t *testing.T) {
 
 	cfg, _ := loadConfig()
 	ctrl := core.NewController(cfg)
-	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "1"})
+	_ = ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "1"})
 
 	// Purge without force
 	output, err := executeCommand(rootCmd, "feed", "purge")
@@ -146,7 +146,7 @@ func TestFeedRandom(t *testing.T) {
 
 	cfg, _ := loadConfig()
 	ctrl := core.NewController(cfg)
-	ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "1"})
+	_ = ctrl.AddWallpaperToFeed(models.Wallpaper{ID: "1"})
 
 	output, err := executeCommand(rootCmd, "feed", "random")
 	if err != nil {

@@ -102,7 +102,7 @@ func TestStorageRepairCmd_FromBackup(t *testing.T) {
 	}
 
 	// Verify the file was repaired
-	repairedData, err := ioutil.ReadFile(filePath)
+	repairedData, err := os.ReadFile(filePath)
 	if err != nil {
 		t.Fatalf("Failed to read repaired file: %v", err)
 	}

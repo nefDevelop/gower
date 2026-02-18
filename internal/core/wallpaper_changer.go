@@ -97,7 +97,7 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 						cmd = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri)
 					}
 				} else {
-					exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri).Run()
+					_ = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri).Run()
 					cmd = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri-dark", uri)
 				}
 
@@ -237,7 +237,7 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 						cmd = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri)
 					}
 				} else {
-					exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri).Run()
+					_ = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri).Run()
 					cmd = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri-dark", uri)
 				}
 
@@ -570,18 +570,18 @@ func (wc *WallpaperChanger) DetectMonitors() ([]Monitor, error) {
 						if len(resPosParts) == 3 { // e.g., 1920x1080+0+0
 							dim := strings.Split(resPosParts[0], "x")
 							if len(dim) == 2 {
-								fmt.Sscanf(dim[0], "%d", &width)
-								fmt.Sscanf(dim[1], "%d", &height)
+								_, _ = fmt.Sscanf(dim[0], "%d", &width)
+								_, _ = fmt.Sscanf(dim[1], "%d", &height)
 							}
-							fmt.Sscanf(resPosParts[1], "%d", &x)
-							fmt.Sscanf(resPosParts[2], "%d", &y)
+							_, _ = fmt.Sscanf(resPosParts[1], "%d", &x)
+							_, _ = fmt.Sscanf(resPosParts[2], "%d", &y)
 						} else if len(resPosParts) == 2 { // e.g., 1920x1080+0
 							dim := strings.Split(resPosParts[0], "x")
 							if len(dim) == 2 {
-								fmt.Sscanf(dim[0], "%d", &width)
-								fmt.Sscanf(dim[1], "%d", &height)
+								_, _ = fmt.Sscanf(dim[0], "%d", &width)
+								_, _ = fmt.Sscanf(dim[1], "%d", &height)
 							}
-							fmt.Sscanf(resPosParts[1], "%d", &x)
+							_, _ = fmt.Sscanf(resPosParts[1], "%d", &x)
 						}
 					}
 

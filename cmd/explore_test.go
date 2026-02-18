@@ -57,7 +57,7 @@ func TestExploreNativeProvider(t *testing.T) {
 	// Mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintln(w, `{"data":[{"id":"test_id","path":"http://example.com/img.jpg","resolution":"1920x1080","thumbs":{"large":"http://example.com/thumb.jpg"}}]}`)
+		_, _ = fmt.Fprintln(w, `{"data":[{"id":"test_id","path":"http://example.com/img.jpg","resolution":"1920x1080","thumbs":{"large":"http://example.com/thumb.jpg"}}]}`)
 	}))
 	defer server.Close()
 
@@ -90,7 +90,7 @@ func TestExploreGenericProvider(t *testing.T) {
 	// 1. Crear un mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintln(w, `{
+		_, _ = fmt.Fprintln(w, `{
 			"images": [
 				{
 					"id": "generic-1",
@@ -162,7 +162,7 @@ func TestExploreAllProviders(t *testing.T) {
 	// 1. Mock server para el genérico
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintln(w, `{"images":[]}`) // No necesitamos resultados, solo que se llame
+		_, _ = fmt.Fprintln(w, `{"images":[]}`) // No necesitamos resultados, solo que se llame
 	}))
 	defer server.Close()
 
@@ -205,7 +205,7 @@ func TestExploreGenericProvider_404(t *testing.T) {
 	// 1. Crear un mock server que devuelve 404
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		fmt.Fprintln(w, "Not Found")
+		_, _ = fmt.Fprintln(w, "Not Found")
 	}))
 	defer server.Close()
 

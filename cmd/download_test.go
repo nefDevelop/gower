@@ -23,12 +23,12 @@ func resetDownloadFlags() {
 func TestDownloadCommand(t *testing.T) {
 	resetDownloadFlags()
 	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("fake image content"))
+		_, _ = w.Write([]byte("fake image content"))
 	}))
 	defer server.Close()
 
@@ -36,7 +36,7 @@ func TestDownloadCommand(t *testing.T) {
 	executeCommand(rootCmd, "config", "init")
 	cfg, _ := loadConfig()
 	ctrl := core.NewController(cfg)
-	ctrl.AddWallpaperToFeed(models.Wallpaper{
+	_ = ctrl.AddWallpaperToFeed(models.Wallpaper{
 		ID:     "test-dl",
 		URL:    server.URL + "/img.jpg",
 		Source: "test",
@@ -68,7 +68,7 @@ func TestDownloadCommand(t *testing.T) {
 
 	// Test download with tag
 	resetDownloadFlags()
-	output, err = executeCommand(rootCmd, "download", "test-dl", "--output", tmpDir, "--tag")
+	_, err = executeCommand(rootCmd, "download", "test-dl", "--output", tmpDir, "--tag")
 	if err != nil {
 		t.Fatalf("Error executing download with tag: %v", err)
 	}

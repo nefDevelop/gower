@@ -55,7 +55,7 @@ var feedCmd = &cobra.Command{
 		if !config.JSONOutput {
 			cmd.Println("Ejecutando el comando 'feed'...")
 		}
-		cmd.Help()
+		_ = cmd.Help()
 	},
 }
 
@@ -178,7 +178,6 @@ var feedRandomCmd = &cobra.Command{
 				return
 			}
 			// Simple random pick from favorites
-			rand.Seed(time.Now().UnixNano())
 			fav := favorites[rand.Intn(len(favorites))]
 			wallpaper = fav.Wallpaper
 		} else {
@@ -376,10 +375,10 @@ func displayTable(cmd *cobra.Command, wallpapers interface{}) {
 	}
 
 	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 3, ' ', 0)
-	fmt.Fprintln(w, "ID\tRES\tTHEME\tSOURCE\tSEEN")
+	_, _ = fmt.Fprintln(w, "ID\tRES\tTHEME\tSOURCE\tSEEN")
 
 	for _, wp := range wps {
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%t\n", wp.ID, wp.Dimension, wp.Theme, wp.Source, wp.Seen)
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%t\n", wp.ID, wp.Dimension, wp.Theme, wp.Source, wp.Seen)
 	}
-	w.Flush()
+	_ = w.Flush()
 }

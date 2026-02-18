@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 
@@ -33,7 +32,7 @@ var storageVerifyCmd = &cobra.Command{
 				continue
 			}
 
-			data, err := ioutil.ReadFile(path)
+			data, err := os.ReadFile(path)
 			if err != nil {
 				cmd.Printf("ERROR reading %s: %v\n", f, err)
 				allGood = false
@@ -73,7 +72,7 @@ var storageRepairCmd = &cobra.Command{
 				needsRepair = true
 				cmd.Printf("%s is missing.\n", f)
 			} else {
-				data, err := ioutil.ReadFile(path)
+				data, err := os.ReadFile(path)
 				if err != nil || !json.Valid(data) {
 					needsRepair = true
 					cmd.Printf("%s is corrupt.\n", f)
@@ -84,9 +83,9 @@ var storageRepairCmd = &cobra.Command{
 				// Try to restore from backup
 				if _, err := os.Stat(backupPath); err == nil {
 					cmd.Printf("Restoring %s from backup...\n", f)
-					data, err := ioutil.ReadFile(backupPath)
+					data, err := os.ReadFile(backupPath)
 					if err == nil && json.Valid(data) {
-						if err := ioutil.WriteFile(path, data, 0644); err == nil {
+						if err := os.WriteFile(path, data, 0644); err == nil {
 							cmd.Printf("Successfully repaired %s\n", f)
 							utils.Log.Info("Storage repair: Successfully repaired %s from backup", f)
 						} else {

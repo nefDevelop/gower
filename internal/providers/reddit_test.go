@@ -54,7 +54,7 @@ func TestRedditProvider_fetchFromReddit_WithMockServer(t *testing.T) {
 				]
 			}
 		}`
-		fmt.Fprintln(w, response)
+		_, _ = fmt.Fprintln(w, response)
 	}))
 	defer server.Close()
 

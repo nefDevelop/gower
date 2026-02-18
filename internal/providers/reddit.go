@@ -8,7 +8,6 @@ import (
 	"math/rand"
 	"net/http"
 	"strings"
-	"time"
 )
 
 // RedditProvider implements the Provider interface for Reddit.
@@ -97,7 +96,6 @@ func (p *RedditProvider) Search(query string, opts SearchOptions) ([]models.Wall
 
 	// Mezclar resultados si hay múltiples grupos
 	if len(allWallpapers) > limit {
-		rand.Seed(time.Now().UnixNano())
 		rand.Shuffle(len(allWallpapers), func(i, j int) {
 			allWallpapers[i], allWallpapers[j] = allWallpapers[j], allWallpapers[i]
 		})
@@ -139,7 +137,6 @@ func (p *RedditProvider) searchMixed(subreddit string, limit int, opts SearchOpt
 	add(resTop)
 
 	// Barajar resultados
-	rand.Seed(time.Now().UnixNano())
 	rand.Shuffle(len(combined), func(i, j int) { combined[i], combined[j] = combined[j], combined[i] })
 
 	if len(combined) > limit {
@@ -161,7 +158,7 @@ func (p *RedditProvider) fetchFromReddit(url string, limit int, opts SearchOptio
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("reddit api returned status: %d", resp.StatusCode)

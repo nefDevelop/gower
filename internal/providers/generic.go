@@ -31,7 +31,7 @@ func (p *GenericProvider) Search(query string, opts SearchOptions) ([]models.Wal
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("generic api returned status: %d", resp.StatusCode)
