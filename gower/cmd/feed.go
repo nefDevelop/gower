@@ -146,7 +146,24 @@ var feedAnalyzeCmd = &cobra.Command{
 
 		cmd.Println("Analyzing feed items...")
 
-		if err := controller.AnalyzeFeed(feedAll, feedForce, progress); err != nil {
+		// Define progress function as a closure to capture `cmd`
+		progressFunc := func(msg string) {
+			if !config.Quiet {
+				if strings.Contains(msg, "Error") {
+					cmd.Printf("  %s %s\n", colorize(symbolCross, colorRed), msg)
+				} else if strings.Contains(msg, "Downloading") {
+					cmd.Printf("  %s %s\n", colorize("⬇", colorCyan), msg)
+				} else if strings.Contains(msg, "Deleting") || strings.Contains(msg, "Removing") {
+					cmd.Printf("  %s %s\n", colorize("🗑", colorRed), msg)
+				} else if strings.Contains(msg, "Skipping") {
+					cmd.Printf("  %s %s\n", colorize("⏭", colorYellow), msg)
+				} else {
+					cmd.Printf("%s %s\n", colorize("::", colorBlue), msg)
+				}
+			}
+		}
+
+		if err := controller.AnalyzeFeed(feedAll, feedForce, progressFunc); err != nil {
 			cmd.Printf("Error analyzing feed: %v\n", err)
 			return
 		}
@@ -204,10 +221,27 @@ var feedUpdateCmd = &cobra.Command{
 		}
 		controller := core.NewController(cfg)
 
+		// Define progress function as a closure to capture `cmd`
+		progressFunc := func(msg string) {
+			if !config.Quiet {
+				if strings.Contains(msg, "Error") {
+					cmd.Printf("  %s %s\n", colorize(symbolCross, colorRed), msg)
+				} else if strings.Contains(msg, "Downloading") {
+					cmd.Printf("  %s %s\n", colorize("⬇", colorCyan), msg)
+				} else if strings.Contains(msg, "Deleting") || strings.Contains(msg, "Removing") {
+					cmd.Printf("  %s %s\n", colorize("🗑", colorRed), msg)
+				} else if strings.Contains(msg, "Skipping") {
+					cmd.Printf("  %s %s\n", colorize("⏭", colorYellow), msg)
+				} else {
+					cmd.Printf("%s %s\n", colorize("::", colorBlue), msg)
+				}
+			}
+		}
+
 		cmd.Println("Syncing feed from parser caches...")
 		count, repaired, err := controller.SyncFeed()
 		if err != nil {
-			cmd.Printf("Error syncing feed: %v\n", err)
+			cmd.Printf("Error syncing feed: %v\n", err) // This uses the local `cmd`
 			return
 		}
 
@@ -232,7 +266,7 @@ var feedUpdateCmd = &cobra.Command{
 
 			// If nothing added, maybe caches are empty. Run explore all.
 			cmd.Println(colorize("No new wallpapers found in cache. Running 'explore --all'...", colorYellow))
-			// We call the explore command logic directly or via subprocess
+			// We call the explore command logic directly or via subprocess // This uses the local `cmd`
 			// For simplicity, we can just invoke the runExplore function if we exported it or use executeCommand logic
 			// But since runExplore is in same package:
 			exploreAll = true
@@ -245,7 +279,7 @@ var feedUpdateCmd = &cobra.Command{
 
 		// Después de sincronizar nuevos elementos, analiza todo el feed para asegurar que todos los elementos
 		cmd.Println("Analyzing entire feed for validity and consistency...")
-		if err := controller.AnalyzeFeed(true, false, progress); err != nil { // 'true' para todos, 'false' para forzar regeneración de miniaturas
+		if err := controller.AnalyzeFeed(true, false, progressFunc); err != nil { // 'true' para todos, 'false' para forzar regeneración de miniaturas
 			cmd.Printf("Warning: Error during post-sync feed analysis: %v\n", err)
 		}
 
@@ -278,23 +312,6 @@ var feedGetColorsCmd = &cobra.Command{
 			}
 		}
 	},
-}
-
-// progress is a helper function to display formatted progress messages.
-func progress(msg string) {
-	if !config.Quiet {
-		if strings.Contains(msg, "Error") {
-			rootCmd.Printf("  %s %s\n", colorize(symbolCross, colorRed), msg)
-		} else if strings.Contains(msg, "Downloading") {
-			rootCmd.Printf("  %s %s\n", colorize("⬇", colorCyan), msg)
-		} else if strings.Contains(msg, "Deleting") || strings.Contains(msg, "Removing") {
-			rootCmd.Printf("  %s %s\n", colorize("🗑", colorRed), msg)
-		} else if strings.Contains(msg, "Skipping") {
-			rootCmd.Printf("  %s %s\n", colorize("⏭", colorYellow), msg)
-		} else {
-			rootCmd.Printf("%s %s\n", colorize("::", colorBlue), msg)
-		}
-	}
 }
 
 func init() {

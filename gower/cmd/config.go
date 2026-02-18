@@ -207,7 +207,7 @@ func getConfigPath() (string, error) {
 	return primaryPath, nil
 }
 
-var loadConfig = func() (*models.Config, error) {
+func defaultLoadConfig() (*models.Config, error) {
 	path, err := getConfigPath()
 	if err != nil {
 		return nil, err
@@ -230,7 +230,7 @@ var loadConfig = func() (*models.Config, error) {
 	return &cfg, nil
 }
 
-func saveConfig(cfg *models.Config) error {
+func defaultSaveConfig(cfg *models.Config) error {
 	path, err := getConfigPath()
 	if err != nil {
 		return err
@@ -238,6 +238,10 @@ func saveConfig(cfg *models.Config) error {
 	manager := utils.NewSecureJSONManager()
 	return manager.WriteJSON(path, cfg)
 }
+
+// Global variables for load/save config functions, allowing them to be mocked in tests.
+var loadConfig = defaultLoadConfig
+var saveConfig = defaultSaveConfig
 
 func getDefaultConfig() models.Config {
 	return models.Config{

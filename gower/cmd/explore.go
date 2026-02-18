@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"fmt"
 	"gower/internal/core"
 	"gower/internal/providers"
 	"gower/pkg/models"
@@ -24,7 +25,7 @@ var exploreCmd = &cobra.Command{
 	Use:   "explore [término]",
 	Short: "Buscar wallpapers",
 	Long:  `Busca wallpapers en los proveedores configurados.`,
-	Run:   runExplore,
+	RunE:  runExplore, // Changed from Run to RunE
 }
 
 func init() {
@@ -40,7 +41,7 @@ func init() {
 	exploreCmd.Flags().BoolVar(&exploreForceUpdate, "force-update", false, "Forzar actualización")
 }
 
-func runExplore(cmd *cobra.Command, args []string) {
+func runExplore(cmd *cobra.Command, args []string) error {
 	ensureConfig()
 
 	term := ""
@@ -51,7 +52,7 @@ func runExplore(cmd *cobra.Command, args []string) {
 	cfg, err := loadConfig()
 	if err != nil {
 		cmd.Printf("Error loading config: %v\n", err)
-		return
+		return err // Return the error
 	}
 
 	controller := core.NewController(cfg)
@@ -62,14 +63,14 @@ func runExplore(cmd *cobra.Command, args []string) {
 	if exploreAll {
 		selectedProviders = allProviders
 	} else if exploreProvider != "" {
-		p, err := controller.ProviderManager.GetProvider(exploreProvider)
+		p, err := controller.ProviderManager.GetProvider(exploreProvider) // Changed to RunE to allow error return
 		if err != nil {
 			cmd.Printf("Error: %v\n", err)
-			return
+			return err
 		}
 		selectedProviders = append(selectedProviders, p)
 	} else {
-		// Default provider
+		// Default provider // Changed to RunE to allow error return
 		if len(allProviders) > 0 {
 			selectedProviders = append(selectedProviders, allProviders[0])
 		}
@@ -77,7 +78,7 @@ func runExplore(cmd *cobra.Command, args []string) {
 
 	if len(selectedProviders) == 0 {
 		cmd.Println("No enabled providers found or selected.")
-		return
+		return nil // No error, but explicitly return nil
 	}
 
 	if !config.Quiet && !config.JSONOutput {
@@ -122,6 +123,7 @@ func runExplore(cmd *cobra.Command, args []string) {
 	}
 
 	var allWallpapers []models.Wallpaper
+	var encounteredError error // Para almacenar el primer error encontrado
 
 	for _, p := range selectedProviders {
 		if !config.Quiet && !config.JSONOutput {
@@ -130,7 +132,10 @@ func runExplore(cmd *cobra.Command, args []string) {
 		results, err := p.Search(term, searchOpts)
 		if err != nil {
 			if !config.Quiet {
-				cmd.Printf("Error searching %s: %v\n", p.GetName(), err)
+				cmd.Printf("Warning: Error searching %s: %v\n", p.GetName(), err) // Cambiado a Warning
+			}
+			if encounteredError == nil { // Almacenar el primer error
+				encounteredError = fmt.Errorf("provider %s: %w", p.GetName(), err)
 			}
 			continue
 		}
@@ -145,11 +150,15 @@ func runExplore(cmd *cobra.Command, args []string) {
 		allWallpapers = append(allWallpapers, results...)
 	}
 
-	if len(allWallpapers) == 0 {
+	if len(allWallpapers) == 0 { // Si no se encontraron wallpapers en absoluto
 		if !config.Quiet && !config.JSONOutput {
 			cmd.Println("No results found.")
 		}
-		return
+		if encounteredError != nil { // Y hubo al menos un error durante la búsqueda
+			// Devolver el primer error encontrado
+			return fmt.Errorf("explore failed: %w", encounteredError)
+		}
+		return nil // No error, but explicitly return nil
 	}
 
 	if config.JSONOutput {
@@ -160,4 +169,5 @@ func runExplore(cmd *cobra.Command, args []string) {
 			cmd.Printf("  - ID: %s | Res: %s | Source: %s | URL: %s\n", w.ID, w.Dimension, w.Source, w.URL)
 		}
 	}
+	return nil
 }
