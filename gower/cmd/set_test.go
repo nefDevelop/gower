@@ -40,7 +40,7 @@ func TestController_GetWallpaperAndDownload(t *testing.T) {
 	cfg := &models.Config{}
 	ctrl := core.NewController(cfg)
 	wp := models.Wallpaper{ID: "test-1", URL: server.URL + "/img.jpg"}
-	ctrl.AddWallpaperToFeed(wp)
+	_ = ctrl.AddWallpaperToFeed(wp)
 
 	// Test GetWallpaper
 	got, err := ctrl.GetWallpaper("test-1")
@@ -74,12 +74,12 @@ func TestSetUndoCommand(t *testing.T) {
 	// Populate feed with the wallpaper we expect to be set
 	cfg, _ := loadConfig()
 	ctrl := core.NewController(cfg)
-	ctrl.AddWallpaperToFeed(models.Wallpaper{
+	_ = ctrl.AddWallpaperToFeed(models.Wallpaper{
 		ID:     "previous-wp",
 		URL:    server.URL + "/image.jpg",
 		Source: "test",
 	})
-	ctrl.AddWallpaperToFeed(models.Wallpaper{
+	_ = ctrl.AddWallpaperToFeed(models.Wallpaper{
 		ID:     "previous-wp-2",
 		URL:    server.URL + "/image2.jpg",
 		Source: "test",
@@ -102,7 +102,7 @@ func setupTestHomeWithState(t *testing.T, state *State) (string, func()) {
 	assert.NoError(t, err)
 
 	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tempDir)
+	_ = os.Setenv("HOME", tempDir)
 
 	// Create .gower dir and write state
 	gowerDir := filepath.Join(tempDir, ".gower")
@@ -121,7 +121,7 @@ func setupTestHomeWithState(t *testing.T, state *State) (string, func()) {
 	assert.NoError(t, err)
 
 	cleanup := func() {
-		os.Setenv("HOME", originalHome)
+		_ = os.Setenv("HOME", originalHome)
 		os.RemoveAll(tempDir)
 	}
 

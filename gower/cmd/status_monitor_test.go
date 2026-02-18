@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"gower/internal/core"
-	"io/ioutil"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -63,9 +63,9 @@ func TestStatusMonitors(t *testing.T) {
 	}
 
 	// Close the write end of the pipe
-	w.Close()
+	_ = w.Close()
 	// Read all output from the read end
-	out, _ := ioutil.ReadAll(r)
+	out, _ := io.ReadAll(r)
 	os.Stdout = oldStdout // Restore original Stdout
 	rootCmd.SetOut(originalOut)
 	rootCmd.SetErr(originalErr)
@@ -129,9 +129,9 @@ func TestStatusMonitorsJSON(t *testing.T) {
 	}
 
 	// Close the write end of the pipe
-	w.Close()
+	_ = w.Close()
 	// Read all output from the read end
-	out, _ := ioutil.ReadAll(r)
+	out, _ := io.ReadAll(r)
 	os.Stdout = oldStdout // Restore original Stdout
 	rootCmd.SetOut(originalOut)
 	rootCmd.SetErr(originalErr)

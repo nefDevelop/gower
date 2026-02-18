@@ -17,7 +17,7 @@ var blacklistAddCmd = &cobra.Command{
 	Short: "Add a wallpaper to the blacklist",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		ensureConfig()
+		 _ = ensureConfig()
 		id := args[0]
 
 		cfg, err := loadConfig()
@@ -53,7 +53,7 @@ var blacklistRemoveCmd = &cobra.Command{
 	Short: "Remove a wallpaper from the blacklist",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		ensureConfig()
+		 _ = ensureConfig()
 		id := args[0]
 
 		cfg, err := loadConfig()
@@ -83,7 +83,7 @@ var blacklistListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List blacklisted wallpapers",
 	Run: func(cmd *cobra.Command, args []string) {
-		ensureConfig()
+		 _ = ensureConfig()
 		cfg, err := loadConfig()
 		if err != nil {
 			cmd.Printf("Error loading config: %v\n", err)

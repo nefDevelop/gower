@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -35,7 +34,7 @@ func TestDaemonStatusRunning(t *testing.T) {
 	}
 	defer func() {
 		if cmd.Process != nil {
-			cmd.Process.Kill()
+			_ = cmd.Process.Kill()
 		}
 	}()
 
@@ -44,7 +43,7 @@ func TestDaemonStatusRunning(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(pidFile), 0755); err != nil {
 		t.Fatalf("Failed to create config dir: %v", err)
 	}
-	if err := ioutil.WriteFile(pidFile, []byte(strconv.Itoa(cmd.Process.Pid)), 0644); err != nil {
+	if err := os.WriteFile(pidFile, []byte(strconv.Itoa(cmd.Process.Pid)), 0644); err != nil {
 		t.Fatalf("Failed to write PID file: %v", err)
 	}
 
@@ -68,13 +67,13 @@ func TestDaemonStop(t *testing.T) {
 	}
 	defer func() {
 		if cmd.Process != nil {
-			cmd.Process.Kill()
+			_ = cmd.Process.Kill()
 		}
 	}()
 
 	pidFile := filepath.Join(tmpDir, ".gower", "gower.pid")
 	os.MkdirAll(filepath.Dir(pidFile), 0755)
-	ioutil.WriteFile(pidFile, []byte(strconv.Itoa(cmd.Process.Pid)), 0644)
+	_ = os.WriteFile(pidFile, []byte(strconv.Itoa(cmd.Process.Pid)), 0644)
 
 	// Stop
 	output, err := executeCommand(rootCmd, "daemon", "stop")

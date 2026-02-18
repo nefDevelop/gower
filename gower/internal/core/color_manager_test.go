@@ -23,7 +23,7 @@ func createDummyImageWithColor(t *testing.T, path string, width, height int, c c
 	if err != nil {
 		t.Fatalf("Failed to create dummy image: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	if err := png.Encode(f, img); err != nil {
 		t.Fatalf("Failed to encode dummy image: %v", err)
@@ -64,7 +64,7 @@ func TestColorManager_GenerateThumbnail_Local(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	srcPath := filepath.Join(tmpDir, "src.png")
 	destPath := filepath.Join(tmpDir, "thumb.jpg")
@@ -84,7 +84,7 @@ func TestColorManager_GenerateThumbnail_Local(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to open thumbnail: %v", err)
 	}
-	defer thumb.Close()
+	defer func() { _ = thumb.Close() }()
 
 	img, _, err := image.DecodeConfig(thumb)
 	if err != nil {
@@ -101,7 +101,7 @@ func TestColorManager_GenerateThumbnail_URL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create a dummy image and serve it
 	srcPath := filepath.Join(tmpDir, "src.png")
@@ -130,7 +130,7 @@ func TestColorManager_AnalyzeColor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	imgPath := filepath.Join(tmpDir, "red.png")
 	createDummyImageWithColor(t, imgPath, 100, 100, color.RGBA{R: 255, A: 255})

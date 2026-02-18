@@ -1,0 +1,8 @@
+internal/core/color_manager.go:1: : # gower/internal/core [gower/internal/core.test]
+internal/core/controller.go:706:11: syntax error: unexpected = at end of statement (typecheck)
+package core
+internal/core/controller.go:706:11: expected '==', found '=' (typecheck)
+				_ = _ = os.Remove(path)
+				      ^
+2 issues:
+* typecheck: 2

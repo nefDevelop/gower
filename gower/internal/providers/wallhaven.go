@@ -69,7 +69,7 @@ func (p *WallhavenProvider) Search(query string, opts SearchOptions) ([]models.W
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("wallhaven api returned status: %d", resp.StatusCode)

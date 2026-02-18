@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"gower/internal/core"
 	"gower/pkg/models"
@@ -96,7 +95,6 @@ func runDownloadRandom(cmd *cobra.Command, controller *core.Controller, cfg *mod
 		if len(favorites) == 0 {
 			return fmt.Errorf("no favorites found")
 		}
-		rand.Seed(time.Now().UnixNano())
 		fav := favorites[rand.Intn(len(favorites))]
 		wallpaper = fav.Wallpaper
 	} else {
@@ -136,7 +134,7 @@ func performDownload(cmd *cobra.Command, controller *core.Controller, wp models.
 		if err != nil {
 			return err
 		}
-		defer src.Close()
+		defer func() { _ = src.Close() }()
 
 		outPath := targetPath
 		info, err := os.Stat(outPath)
@@ -163,7 +161,7 @@ func performDownload(cmd *cobra.Command, controller *core.Controller, wp models.
 		if err != nil {
 			return err
 		}
-		defer dst.Close()
+		defer func() { _ = dst.Close() }()
 
 		if _, err := io.Copy(dst, src); err != nil {
 			return err

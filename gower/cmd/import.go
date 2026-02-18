@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"os"
 
 	"gower/internal/core"
@@ -22,7 +21,7 @@ var importConfigCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		ensureConfig()
-		data, err := ioutil.ReadFile(args[0])
+		data, err := os.ReadFile(args[0])
 		if err != nil {
 			cmd.Printf("Error reading file: %v\n", err)
 			return
@@ -35,7 +34,7 @@ var importConfigCmd = &cobra.Command{
 		}
 
 		path, _ := getConfigPath()
-		if err := ioutil.WriteFile(path, data, 0644); err != nil {
+		if err := os.WriteFile(path, data, 0644); err != nil {
 			cmd.Printf("Error saving configuration: %v\n", err)
 			return
 		}
@@ -56,7 +55,7 @@ var importFavoritesCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		data, err := ioutil.ReadFile(filePath)
+		data, err := os.ReadFile(filePath)
 		if err != nil {
 			cmd.Printf("Error reading import file %s: %v\n", filePath, err)
 			return
@@ -74,7 +73,7 @@ var importFavoritesCmd = &cobra.Command{
 		}
 
 		if cfg, err := loadConfig(); err == nil {
-			core.NewController(cfg).RebuildColorIndex()
+			_ = core.NewController(cfg).RebuildColorIndex()
 		}
 
 		cmd.Printf("Favorites imported successfully from %s. Total favorites: %d\n", filePath, len(importedFavorites))

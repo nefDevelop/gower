@@ -34,7 +34,7 @@ func TestCacheCleanCmd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create dummy file: %v", err)
 	}
-	dummyFile.Close()
+	_ = dummyFile.Close()
 
 	// Execute the command
 	_, err = executeCommand(rootCmd, "system", "cache", "clean")
@@ -86,7 +86,7 @@ func TestCacheSizeCmd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to write to dummy file: %v", err)
 	}
-	dummyFile.Close()
+	_ = dummyFile.Close()
 
 	// Execute the command
 	output, err := executeCommand(rootCmd, "system", "cache", "size")
@@ -115,19 +115,20 @@ func TestCachePruneCmd(t *testing.T) {
 	cfg, _ := loadConfig()
 	ctrl := core.NewController(cfg)
 	wpInFeed := models.Wallpaper{ID: "keep_me", URL: "http://example.com/keep.jpg"}
-	ctrl.AddWallpaperToFeed(wpInFeed)
+	_ = ctrl.AddWallpaperToFeed(wpInFeed)
 
 	appDir, _ := core.GetAppDir()
 	wallpapersDir := filepath.Join(appDir, "cache", "wallpapers")
 	thumbsDir := filepath.Join(appDir, "cache", "thumbs")
-	os.MkdirAll(wallpapersDir, 0755)
-	os.MkdirAll(thumbsDir, 0755)
+	// Create files
+	_ = os.MkdirAll(wallpapersDir, 0755)
+	_ = os.MkdirAll(thumbsDir, 0755)
 
 	// Create files
-	os.WriteFile(filepath.Join(wallpapersDir, "keep_me.jpg"), []byte("data"), 0644)
-	os.WriteFile(filepath.Join(wallpapersDir, "delete_me.jpg"), []byte("data"), 0644)
-	os.WriteFile(filepath.Join(thumbsDir, "keep_me.jpg"), []byte("data"), 0644)
-	os.WriteFile(filepath.Join(thumbsDir, "delete_me_thumb.jpg"), []byte("data"), 0644)
+	_ = os.WriteFile(filepath.Join(wallpapersDir, "keep_me.jpg"), []byte("data"), 0644)
+	_ = os.WriteFile(filepath.Join(wallpapersDir, "delete_me.jpg"), []byte("data"), 0644)
+	_ = os.WriteFile(filepath.Join(thumbsDir, "keep_me.jpg"), []byte("data"), 0644)
+	_ = os.WriteFile(filepath.Join(thumbsDir, "delete_me_thumb.jpg"), []byte("data"), 0644)
 
 	// Execute prune
 	output, err := executeCommand(rootCmd, "system", "cache", "prune")

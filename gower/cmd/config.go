@@ -3,7 +3,6 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -169,7 +168,7 @@ func ensureConfig() error {
 	}
 
 	if _, err := os.Stat(configFile); os.IsNotExist(err) {
-		return fmt.Errorf("Configuración no encontrada. Ejecuta 'gower config init' primero.")
+		return fmt.Errorf("configuración no encontrada. Ejecuta 'gower config init' primero")
 	}
 	return nil
 }
@@ -393,13 +392,17 @@ func createConfigStructure(cmd *cobra.Command) error {
 	for _, f := range emptyFiles {
 		path := filepath.Join(baseDir, "data", f)
 		if _, err := os.Stat(path); os.IsNotExist(err) {
-			ioutil.WriteFile(path, []byte("[]"), 0644)
+			if err := os.WriteFile(path, []byte("[]"), 0644); err != nil {
+				utils.Log.Error("Error creating initial JSON file %s: %v", f, err)
+			}
 		}
 	}
 
 	colorsPath := filepath.Join(baseDir, "data", "colors.json")
 	if _, err := os.Stat(colorsPath); os.IsNotExist(err) {
-		ioutil.WriteFile(colorsPath, []byte(`{"feed_palette":[],"favorites_palette":[]}`), 0644)
+		if err := os.WriteFile(colorsPath, []byte(`{"feed_palette":[],"favorites_palette":[]}`), 0644); err != nil {
+			utils.Log.Error("Error creating colors.json: %v", err)
+		}
 	}
 
 	configFile := filepath.Join(baseDir, "config.json")

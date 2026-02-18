@@ -51,7 +51,7 @@ var wallpaperCmd = &cobra.Command{
 				cmd.Printf("WARNING: This will permanently delete the file from your disk: %s\n", wp.URL)
 				cmd.Print("Are you sure? (y/N): ")
 				var confirm string
-				fmt.Scanln(&confirm)
+				_, _ = fmt.Scanln(&confirm)
 				if confirm != "y" && confirm != "Y" {
 					cmd.Println("Operation cancelled.")
 					return

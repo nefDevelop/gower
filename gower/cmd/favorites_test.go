@@ -180,7 +180,7 @@ func TestFavoritesExportAndImport(t *testing.T) {
 	data, _ := json.MarshalIndent(newImportFavs, "", "  ")
 	os.WriteFile(newImportFile, data, 0644)
 
-	output, err = executeCommand(rootCmd, "import", "favorites", "--file", newImportFile)
+	_, err = executeCommand(rootCmd, "import", "favorites", "--file", newImportFile)
 	if err != nil {
 		t.Fatalf("Error executing favorites import: %v", err)
 	}

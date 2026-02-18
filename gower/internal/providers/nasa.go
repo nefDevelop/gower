@@ -53,7 +53,7 @@ func (p *NasaProvider) fetchAPOD(limit int, excludeIDs map[string]bool) ([]model
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("nasa apod api returned status: %d", resp.StatusCode)
@@ -119,7 +119,7 @@ func (p *NasaProvider) searchImageLibrary(query string, limit int, excludeIDs ma
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("nasa image api returned status: %d", resp.StatusCode)

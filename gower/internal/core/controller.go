@@ -105,7 +105,7 @@ var NewController = func(config *models.Config) *Controller {
 						utils.Log.Error("Verificación de API del proveedor genérico %s falló (URL: %s): %v", providerConfig.Name, providerConfig.APIURL, err)
 						// Continuar, ya que podría ser un problema de red temporal.
 					} else {
-						defer resp.Body.Close()
+						defer func() { _ = resp.Body.Close() }()
 						if resp.StatusCode == http.StatusNotFound {
 							utils.Log.Error("El proveedor genérico %s (URL: %s) devolvió 404 Not Found. Se omite el registro.", providerConfig.Name, providerConfig.APIURL)
 							continue // Omitir el registro de este proveedor
@@ -696,14 +696,14 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 	// Helper function to delete associated files
 	deleteAssociatedFiles := func(wallpaper models.Wallpaper) {
 		// Always delete thumbnail
-		os.Remove(filepath.Join(thumbDir, wallpaper.ID+".jpg"))
+		_ = os.Remove(filepath.Join(thumbDir, wallpaper.ID+".jpg"))
 		utils.Log.Info("Deleted thumbnail: %s", filepath.Join(thumbDir, wallpaper.ID+".jpg"))
 
 		// Delete main cached file ONLY if it's NOT a local source.
 		// For local source, the main file is the user's original file, which we should not delete automatically.
 		if wallpaper.Source != "local" {
 			if path, found := c.FindWallpaperCacheFile(wallpaper); found {
-				os.Remove(path)
+				_ = os.Remove(path)
 				utils.Log.Info("Deleted cached wallpaper file: %s", path)
 			}
 		}
@@ -942,7 +942,7 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 					if progress != nil {
 						progress(fmt.Sprintf("Warning: Found duplicate for %s. Removing old file with incorrect name: %s", wp.ID, filepath.Base(actualPath)))
 					}
-					os.Remove(actualPath)
+					_ = os.Remove(actualPath)
 				}
 			}
 		}
@@ -1241,13 +1241,13 @@ func (c *Controller) DeleteWallpaper(id string, deleteFile bool) error {
 		} else {
 			// Delete cached file
 			if path, found := c.FindWallpaperCacheFile(*wp); found {
-				os.Remove(path)
+				_ = os.Remove(path)
 			}
 		}
 
 		appDir, _ := GetAppDir()
 		thumbPath := filepath.Join(appDir, "cache", "thumbs", wp.ID+".jpg")
-		os.Remove(thumbPath)
+		_ = os.Remove(thumbPath)
 	}
 
 	return c.RebuildColorIndex()
@@ -1341,7 +1341,7 @@ func (c *Controller) DownloadWallpaper(wp models.Wallpaper) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("failed to download wallpaper: status %d", resp.StatusCode)
@@ -1351,7 +1351,7 @@ func (c *Controller) DownloadWallpaper(wp models.Wallpaper) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
@@ -1656,7 +1656,7 @@ func (c *Controller) SyncFeed() (int, int, error) {
 					// When creating thumbnails, we only validate aspect ratio, not absolute resolution.
 					if valid, reason := c.isValidImage(width, height, false); !valid { // Solo validar aspect_ratio
 						utils.Log.Info("Rejected item %s: dimensions %dx%d do not match aspect ratio criteria. Reason: %s. Removing thumbnail.", wp.ID, width, height, reason)
-						os.Remove(thumbPath) // Limpiar thumbnail generado
+						_ = os.Remove(thumbPath) // Limpiar thumbnail generado
 						continue
 					}
 
@@ -1683,7 +1683,7 @@ func (c *Controller) SyncFeed() (int, int, error) {
 
 					// Auto-download full image if enabled
 					if c.Config.Behavior.AutoDownload {
-						c.DownloadWallpaper(wp)
+						_, _ = c.DownloadWallpaper(wp)
 					}
 
 					// Marcar como no visto
@@ -1729,7 +1729,7 @@ func (c *Controller) SyncFeed() (int, int, error) {
 	}
 
 	// Reconstruir colors.json basado en el feed actualizado
-	c.rebuildColorsIndex(feed)
+	_ = c.rebuildColorsIndex(feed)
 
 	if addedCount > 0 || repairedCount > 0 || addedLocal > 0 || removedLocal > 0 {
 		// Aplicar Hard Limit (FIFO)
@@ -1917,35 +1917,6 @@ func (c *Controller) isValidImage(width, height int, checkResolution bool) (bool
 	}
 	utils.Log.Debug("isValidImage: %dx%d (ratio %.2f) passes aspect ratio check (target %.2f, tolerance %.2f).", width, height, currentRatio, targetRatio, c.Config.Search.Tolerance)
 	return true, ""
-}
-
-func (c *Controller) isValidDimension(dimension string) bool {
-	if c.Config == nil || dimension == "" {
-		utils.Log.Debug("isValidDimension: Config is nil or dimension is empty, returning true.")
-		return true // Si no hay datos, asumimos válido (ej. NASA a veces)
-	}
-	parts := strings.Split(dimension, "x")
-	if len(parts) != 2 {
-		utils.Log.Debug("isValidDimension: Dimension string '%s' malformed, returning true.", dimension)
-		return true
-	}
-	w, err1 := strconv.Atoi(strings.TrimSpace(parts[0]))
-	h, err2 := strconv.Atoi(strings.TrimSpace(parts[1]))
-	if err1 != nil || err2 != nil {
-		utils.Log.Debug("isValidDimension: Error parsing dimensions '%s' (w: %v, h: %v), returning true.", dimension, err1, err2)
-		return true
-	}
-
-	if c.Config.Search.MinWidth > 0 && w < c.Config.Search.MinWidth {
-		utils.Log.Debug("isValidDimension: %s (w=%d) fails min_width (%d).", dimension, w, c.Config.Search.MinWidth)
-		return false
-	}
-	if c.Config.Search.MinHeight > 0 && h < c.Config.Search.MinHeight {
-		utils.Log.Debug("isValidDimension: %s (h=%d) fails min_height (%d).", dimension, h, c.Config.Search.MinHeight)
-		return false
-	}
-	utils.Log.Debug("isValidDimension: %s passes initial dimension check.", dimension)
-	return true
 }
 
 // GetLastProviderUpdateTime returns the modification time of the most recently updated provider cache file.

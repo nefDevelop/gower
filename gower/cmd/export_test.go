@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,7 +27,7 @@ func TestExportConfig(t *testing.T) {
 		t.Errorf("Expected 'Configuration exported to:', got: %s", output)
 	}
 
-	exportedData, err := ioutil.ReadFile(exportFile)
+	exportedData, err := os.ReadFile(exportFile)
 	if err != nil {
 		t.Fatalf("Error reading exported config file: %v", err)
 	}
@@ -51,8 +50,8 @@ func TestExportFeed(t *testing.T) {
 	// Add some dummy wallpapers to the feed
 	cfg, _ := loadConfig()
 	controller := core.NewController(cfg)
-	controller.AddWallpaperToFeed(models.Wallpaper{ID: "feed-1", URL: "url-1", Source: "test", Theme: "dark"})
-	controller.AddWallpaperToFeed(models.Wallpaper{ID: "feed-2", URL: "url-2", Source: "test", Theme: "light"})
+	_ = controller.AddWallpaperToFeed(models.Wallpaper{ID: "feed-1", URL: "url-1", Source: "test", Theme: "dark"})
+	_ = controller.AddWallpaperToFeed(models.Wallpaper{ID: "feed-2", URL: "url-2", Source: "test", Theme: "light"})
 
 	exportFile := filepath.Join(tmpDir, "exported_feed.json")
 	output, err := executeCommand(rootCmd, "export", "feed", "--file", exportFile)
@@ -63,7 +62,7 @@ func TestExportFeed(t *testing.T) {
 		t.Errorf("Expected 'Feed exported to:', got: %s", output)
 	}
 
-	exportedData, err := ioutil.ReadFile(exportFile)
+	exportedData, err := os.ReadFile(exportFile)
 	if err != nil {
 		t.Fatalf("Error reading exported feed file: %v", err)
 	}
@@ -117,7 +116,7 @@ func TestExportAll(t *testing.T) {
 	// Add some dummy wallpapers to the feed
 	cfg, _ := loadConfig()
 	controller := core.NewController(cfg)
-	controller.AddWallpaperToFeed(models.Wallpaper{ID: "feed-all-1", URL: "url-all-1", Source: "test"})
+	_ = controller.AddWallpaperToFeed(models.Wallpaper{ID: "feed-all-1", URL: "url-all-1", Source: "test"})
 
 	exportDir := filepath.Join(tmpDir, "gower_all_export")
 	output, err := executeCommand(rootCmd, "export", "all", exportDir)
@@ -133,9 +132,9 @@ func TestExportAll(t *testing.T) {
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		t.Errorf("config.json not found in exported directory")
 	}
-	configData, _ := ioutil.ReadFile(configPath)
+	configData, _ := os.ReadFile(configPath)
 	var exportedConfig models.Config
-	json.Unmarshal(configData, &exportedConfig)
+	_ = json.Unmarshal(configData, &exportedConfig)
 	if exportedConfig.Behavior.Theme != "dark" {
 		t.Errorf("Exported config theme mismatch")
 	}
@@ -145,9 +144,9 @@ func TestExportAll(t *testing.T) {
 	if _, err := os.Stat(favoritesPath); os.IsNotExist(err) {
 		t.Errorf("favorites.json not found in exported directory")
 	}
-	favoritesData, _ := ioutil.ReadFile(favoritesPath)
+	favoritesData, _ := os.ReadFile(favoritesPath)
 	var exportedFavorites []models.Wallpaper
-	json.Unmarshal(favoritesData, &exportedFavorites)
+	_ = json.Unmarshal(favoritesData, &exportedFavorites)
 	if len(exportedFavorites) != 1 || exportedFavorites[0].ID != "fav-1" {
 		t.Errorf("Exported favorites content mismatch")
 	}
@@ -157,9 +156,9 @@ func TestExportAll(t *testing.T) {
 	if _, err := os.Stat(feedPath); os.IsNotExist(err) {
 		t.Errorf("feed.json not found in exported directory")
 	}
-	feedData, _ := ioutil.ReadFile(feedPath)
+	feedData, _ := os.ReadFile(feedPath)
 	var exportedFeed []models.Wallpaper
-	json.Unmarshal(feedData, &exportedFeed)
+	_ = json.Unmarshal(feedData, &exportedFeed)
 	if len(exportedFeed) != 1 || exportedFeed[0].ID != "feed-all-1" {
 		t.Errorf("Exported feed content mismatch")
 	}

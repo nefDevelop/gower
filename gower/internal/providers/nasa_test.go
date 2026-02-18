@@ -26,7 +26,7 @@ func TestNasaProvider_fetchAPOD_WithMockServer(t *testing.T) {
 			{"date": "2023-01-02", "media_type": "video", "title": "Video 1", "url": "url2"},
 			{"date": "2023-01-03", "media_type": "image", "title": "Image 2", "url": "url3", "hdurl": "hdurl3"}
 		]`
-		fmt.Fprintln(w, response)
+		_, _ = fmt.Fprintln(w, response)
 	}))
 	defer server.Close()
 
@@ -57,7 +57,7 @@ func TestNasaProvider_searchImageLibrary_WithMockServer(t *testing.T) {
 				]
 			}
 		}`
-		fmt.Fprintln(w, response)
+		_, _ = fmt.Fprintln(w, response)
 	}))
 	defer server.Close()
 

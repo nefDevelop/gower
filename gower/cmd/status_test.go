@@ -96,8 +96,8 @@ func TestStatusAll(t *testing.T) {
 		ID: "wall_2", Path: "/path/to/wall_2.png", Source: "test", URL: "http://example.com/wall_2.png", Dimension: "2560x1440", Color: "#000000", Theme: "dark",
 	}
 
-	mockController.Controller.AddWallpaperToFeed(*mockController.MockWallpapers["wall_1"])
-	mockController.Controller.AddWallpaperToFeed(*mockController.MockWallpapers["wall_2"])
+	_ = mockController.Controller.AddWallpaperToFeed(*mockController.MockWallpapers["wall_1"])
+	_ = mockController.Controller.AddWallpaperToFeed(*mockController.MockWallpapers["wall_2"])
 	output, err := executeCommand(rootCmd, "status")
 	if err != nil {
 		t.Fatalf("Error executing status: %v", err)
@@ -155,8 +155,8 @@ func TestStatusJSON(t *testing.T) {
 		ID: "wall_2", Path: "/path/to/wall_2.png", Source: "test", URL: "http://example.com/wall_2.png", Dimension: "2560x1440", Color: "#000000", Theme: "dark",
 	}
 
-	mockController.Controller.AddWallpaperToFeed(*mockController.MockWallpapers["wall_1"])
-	mockController.Controller.AddWallpaperToFeed(*mockController.MockWallpapers["wall_2"])
+	_ = mockController.Controller.AddWallpaperToFeed(*mockController.MockWallpapers["wall_1"])
+	_ = mockController.Controller.AddWallpaperToFeed(*mockController.MockWallpapers["wall_2"])
 	output, err := executeCommand(rootCmd, "status", "--json")
 	if err != nil {
 		t.Fatalf("Error executing status --json: %v", err)
@@ -197,7 +197,7 @@ func TestStatusFlags(t *testing.T) {
 		ID: "wall_1", Path: "/path/to/wall_1.jpg", Source: "test", URL: "http://example.com/wall_1.jpg", Dimension: "1920x1080", Color: "#FFFFFF", Theme: "light",
 	}
 	// Add the wallpaper to the feed so the real controller can find it.
-	mockController.Controller.AddWallpaperToFeed(*mockController.MockWallpapers["wall_1"])
+	_ = mockController.Controller.AddWallpaperToFeed(*mockController.MockWallpapers["wall_1"])
 
 	// Test --providers
 	output, err := executeCommand(rootCmd, "status", "--providers")
@@ -217,8 +217,8 @@ func TestStatusFlags(t *testing.T) {
 	// Test --storage
 	// Create some dummy files to check size
 	cacheDir := filepath.Join(os.Getenv("HOME"), ".gower", "cache")
-	os.MkdirAll(cacheDir, 0755)
-	os.WriteFile(filepath.Join(cacheDir, "test"), []byte("test"), 0644)
+	_ = os.MkdirAll(cacheDir, 0755)
+	_ = os.WriteFile(filepath.Join(cacheDir, "test"), []byte("test"), 0644)
 
 	resetStatusFlags() // Reset again to clear providers flag
 	output, err = executeCommand(rootCmd, "status", "--storage")
@@ -259,7 +259,7 @@ func TestStatusWallpaperNoWallpapers(t *testing.T) {
 
 	// No state.json or empty state.json
 	statePath := filepath.Join(os.Getenv("HOME"), ".gower", "state.json")
-	os.WriteFile(statePath, []byte(`{}`), 0644)
+	_ = os.WriteFile(statePath, []byte(`{}`), 0644)
 
 	output, err := executeCommand(rootCmd, "status", "--wallpapers")
 	if err != nil {
