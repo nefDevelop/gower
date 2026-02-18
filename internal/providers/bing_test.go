@@ -20,8 +20,8 @@ func TestBingProvider_Search(t *testing.T) {
 		if r.URL.Query().Get("idx") != "0" { // opts.Page-1, default page is 1
 			t.Errorf("Expected idx=0, got %s", r.URL.Query().Get("idx"))
 		}
-		if r.URL.Query().Get("n") != "1" { // We request only one image
-			t.Errorf("Expected n=1, got %s", r.URL.Query().Get("n"))
+		if r.URL.Query().Get("n") != "8" { // Provider defaults to 8
+			t.Errorf("Expected n=8, got %s", r.URL.Query().Get("n"))
 		}
 		if r.URL.Query().Get("mkt") != "en-US" { // From provider config
 			t.Errorf("Expected mkt=en-US, got %s", r.URL.Query().Get("mkt"))

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"gower/internal/core"
 	"gower/pkg/models"
@@ -63,7 +64,7 @@ func runDownload(cmd *cobra.Command, args []string) error {
 
 		if len(input) > 4 && input[:4] == "http" {
 			wallpaper = &models.Wallpaper{
-				ID:     "manual_url",
+				ID:     fmt.Sprintf("manual_%d", time.Now().UnixNano()),
 				URL:    input,
 				Source: "manual",
 			}
@@ -115,6 +116,14 @@ func performDownload(cmd *cobra.Command, controller *core.Controller, wp models.
 	cachePath, err := controller.DownloadWallpaper(wp)
 	if err != nil {
 		return fmt.Errorf("error downloading: %w", err)
+	}
+
+	// Update the wallpaper with the local path and save it to the feed
+	wp.Path = cachePath
+	if err := controller.AddWallpaperToFeed(wp); err != nil {
+		if !config.Quiet {
+			cmd.Printf("Warning: Failed to update feed with local path: %v\n", err)
+		}
 	}
 
 	if !config.Quiet {

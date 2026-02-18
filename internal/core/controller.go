@@ -122,11 +122,16 @@ var NewController = func(config *models.Config) *Controller {
 		}
 	}
 
+	colorManager := NewColorManager()
+	if colorManager == nil {
+		utils.Log.Error("NewColorManager returned nil. This should not happen.")
+	}
+
 	return &Controller{
 		Config:          config,
 		ProviderManager: providerManager,
 		feedManager:     utils.NewSecureJSONManager(),
-		ColorManager:    NewColorManager(),
+		ColorManager:    colorManager,
 	}
 }
 
@@ -439,6 +444,9 @@ func (c *Controller) PurgeFeed() error {
 
 // AnalyzeFeed analyzes the feed items, regenerates thumbnails/colors if needed, and rebuilds the color index.
 func (c *Controller) AnalyzeFeed(all bool, force bool, progress func(string)) error {
+	if c == nil {
+		return fmt.Errorf("controller is nil")
+	}
 	feed, err := c.loadFeed()
 	if err != nil {
 		return err
@@ -601,6 +609,9 @@ func (c *Controller) indexLocalWallpapers(feed *[]models.Wallpaper) (int, int, e
 
 // AnalyzeFavorites analyzes the favorites items, regenerates thumbnails/colors if needed.
 func (c *Controller) AnalyzeFavorites(all bool, force bool, progress func(string)) error {
+	if c == nil {
+		return fmt.Errorf("controller is nil")
+	}
 	appDir, err := GetAppDir()
 	if err != nil {
 		return err
@@ -691,7 +702,27 @@ func (c *Controller) AnalyzeFavorites(all bool, force bool, progress func(string
 // processWallpaperItem handles the analysis logic for a single wallpaper item
 func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, thumbDir string, progress func(string)) (models.Wallpaper, bool, bool) {
 	changed := false
+
+	// 0. Robust nil checks for Controller and its components
+	if c == nil || c.ColorManager == nil {
+		utils.Log.Error("CRITICAL: Controller or ColorManager is nil in processWallpaperItem for %s.", wp.ID)
+		if progress != nil {
+			progress(fmt.Sprintf("CRITICAL Error: Controller or ColorManager is nil for %s.", wp.ID))
+		}
+		return wp, false, true // Mark for deletion or skip
+	}
 	thumbPath := filepath.Join(thumbDir, wp.ID+".jpg")
+
+	info, errStat := os.Stat(thumbPath)
+	thumbExists := errStat == nil && info.Size() > 0
+
+	// Check if existing thumbnail is valid image data
+	if thumbExists && !force {
+		if _, _, err := c.ColorManager.GetImageDimensions(thumbPath); err != nil {
+			thumbExists = false // Treat as missing to force regeneration
+			utils.Log.Info("Thumbnail for %s is corrupt or invalid. Regenerating...", wp.ID)
+		}
+	}
 
 	// Helper function to delete associated files
 	deleteAssociatedFiles := func(wallpaper models.Wallpaper) {
@@ -709,26 +740,40 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 		}
 	}
 
-	info, errStat := os.Stat(thumbPath)
-	thumbExists := errStat == nil && info.Size() > 0
-
-	// Check if existing thumbnail is valid image data
-	if thumbExists && !force {
-		if _, _, err := c.ColorManager.GetImageDimensions(thumbPath); err != nil {
-			thumbExists = false // Treat as missing to force regeneration
-			utils.Log.Info("Thumbnail for %s is corrupt or invalid. Regenerating...", wp.ID)
+	// 1. Ensure the wallpaper's full image is cached locally.
+	// This also generates the thumbnail and analyzes color if successful.
+	localFileExists := false
+	if wp.Path != "" {
+		if _, err := os.Stat(wp.Path); err == nil {
+			localFileExists = true
 		}
 	}
+	if !localFileExists {
+		progress(fmt.Sprintf("Downloading %s for analysis", wp.ID))
+		localPath, err := c.DownloadWallpaper(wp) // This also generates thumbnail and analyzes color
+		if err != nil {
+			utils.Log.Error("Failed to download %s for analysis: %v", wp.ID, err)
+			progress(fmt.Sprintf("Error downloading %s for analysis: %v", wp.ID, err))
+			return wp, false, true // Mark for deletion if download fails
+		}
+		wp.Path = localPath
+		changed = true
+	}
 
+	// At this point, wp.Path is guaranteed to be a local, existing file.
+	// And DownloadWallpaper should have already generated the thumbnail and analyzed color.
+	// So, we primarily need to *verify* the thumbnail and color, and regenerate only if forced or invalid.
+
+	// 2. Verify/Regenerate Thumbnail and Color
 	// If thumbnail is missing, or if we are forcing a full regeneration (force+all), generate it
+	// Note: DownloadWallpaper already generates it, so this block is mainly for `force` or if `DownloadWallpaper` failed to generate it.
 	if !thumbExists || force {
-		utils.Log.Info("Generating thumbnail for %s", wp.ID)
+		utils.Log.Info("Generating thumbnail for %s from %s", wp.ID, wp.Path)
 		if progress != nil {
 			progress(fmt.Sprintf("Generating thumbnail for %s", wp.ID))
 		}
-		src := wp.Thumbnail
-
-		w, h, err := c.ColorManager.GenerateThumbnail(src, thumbPath) // `checkResolution` will be ignored as we pass `false` below
+		// Use wp.Path as the source, which is guaranteed to be local and exist.
+		w, h, err := c.ColorManager.GenerateThumbnail(wp.Path, thumbPath)
 		if err == nil {
 			// Check validity immediately after generation
 			if valid, reason := c.isValidImage(w, h, false); !valid { // Solo validar aspect_ratio
@@ -752,8 +797,30 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 				wp.Dimension = fmt.Sprintf("%dx%d", w, h) // Always set original dimension if available
 				changed = true
 			}
-			// And we can analyze color
-			if color, err := c.ColorManager.AnalyzeColor(thumbPath); err == nil {
+			// Color analysis will be done in the next step, or if DownloadWallpaper already did it, it's fine.
+		} else {
+			utils.Log.Error("Failed to generate thumbnail for %s from %s: %v", wp.ID, wp.Path, err)
+			if progress != nil {
+				progress(fmt.Sprintf("Failed to generate thumbnail for %s: %v", wp.ID, err))
+			}
+			return wp, false, true
+		}
+	} else {
+		// Thumbnail exists and is valid, but ensure wp.Dimension is set from it if missing
+		if wp.Dimension == "" {
+			if w, h, err := c.ColorManager.GetImageDimensions(thumbPath); err == nil {
+				wp.Dimension = fmt.Sprintf("%dx%d", w, h)
+				changed = true
+			}
+		}
+	}
+
+	// 3. Re-evaluate color and theme if needed (e.g., if `all` is true or if they are missing)
+	// This part is important because DownloadWallpaper might not update wp.Color/wp.Theme in the `wp` object passed to `processWallpaperItem`.
+	// We need to ensure `wp.Color` and `wp.Theme` are correctly set based on the generated thumbnail.
+	if all || wp.Color == "" || wp.Theme == "" {
+		if color, err := c.ColorManager.AnalyzeColor(thumbPath); err == nil {
+			if wp.Color != color || wp.Theme == "" || (c.ColorManager.IsDark(color) && wp.Theme != "dark") || (!c.ColorManager.IsDark(color) && wp.Theme != "light") {
 				wp.Color = color
 				if c.ColorManager.IsDark(color) {
 					wp.Theme = "dark"
@@ -761,163 +828,107 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 					wp.Theme = "light"
 				}
 				changed = true
-
-				// Rename local file with [d] or [l] tag if enabled
-				if wp.Source == "local" && c.Config.Paths.IndexWallpapers {
-					localPath := wp.URL
-					dir := filepath.Dir(localPath)
-					filename := filepath.Base(localPath)
-					ext := filepath.Ext(filename)
-					nameWithoutExt := strings.TrimSuffix(filename, ext)
-
-					cleanName := nameWithoutExt
-					// Remove existing tags from end of filename
-					if strings.HasSuffix(cleanName, " [d]") {
-						cleanName = strings.TrimSuffix(cleanName, " [d]")
-					} else if strings.HasSuffix(cleanName, " [l]") {
-						cleanName = strings.TrimSuffix(cleanName, " [l]")
-					}
-
-					newTag := "[l]"
-					if wp.Theme == "dark" {
-						newTag = "[d]"
-					}
-
-					var newFilename string
-					if cleanName == "" {
-						newFilename = fmt.Sprintf("%s%s", newTag, ext)
-					} else {
-						newFilename = fmt.Sprintf("%s %s%s", cleanName, newTag, ext)
-					}
-
-					newPath := filepath.Join(dir, newFilename)
-					if localPath != newPath {
-						if err := os.Rename(localPath, newPath); err == nil {
-							utils.Log.Info("Renaming local file: %s -> %s", filename, newFilename)
-							wp.URL = newPath
-							wp.Thumbnail = newPath
-						}
-					}
-				}
 			}
 		} else {
-			utils.Log.Error("Failed to generate thumbnail for %s: %v", wp.ID, err)
+			utils.Log.Error("Failed to analyze color for %s: %v", wp.ID, err)
 			if progress != nil {
-				progress(fmt.Sprintf("Failed to generate thumbnail for %s: %v", wp.ID, err))
-			}
-			return wp, false, true
-		}
-	} else {
-		// Thumbnail exists, verify it matches current criteria (prune invalid items)
-		utils.Log.Debug("processWallpaperItem: Thumbnail exists for %s. wp.Dimension='%s'.", wp.ID, wp.Dimension)
-		var validationW, validationH int
-		var validationErr error
-		var validationSource string
-
-		// Prioritize original dimensions if available and valid
-		if wp.Dimension != "" { // Check if original dimension is stored
-			w, h, err := utils.ParseResolution(wp.Dimension)
-			if err == nil {
-				validationW, validationH = w, h
-				validationSource = "original resolution"
-			} else {
-				utils.Log.Error("Failed to parse original dimension '%s' for %s: %v. Attempting to use thumbnail dimensions for aspect ratio check.", wp.Dimension, wp.ID, err)
-				validationW, validationH, validationErr = c.ColorManager.GetImageDimensions(thumbPath)
-				validationSource = "thumbnail resolution (fallback from malformed original dimension)"
-			}
-		} else {
-			// If wp.Dimension is empty, try to get dimensions from the thumbnail
-			utils.Log.Debug("processWallpaperItem: wp.Dimension is empty for %s. Attempting to use thumbnail dimensions.", wp.ID)
-			validationW, validationH, validationErr = c.ColorManager.GetImageDimensions(thumbPath) // Use thumbnail dimensions
-			validationSource = "thumbnail resolution (wp.Dimension empty)"
-		}
-
-		if validationErr == nil {
-			if valid, reason := c.isValidImage(validationW, validationH, false); !valid { // Solo validar aspect_ratio
-				utils.Log.Info("Removing invalid item %s (%s %dx%d). Reason: %s", wp.ID, validationSource, validationW, validationH, reason)
-				if progress != nil {
-					progress(fmt.Sprintf("Removing invalid item %s (%s %dx%d). Reason: %s", wp.ID, validationSource, validationW, validationH, reason))
-				}
-				deleteAssociatedFiles(wp)
-				return wp, false, true
-			}
-		} else {
-			utils.Log.Error("Failed to get any dimensions for %s (original or thumbnail): %v. Marking as invalid.", wp.ID, validationErr)
-			if progress != nil {
-				progress(fmt.Sprintf("Removing invalid item %s (could not determine dimensions for aspect ratio check).", wp.ID))
-			}
-			deleteAssociatedFiles(wp)
-			return wp, false, true
-		}
-
-		// Ensure extension is set if it's missing
-		if wp.Extension == "" {
-			wp.Extension = ".jpg"
-			changed = true
-		}
-
-		// Re-analyze color if requested or missing, or if dimensions were just obtained from thumbnail
-		if all || wp.Color == "" || (validationSource == "thumbnail resolution (wp.Dimension empty)" && wp.Color == "") {
-			if color, err := c.ColorManager.AnalyzeColor(thumbPath); err == nil {
-				// Only update if color has changed or was missing
-				if wp.Color != color || wp.Theme == "" {
-					wp.Color = color
-					if c.ColorManager.IsDark(color) {
-						wp.Theme = "dark"
-					} else {
-						wp.Theme = "light"
-					}
-					changed = true
-				}
-
-				// Rename local file with [d] or [l] tag if enabled (for existing items)
-				if wp.Source == "local" && c.Config.Paths.IndexWallpapers {
-					localPath := wp.URL
-					dir := filepath.Dir(localPath)
-					filename := filepath.Base(localPath)
-					ext := filepath.Ext(filename)
-					nameWithoutExt := strings.TrimSuffix(filename, ext)
-
-					cleanName := nameWithoutExt
-					// Remove existing tags from end of filename
-					if strings.HasSuffix(cleanName, " [d]") {
-						cleanName = strings.TrimSuffix(cleanName, " [d]")
-					} else if strings.HasSuffix(cleanName, " [l]") {
-						cleanName = strings.TrimSuffix(cleanName, " [l]")
-					}
-
-					newTag := "[l]"
-					if wp.Theme == "dark" {
-						newTag = "[d]"
-					}
-
-					var newFilename string
-					if cleanName == "" {
-						newFilename = fmt.Sprintf("%s%s", newTag, ext)
-					} else {
-						newFilename = fmt.Sprintf("%s %s%s", cleanName, newTag, ext)
-					}
-
-					newPath := filepath.Join(dir, newFilename)
-					if localPath != newPath {
-						if err := os.Rename(localPath, newPath); err == nil {
-							utils.Log.Info("Renaming local file: %s -> %s", filename, newFilename)
-							wp.URL = newPath
-							wp.Thumbnail = newPath
-							changed = true
-						}
-					}
-				}
-			} else {
-				utils.Log.Error("Failed to analyze color for %s: %v", wp.ID, err)
-				if progress != nil {
-					progress(fmt.Sprintf("Failed to analyze color for %s: %v", wp.ID, err))
-				}
+				progress(fmt.Sprintf("Failed to analyze color for %s: %v", wp.ID, err))
 			}
 		}
 	}
 
-	// 4. Check and fix main wallpaper filename if it exists
+	// 4. Validate image dimensions and aspect ratio
+	utils.Log.Debug("processWallpaperItem: Validating image %s. wp.Dimension='%s'.", wp.ID, wp.Dimension)
+	var validationW, validationH int
+	var validationErr error
+	var validationSource string
+
+	// Prioritize original dimensions if available and valid
+	if wp.Dimension != "" { // Check if original dimension is stored
+		w, h, err := utils.ParseResolution(wp.Dimension)
+		if err == nil {
+			validationW, validationH = w, h
+			validationSource = "original resolution"
+		} else {
+			utils.Log.Error("Failed to parse original dimension '%s' for %s: %v. Attempting to use thumbnail dimensions for aspect ratio check.", wp.Dimension, wp.ID, err)
+			validationW, validationH, validationErr = c.ColorManager.GetImageDimensions(thumbPath)
+			validationSource = "thumbnail resolution (fallback from malformed original dimension)"
+		}
+	} else {
+		// If wp.Dimension is empty, try to get dimensions from the thumbnail
+		validationW, validationH, validationErr = c.ColorManager.GetImageDimensions(thumbPath) // Use thumbnail dimensions
+		validationSource = "thumbnail resolution (wp.Dimension empty)"
+	}
+
+	if validationErr == nil {
+		if valid, reason := c.isValidImage(validationW, validationH, false); !valid { // Solo validar aspect_ratio
+			utils.Log.Info("Removing invalid item %s (%s %dx%d). Reason: %s", wp.ID, validationSource, validationW, validationH, reason)
+			if progress != nil {
+				progress(fmt.Sprintf("Removing invalid item %s (%s %dx%d). Reason: %s", wp.ID, validationSource, validationW, validationH, reason))
+			}
+			deleteAssociatedFiles(wp)
+			return wp, false, true
+		}
+	} else {
+		utils.Log.Error("Failed to get any dimensions for %s (original or thumbnail): %v. Marking as invalid.", wp.ID, validationErr)
+		if progress != nil {
+			progress(fmt.Sprintf("Removing invalid item %s (could not determine dimensions for aspect ratio check).", wp.ID))
+		}
+		deleteAssociatedFiles(wp)
+		return wp, false, true
+	}
+
+	// Ensure extension is set if it's missing
+	if wp.Extension == "" {
+		wp.Extension = ".jpg"
+		changed = true
+	}
+
+	// 5. Rename local file with [d] or [l] tag if enabled (for existing items)
+	// This logic is currently inside the `if !thumbExists || force` block and also in the `else` block.
+	// It should be consolidated and run after `wp.Theme` is definitively set.
+	if wp.Source == "local" && c.Config.Paths.IndexWallpapers && wp.Theme != "" {
+		localPath := wp.URL
+		dir := filepath.Dir(localPath)
+		filename := filepath.Base(localPath)
+		ext := filepath.Ext(filename)
+		nameWithoutExt := strings.TrimSuffix(filename, ext)
+
+		cleanName := nameWithoutExt
+		// Remove existing tags from end of filename
+		if strings.HasSuffix(cleanName, " [d]") {
+			cleanName = strings.TrimSuffix(cleanName, " [d]")
+		} else if strings.HasSuffix(cleanName, " [l]") {
+			cleanName = strings.TrimSuffix(cleanName, " [l]")
+		}
+
+		newTag := "[l]"
+		if wp.Theme == "dark" {
+			newTag = "[d]"
+		}
+
+		var newFilename string
+		if cleanName == "" {
+			newFilename = fmt.Sprintf("%s%s", newTag, ext)
+		} else {
+			newFilename = fmt.Sprintf("%s %s%s", cleanName, newTag, ext)
+		}
+
+		newPath := filepath.Join(dir, newFilename)
+		if localPath != newPath {
+			if err := os.Rename(localPath, newPath); err == nil {
+				utils.Log.Info("Renaming local file: %s -> %s", filename, newFilename)
+				wp.URL = newPath
+				wp.Thumbnail = newPath // Update thumbnail path if it was pointing to the old URL
+				changed = true
+			} else {
+				utils.Log.Error("Failed to rename local file %s to %s: %v", localPath, newPath, err)
+			}
+		}
+	}
+
+	// 6. Check and fix main wallpaper filename if it exists (already exists)
+	// This part is for non-local wallpapers to ensure cached files have correct names.
 	if wp.Source != "local" {
 		expectedPath, err := c.GetWallpaperLocalPath(wp)
 		if err == nil {
@@ -1849,6 +1860,10 @@ func (c *Controller) LoadColorPalettes() ([]string, []string, error) {
 
 func (c *Controller) isValidImage(width, height int, checkResolution bool) (bool, string) {
 	utils.Log.Debug("isValidImage: Checking image %dx%d. Parameter checkResolution=%t.", width, height, checkResolution)
+	if c == nil {
+		utils.Log.Debug("isValidImage: Controller is nil, returning true.")
+		return true, ""
+	}
 	if c.Config == nil {
 		utils.Log.Debug("isValidImage: Config is nil, returning true.")
 		return true, ""
