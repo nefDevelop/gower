@@ -368,7 +368,7 @@ func TestController_AnalyzeFeed_Colors(t *testing.T) {
 	createDummyImage(t, srcImgPath)
 
 	// Add item to feed with wrong color and missing color
-	wp1 := models.Wallpaper{ID: "test_wrong_color", URL: srcImgPath, Thumbnail: srcImgPath, Color: "#0000FF"} // Blue, but image is red
+	wp1 := models.Wallpaper{ID: "test_wrong_color", URL: srcImgPath, Thumbnail: srcImgPath, Color: "#0000FF", Theme: "dark"} // Blue, but image is red
 	wp2 := models.Wallpaper{ID: "test_missing_color", URL: srcImgPath, Thumbnail: srcImgPath, Color: ""}
 
 	_ = ctrl.AddWallpaperToFeed(wp1)
