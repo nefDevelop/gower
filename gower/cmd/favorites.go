@@ -16,11 +16,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type FavoriteWallpaper struct {
-	models.Wallpaper
-	Notes string `json:"notes,omitempty"`
-}
-
 var (
 	favPage  int
 	favLimit int
@@ -61,7 +56,7 @@ var favoritesListCmd = &cobra.Command{
 			if err != nil {
 				cmd.Printf("Warning: could not load color palette: %v\n", err)
 			} else {
-				var filtered []FavoriteWallpaper
+				var filtered []core.FavoriteWallpaper
 				for _, fav := range favorites {
 					targetBucket := controller.ColorManager.FindNearestColorInPalette(favColor, palette)
 					favBucket := controller.ColorManager.FindNearestColorInPalette(fav.Color, palette)
@@ -160,7 +155,7 @@ var favoritesAddCmd = &cobra.Command{
 			}
 		}
 
-		newFav := FavoriteWallpaper{Wallpaper: wallpaperToAdd, Notes: favNotes}
+		newFav := core.FavoriteWallpaper{Wallpaper: wallpaperToAdd, Notes: favNotes}
 
 		// Check if we need to save to local folder
 		if cfg, err := loadConfig(); err == nil && cfg.Behavior.SaveFavoritesToFolder && cfg.Paths.Wallpapers != "" {
@@ -236,7 +231,7 @@ var favoritesRemoveCmd = &cobra.Command{
 		}
 
 		found := false
-		newFavorites := []FavoriteWallpaper{}
+		newFavorites := []core.FavoriteWallpaper{}
 		for _, fav := range favorites {
 			if fav.ID == wallpaperID {
 				found = true
@@ -317,17 +312,17 @@ func getFeedPath() (string, error) {
 	return filepath.Join(appDir, "data", "feed.json"), nil
 }
 
-func loadFavorites() ([]FavoriteWallpaper, error) {
+func loadFavorites() ([]core.FavoriteWallpaper, error) {
 	path, err := getFavoritesPath()
 	if err != nil {
 		return nil, err
 	}
 
-	var favorites []FavoriteWallpaper
+	var favorites []core.FavoriteWallpaper
 	manager := utils.NewSecureJSONManager()
 	// If file doesn't exist, return empty list without error
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return []FavoriteWallpaper{}, nil
+		return []core.FavoriteWallpaper{}, nil
 	}
 
 	if err := manager.ReadJSON(path, &favorites); err != nil {
@@ -336,7 +331,7 @@ func loadFavorites() ([]FavoriteWallpaper, error) {
 	return favorites, nil
 }
 
-func saveFavorites(favorites []FavoriteWallpaper) error {
+func saveFavorites(favorites []core.FavoriteWallpaper) error {
 	path, err := getFavoritesPath()
 	if err != nil {
 		return err

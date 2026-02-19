@@ -422,6 +422,107 @@ func TestController_AnalyzeFeed_Colors(t *testing.T) {
 	}
 }
 
+func TestController_AnalyzeFeed_PathPrioritization(t *testing.T) {
+	tmpDir := setupTestHome(t)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	// 1. Setup Collection Directory
+	collectionDir := filepath.Join(tmpDir, "MyWallpapers")
+	os.MkdirAll(collectionDir, 0755)
+
+	cfg := &models.Config{
+		Paths: models.PathsConfig{
+			Wallpapers:      collectionDir,
+			IndexWallpapers: true,
+		},
+	}
+	ctrl := NewController(cfg)
+
+	// 2. Create image in collection
+	wpID := "find_me"
+	imgPath := filepath.Join(collectionDir, wpID+".jpg")
+	createDummyImage(t, imgPath)
+
+	// 3. Add wallpaper to feed (simulating remote source)
+	wp := models.Wallpaper{
+		ID:     wpID,
+		URL:    "http://example.com/find_me.jpg",
+		Source: "wallhaven",
+		Path:   filepath.Join(tmpDir, "old_cache_path.jpg"), // Simulate old path
+	}
+	_ = ctrl.AddWallpaperToFeed(wp)
+
+	// 4. Analyze
+	if err := ctrl.AnalyzeFeed(false, false, nil); err != nil {
+		t.Fatalf("AnalyzeFeed failed: %v", err)
+	}
+
+	// 5. Verify path update
+	feed, _ := ctrl.loadFeed()
+	if len(feed) == 0 {
+		t.Fatal("Feed is empty")
+	}
+
+	found := false
+	for _, item := range feed {
+		if item.ID == wpID {
+			found = true
+			if item.Path != imgPath {
+				t.Errorf("Expected path to be updated to collection: %s, got %s", imgPath, item.Path)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("Wallpaper %s not found in feed", wpID)
+	}
+}
+
+func TestController_AnalyzeFeed_LocalTagging(t *testing.T) {
+	tmpDir := setupTestHome(t)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	collectionDir := filepath.Join(tmpDir, "MyWallpapers")
+	os.MkdirAll(collectionDir, 0755)
+
+	cfg := &models.Config{
+		Paths: models.PathsConfig{
+			Wallpapers:      collectionDir,
+			IndexWallpapers: true,
+		},
+	}
+	ctrl := NewController(cfg)
+
+	// 1. Create a dark image in collection
+	wpID := "dark_wp"
+	originalPath := filepath.Join(collectionDir, wpID+".jpg")
+	createDummyImageWithColor(t, originalPath, 100, 100, color.RGBA{0, 0, 0, 255}) // Black
+
+	// 2. Add to feed as local
+	wp := models.Wallpaper{
+		ID:     wpID,
+		URL:    originalPath,
+		Source: "local",
+		Path:   originalPath,
+	}
+	_ = ctrl.AddWallpaperToFeed(wp)
+
+	// 3. Analyze
+	if err := ctrl.AnalyzeFeed(true, true, nil); err != nil {
+		t.Fatalf("AnalyzeFeed failed: %v", err)
+	}
+
+	// 4. Verify renaming
+	expectedPath := filepath.Join(collectionDir, wpID+" [d].jpg")
+	if _, err := os.Stat(expectedPath); os.IsNotExist(err) {
+		t.Errorf("Expected file to be renamed to %s", expectedPath)
+	}
+
+	feed, _ := ctrl.loadFeed()
+	if feed[0].Path != expectedPath || feed[0].URL != expectedPath {
+		t.Errorf("Feed paths not updated after rename. Got Path: %s, URL: %s", feed[0].Path, feed[0].URL)
+	}
+}
+
 func TestController_AnalyzeFavorites(t *testing.T) {
 	tmpDir := setupTestHome(t)
 	defer func() { _ = os.RemoveAll(tmpDir) }()
@@ -447,6 +548,45 @@ func TestController_AnalyzeFavorites(t *testing.T) {
 	thumbPath := filepath.Join(tmpDir, ".config", "gower", "cache", "thumbs", "fav1.jpg")
 	if _, err := os.Stat(thumbPath); os.IsNotExist(err) {
 		t.Error("Thumbnail for favorite should have been generated")
+	}
+}
+
+func TestController_AnalyzeFavorites_PathPrioritization(t *testing.T) {
+	tmpDir := setupTestHome(t)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	collectionDir := filepath.Join(tmpDir, "MyWallpapers")
+	os.MkdirAll(collectionDir, 0755)
+
+	cfg := &models.Config{
+		Paths: models.PathsConfig{
+			Wallpapers:      collectionDir,
+			IndexWallpapers: true,
+		},
+	}
+	ctrl := NewController(cfg)
+
+	// 1. Create image in collection
+	wpID := "fav_find_me"
+	imgPath := filepath.Join(collectionDir, wpID+".jpg")
+	createDummyImage(t, imgPath)
+
+	// 2. Setup favorites.json
+	favPath := filepath.Join(tmpDir, ".config", "gower", "data", "favorites.json")
+	favContent := `[{"id":"` + wpID + `","url":"http://example.com/fav.jpg","source":"wallhaven","path":"/old/cache/path.jpg"}]`
+	_ = os.WriteFile(favPath, []byte(favContent), 0644)
+
+	// 3. Analyze
+	if err := ctrl.AnalyzeFavorites(false, false, nil); err != nil {
+		t.Fatalf("AnalyzeFavorites failed: %v", err)
+	}
+
+	// 4. Verify path update
+	var favorites []FavoriteWallpaper
+	_ = ctrl.feedManager.ReadJSON(favPath, &favorites)
+
+	if favorites[0].Path != imgPath {
+		t.Errorf("Expected favorite path to be updated to collection: %s, got %s", imgPath, favorites[0].Path)
 	}
 }
 

@@ -20,7 +20,7 @@ type MockSetController struct {
 	MockDownloadError    error
 	MockRandomWallpaper  models.Wallpaper
 	MockRandomError      error
-	MockFavorites        []FavoriteWallpaper
+	MockFavorites        []core.FavoriteWallpaper
 	MockFavoritesError   error
 	MockWallpaperChanger *MockSetWallpaperChanger // Embed our mock changer
 }
