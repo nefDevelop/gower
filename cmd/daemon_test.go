@@ -34,7 +34,7 @@ func TestDaemonStatusRunning(t *testing.T) {
 	}
 	defer func() {
 		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
+			_ = cmd.Process.Kill() // No need to check error in test cleanup
 		}
 	}()
 
@@ -67,7 +67,7 @@ func TestDaemonStop(t *testing.T) {
 	}
 	defer func() {
 		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
+			_ = cmd.Process.Kill() // No need to check error in test cleanup
 		}
 	}()
 

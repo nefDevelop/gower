@@ -16,7 +16,7 @@ func TestCacheCleanCmd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Set the user home directory to the temporary directory
 	// Use t.Setenv for automatic restoration
@@ -27,8 +27,12 @@ func TestCacheCleanCmd(t *testing.T) {
 	cacheDir := filepath.Join(tmpDir, ".gower", "cache")
 	wallpapersDir := filepath.Join(cacheDir, "wallpapers")
 	thumbsDir := filepath.Join(cacheDir, "thumbs")
-	os.MkdirAll(wallpapersDir, 0755)
-	os.MkdirAll(thumbsDir, 0755)
+	if err := os.MkdirAll(wallpapersDir, 0755); err != nil {
+		t.Fatalf("Failed to create wallpapers dir: %v", err)
+	}
+	if err := os.MkdirAll(thumbsDir, 0755); err != nil {
+		t.Fatalf("Failed to create thumbs dir: %v", err)
+	}
 
 	dummyFile, err := os.Create(filepath.Join(wallpapersDir, "dummy.jpg"))
 	if err != nil {
@@ -65,7 +69,7 @@ func TestCacheSizeCmd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Set the user home directory to the temporary directory
 	t.Setenv("HOME", tmpDir)
@@ -74,7 +78,9 @@ func TestCacheSizeCmd(t *testing.T) {
 	// Create a dummy file with a known size
 	cacheDir := filepath.Join(tmpDir, ".gower", "cache")
 	wallpapersDir := filepath.Join(cacheDir, "wallpapers")
-	os.MkdirAll(wallpapersDir, 0755)
+	if err := os.MkdirAll(wallpapersDir, 0755); err != nil {
+		t.Fatalf("Failed to create wallpapers dir: %v", err)
+	}
 
 	dummyFile, err := os.Create(filepath.Join(wallpapersDir, "dummy.jpg"))
 	if err != nil {
@@ -115,20 +121,34 @@ func TestCachePruneCmd(t *testing.T) {
 	cfg, _ := loadConfig()
 	ctrl := core.NewController(cfg)
 	wpInFeed := models.Wallpaper{ID: "keep_me", URL: "http://example.com/keep.jpg"}
-	_ = ctrl.AddWallpaperToFeed(wpInFeed)
+	if err := ctrl.AddWallpaperToFeed(wpInFeed); err != nil {
+		t.Fatalf("Failed to add wallpaper to feed: %v", err)
+	}
 
 	appDir, _ := core.GetAppDir()
 	wallpapersDir := filepath.Join(appDir, "cache", "wallpapers")
 	thumbsDir := filepath.Join(appDir, "cache", "thumbs")
 	// Create files
-	_ = os.MkdirAll(wallpapersDir, 0755)
-	_ = os.MkdirAll(thumbsDir, 0755)
+	if err := os.MkdirAll(wallpapersDir, 0755); err != nil {
+		t.Fatalf("Failed to create wallpapers dir: %v", err)
+	}
+	if err := os.MkdirAll(thumbsDir, 0755); err != nil {
+		t.Fatalf("Failed to create thumbs dir: %v", err)
+	}
 
 	// Create files
-	_ = os.WriteFile(filepath.Join(wallpapersDir, "keep_me.jpg"), []byte("data"), 0644)
-	_ = os.WriteFile(filepath.Join(wallpapersDir, "delete_me.jpg"), []byte("data"), 0644)
-	_ = os.WriteFile(filepath.Join(thumbsDir, "keep_me.jpg"), []byte("data"), 0644)
-	_ = os.WriteFile(filepath.Join(thumbsDir, "delete_me_thumb.jpg"), []byte("data"), 0644)
+	if err := os.WriteFile(filepath.Join(wallpapersDir, "keep_me.jpg"), []byte("data"), 0644); err != nil {
+		t.Fatalf("Failed to write file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(wallpapersDir, "delete_me.jpg"), []byte("data"), 0644); err != nil {
+		t.Fatalf("Failed to write file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(thumbsDir, "keep_me.jpg"), []byte("data"), 0644); err != nil {
+		t.Fatalf("Failed to write file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(thumbsDir, "delete_me_thumb.jpg"), []byte("data"), 0644); err != nil {
+		t.Fatalf("Failed to write file: %v", err)
+	}
 
 	// Execute prune
 	output, err := executeCommand(rootCmd, "system", "cache", "prune")

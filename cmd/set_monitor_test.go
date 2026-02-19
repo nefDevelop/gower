@@ -150,14 +150,16 @@ func TestSetTargetMonitor(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		// Return a 1x1 pixel PNG
-		_, _ = w.Write([]byte{
+		if _, err := w.Write([]byte{
 			0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
 			0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
 			0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00,
 			0x0a, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
 			0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49,
 			0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
-		})
+		}); err != nil {
+			t.Logf("Error writing response in mock server: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -166,7 +168,9 @@ func TestSetTargetMonitor(t *testing.T) {
 	mockController.MockWallpaper = &testWallpaper
 
 	// Add wallpaper to feed so GetWallpaper finds it
-	_ = mockController.AddWallpaperToFeed(testWallpaper)
+	if err := mockController.AddWallpaperToFeed(testWallpaper); err != nil {
+		t.Fatalf("Failed to add wallpaper to feed: %v", err)
+	}
 
 	// Mock monitors
 	mockChanger.MockMonitors = []core.Monitor{
@@ -212,7 +216,9 @@ func TestSetTargetMonitorNotFound(t *testing.T) {
 	mockController.MockWallpaper = &testWallpaper
 
 	// Add to feed
-	_ = mockController.AddWallpaperToFeed(testWallpaper)
+	if err := mockController.AddWallpaperToFeed(testWallpaper); err != nil {
+		t.Fatalf("Failed to add wallpaper to feed: %v", err)
+	}
 
 	// Mock monitors
 	mockChanger.MockMonitors = []core.Monitor{
@@ -241,14 +247,16 @@ func TestSetDistinctRandomMultiMonitor(t *testing.T) {
 	// Mock server for image download
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte{
+		if _, err := w.Write([]byte{
 			0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
 			0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
 			0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00,
 			0x0a, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
 			0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49,
 			0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
-		})
+		}); err != nil {
+			t.Logf("Error writing response in mock server: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -256,12 +264,16 @@ func TestSetDistinctRandomMultiMonitor(t *testing.T) {
 	mockController.MockRandomWallpaper = models.Wallpaper{ID: "random_id_1", URL: server.URL + "/rand1.jpg", Source: "test"}
 
 	// Add random wallpapers to feed so GetRandomFromFeed finds them
-	_ = mockController.AddWallpaperToFeed(mockController.MockRandomWallpaper)
+	if err := mockController.AddWallpaperToFeed(mockController.MockRandomWallpaper); err != nil {
+		t.Fatalf("Failed to add wallpaper to feed: %v", err)
+	}
 	// Add a second one for the second monitor
 	wp2 := mockController.MockRandomWallpaper
 	wp2.ID = "random_id_2"
 	wp2.URL = server.URL + "/rand2.jpg"
-	_ = mockController.AddWallpaperToFeed(wp2)
+	if err := mockController.AddWallpaperToFeed(wp2); err != nil {
+		t.Fatalf("Failed to add wallpaper to feed: %v", err)
+	}
 
 	// Mock monitors
 	mockChanger.MockMonitors = []core.Monitor{

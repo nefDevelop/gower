@@ -9,7 +9,7 @@ import (
 
 func TestBlacklistAdd(t *testing.T) {
 	tmpDir := setupTestHome(t)
-	defer func() { _ = os.RemoveAll(tmpDir) }()
+	defer func() { _ = os.RemoveAll(tmpDir) }() // No need to check error in test cleanup
 
 	executeCommand(rootCmd, "config", "init")
 

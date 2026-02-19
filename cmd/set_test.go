@@ -40,7 +40,9 @@ func TestController_GetWallpaperAndDownload(t *testing.T) {
 	cfg := &models.Config{}
 	ctrl := core.NewController(cfg)
 	wp := models.Wallpaper{ID: "test-1", URL: server.URL + "/img.jpg"}
-	_ = ctrl.AddWallpaperToFeed(wp)
+	if err := ctrl.AddWallpaperToFeed(wp); err != nil {
+		t.Fatalf("Failed to add wallpaper to feed: %v", err)
+	}
 
 	// Test GetWallpaper
 	got, err := ctrl.GetWallpaper("test-1")
@@ -67,23 +69,29 @@ func TestSetUndoCommand(t *testing.T) {
 	// Mock server for image download
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("fake image content"))
+		if _, err := w.Write([]byte("fake image content")); err != nil {
+			t.Logf("Error writing response in mock server: %v", err)
+		}
 	}))
 	defer server.Close()
 
 	// Populate feed with the wallpaper we expect to be set
 	cfg, _ := loadConfig()
 	ctrl := core.NewController(cfg)
-	_ = ctrl.AddWallpaperToFeed(models.Wallpaper{
+	if err := ctrl.AddWallpaperToFeed(models.Wallpaper{
 		ID:     "previous-wp",
 		URL:    server.URL + "/image.jpg",
 		Source: "test",
-	})
-	_ = ctrl.AddWallpaperToFeed(models.Wallpaper{
+	}); err != nil {
+		t.Fatalf("Failed to add wallpaper to feed: %v", err)
+	}
+	if err := ctrl.AddWallpaperToFeed(models.Wallpaper{
 		ID:     "previous-wp-2",
 		URL:    server.URL + "/image2.jpg",
 		Source: "test",
-	})
+	}); err != nil {
+		t.Fatalf("Failed to add wallpaper to feed: %v", err)
+	}
 
 	// Execute the undo command and capture output
 	// We need to re-initialize the root command for each test run to avoid state leakage
@@ -102,7 +110,7 @@ func setupTestHomeWithState(t *testing.T, state *State) (string, func()) {
 	assert.NoError(t, err)
 
 	originalHome := os.Getenv("HOME")
-	_ = os.Setenv("HOME", tempDir)
+	t.Setenv("HOME", tempDir)
 
 	// Create .gower dir and write state
 	gowerDir := filepath.Join(tempDir, ".gower")

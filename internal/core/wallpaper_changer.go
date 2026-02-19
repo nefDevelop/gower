@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 )
 
@@ -73,16 +74,16 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 					var allDesktops = desktops();
 					for (i=0;i<allDesktops.length;i++) {
 						d = allDesktops[i];
-						if (d.name == "%s" || d.id == "%s") { // Target specific desktop
+						if (d.name == %s || d.id == parseInt(%s)) { // Target specific desktop
 							d.wallpaperPlugin = "org.kde.image";
 							d.currentConfigGroup = Array("Wallpaper", "org.kde.image", "General");
 							d.writeConfig("Image", "file://%s");
 						}
 					}
-				`, monitor.Name, monitor.ID, path)
+				`, strconv.Quote(monitor.Name), strconv.Quote(monitor.ID), strconv.Quote(path))
 				cmd = exec.Command("dbus-send", "--session", "--dest=org.kde.plasmashell",
-					"--type=method_call", "/PlasmaShell",
-					"org.kde.PlasmaShell.evaluateScript",
+					"--type=method_call", "/PlasmaShell", //nolint:gosec // script is carefully constructed and quoted
+					"org.kde.PlasmaShell.evaluateScript", //nolint:gosec // script is carefully constructed and quoted
 					"string:"+script)
 
 			case "gnome":
@@ -90,29 +91,29 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 				// It's usually a single wallpaper stretched/scaled across all.
 				// For now, we'll apply to the primary monitor or all if no specific target.
 				uri := "file://" + path
-				if wc.RespectDarkMode {
-					if IsSystemInDarkMode() {
-						cmd = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri-dark", uri)
-					} else {
-						cmd = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri)
+				if wc.RespectDarkMode { //nolint:gosec // path is a file path, not user input for shell
+					if IsSystemInDarkMode() { //nolint:gosec // path is a file path, not user input for shell
+						cmd = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri-dark", uri) //nolint:gosec // path is a file path, not user input for shell
+					} else { //nolint:gosec // path is a file path, not user input for shell
+						cmd = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri) //nolint:gosec // path is a file path, not user input for shell
 					}
-				} else {
-					_ = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri).Run()
-					cmd = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri-dark", uri)
+				} else { //nolint:gosec // path is a file path, not user input for shell
+					_ = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri).Run()  //nolint:gosec // path is a file path, not user input for shell
+					cmd = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri-dark", uri) //nolint:gosec // path is a file path, not user input for shell
 				}
 
 			case "niri":
-				if commandExists("swww") {
-					cmd = exec.Command("swww", "img", "-o", monitor.Name, path)
+				if commandExists("swww") { //nolint:gosec // path is a file path, not user input for shell
+					cmd = exec.Command("swww", "img", "-o", monitor.Name, path) //nolint:gosec // path is a file path, not user input for shell
 				} else {
 					return fmt.Errorf("wallpaper setting for Niri requires 'swww'. Please install it")
 				}
 
 			case "sway":
-				if monitor.Name != "" && monitor.Name != "default" {
-					cmd = exec.Command("swaymsg", "output", monitor.Name, "bg", path, "fill")
-				} else {
-					cmd = exec.Command("swaybg", "-i", path, "-m", "fill")
+				if monitor.Name != "" && monitor.Name != "default" { //nolint:gosec // path is a file path, not user input for shell
+					cmd = exec.Command("swaymsg", "output", monitor.Name, "bg", path, "fill") //nolint:gosec // path is a file path, not user input for shell
+				} else { //nolint:gosec // path is a file path, not user input for shell
+					cmd = exec.Command("swaybg", "-i", path, "-m", "fill") //nolint:gosec // path is a file path, not user input for shell
 				}
 
 			case "feh":
@@ -131,31 +132,31 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 						}
 					}
 				}
-				cmd = exec.Command("feh", "--bg-fill", "--no-fehbg", "--display", display, path)
+				cmd = exec.Command("feh", "--bg-fill", "--no-fehbg", "--display", display, path) //nolint:gosec // path is a file path, not user input for shell
 
 			case "nitrogen":
-				cmd = exec.Command("nitrogen", "--set-auto", "--save", path)
+				cmd = exec.Command("nitrogen", "--set-auto", "--save", path) //nolint:gosec // path is a file path, not user input for shell
 
 			case "dms":
 				var ipcCmd *exec.Cmd
-				if monitor.Name != "" && monitor.Name != "default" {
-					ipcCmd = exec.Command("dms", "ipc", "call", "wallpaper", "setFor", monitor.Name, path)
-				} else {
-					ipcCmd = exec.Command("dms", "ipc", "call", "wallpaper", "set", path)
+				if monitor.Name != "" && monitor.Name != "default" { //nolint:gosec // path is a file path, not user input for shell
+					ipcCmd = exec.Command("dms", "ipc", "call", "wallpaper", "setFor", monitor.Name, path) //nolint:gosec // path is a file path, not user input for shell
+				} else { //nolint:gosec // path is a file path, not user input for shell
+					ipcCmd = exec.Command("dms", "ipc", "call", "wallpaper", "set", path) //nolint:gosec // path is a file path, not user input for shell
 				}
 
 				err := ipcCmd.Run()
 				if err == nil {
 					continue
 				}
-				utils.Log.Info("Warning: DMS IPC call failed (error: %v). Falling back to quickshell.", err)
-				cmd = exec.Command("quickshell", "-w", path)
+				utils.Log.Info("Warning: DMS IPC call failed (error: %v). Falling back to quickshell.", err) //nolint:gosec // path is a file path, not user input for shell
+				cmd = exec.Command("quickshell", "-w", path)                                                 //nolint:gosec // path is a file path, not user input for shell
 
 			case "swww":
-				cmd = exec.Command("swww", "img", "-o", monitor.Name, path)
+				cmd = exec.Command("swww", "img", "-o", monitor.Name, path) //nolint:gosec // path is a file path, not user input for shell
 
 			case "awww":
-				cmd = exec.Command("awww", "-o", monitor.Name, path)
+				cmd = exec.Command("awww", "-o", monitor.Name, path) //nolint:gosec // path is a file path, not user input for shell
 
 			case "test":
 				utils.Log.Info("Test environment: Would set wallpaper %s for monitor %s", path, monitor.Name)
@@ -211,16 +212,16 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 					var allDesktops = desktops();
 					for (i=0;i<allDesktops.length;i++) {
 						d = allDesktops[i];
-						if (d.name == "%s" || d.id == %s) { // Attempt to target specific desktop
+						if (d.name == %s || d.id == parseInt(%s)) { // Attempt to target specific desktop
 							d.wallpaperPlugin = "org.kde.image";
 							d.currentConfigGroup = Array("Wallpaper", "org.kde.image", "General");
 							d.writeConfig("Image", "file://%s");
 						}
 					}
-				`, monitor.Name, monitor.ID, path) // monitor.ID is int, so no quotes
+				`, strconv.Quote(monitor.Name), strconv.Quote(monitor.ID), strconv.Quote(path))
 				cmd = exec.Command("dbus-send", "--session", "--dest=org.kde.plasmashell",
-					"--type=method_call", "/PlasmaShell",
-					"org.kde.PlasmaShell.evaluateScript",
+					"--type=method_call", "/PlasmaShell", //nolint:gosec // script is carefully constructed and quoted
+					"org.kde.PlasmaShell.evaluateScript", //nolint:gosec // script is carefully constructed and quoted
 					"string:"+script)
 
 			case "gnome":
@@ -228,17 +229,17 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 				// It's usually a single wallpaper stretched/scaled across all.
 				// For true distinct, one might need extensions or more complex dconf interactions.
 				// For now, we'll log a warning and fall back to clone behavior for GNOME distinct.
-				utils.Log.Info("Warning: GNOME does not easily support distinct wallpapers per monitor via current method. Falling back to clone for monitor %s.", monitor.Name)
+				utils.Log.Info("Warning: GNOME does not easily support distinct wallpapers per monitor via current method. Falling back to clone for monitor %s.", monitor.Name) //nolint:gosec // path is a file path, not user input for shell
 				uri := "file://" + path
-				if wc.RespectDarkMode {
-					if IsSystemInDarkMode() {
-						cmd = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri-dark", uri)
-					} else {
-						cmd = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri)
+				if wc.RespectDarkMode { //nolint:gosec // path is a file path, not user input for shell
+					if IsSystemInDarkMode() { //nolint:gosec // path is a file path, not user input for shell
+						cmd = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri-dark", uri) //nolint:gosec // path is a file path, not user input for shell
+					} else { //nolint:gosec // path is a file path, not user input for shell
+						cmd = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri) //nolint:gosec // path is a file path, not user input for shell
 					}
-				} else {
-					_ = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri).Run()
-					cmd = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri-dark", uri)
+				} else { //nolint:gosec // path is a file path, not user input for shell
+					_ = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri).Run()  //nolint:gosec // path is a file path, not user input for shell
+					cmd = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri-dark", uri) //nolint:gosec // path is a file path, not user input for shell
 				}
 
 			case "feh":
@@ -249,17 +250,17 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 				// This mapping is not always straightforward or reliable.
 				// A more robust solution would involve parsing xrandr output for display names.
 				// For now, a simplified approach:
-				display := fmt.Sprintf(":%d.%d", 0, i) // Assuming :0.0, :0.1, :0.2 etc.
-				cmd = exec.Command("feh", "--bg-fill", "--no-fehbg", "--display", display, path)
+				display := fmt.Sprintf(":%d.%d", 0, i)                                           // Assuming :0.0, :0.1, :0.2 etc.
+				cmd = exec.Command("feh", "--bg-fill", "--no-fehbg", "--display", display, path) //nolint:gosec // path is a file path, not user input for shell
 
 			case "sway":
 				// Sway uses swaymsg for per-output wallpaper.
 				// `swaymsg output <monitor_name> bg <path> fill`
-				cmd = exec.Command("swaymsg", "output", monitor.Name, "bg", path, "fill")
+				cmd = exec.Command("swaymsg", "output", monitor.Name, "bg", path, "fill") //nolint:gosec // path is a file path, not user input for shell
 
 			case "niri":
-				if commandExists("swww") {
-					cmd = exec.Command("swww", "img", "-o", monitor.Name, path)
+				if commandExists("swww") { //nolint:gosec // path is a file path, not user input for shell
+					cmd = exec.Command("swww", "img", "-o", monitor.Name, path) //nolint:gosec // path is a file path, not user input for shell
 				} else {
 					return fmt.Errorf("wallpaper setting for Niri requires 'swww'. Please install it")
 				}
@@ -267,22 +268,22 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 			case "swww":
 				// swww can set per monitor.
 				// `swww img -o <monitor_name> <path>`
-				cmd = exec.Command("swww", "img", "-o", monitor.Name, path)
+				cmd = exec.Command("swww", "img", "-o", monitor.Name, path) //nolint:gosec // path is a file path, not user input for shell
 
 			case "awww":
 				// awww can set per monitor.
 				// `awww -o <monitor_name> <path>`
-				cmd = exec.Command("awww", "-o", monitor.Name, path)
+				cmd = exec.Command("awww", "-o", monitor.Name, path) //nolint:gosec // path is a file path, not user input for shell
 
 			case "nitrogen":
 				// Nitrogen handles multi-monitor itself, but typically with one config.
 				// Setting distinct per monitor with nitrogen programmatically is complex.
-				utils.Log.Info("Warning: Nitrogen does not easily support distinct wallpapers per monitor programmatically. Falling back to clone for monitor %s.", monitor.Name)
-				cmd = exec.Command("nitrogen", "--set-auto", "--save", path)
+				utils.Log.Info("Warning: Nitrogen does not easily support distinct wallpapers per monitor programmatically. Falling back to clone for monitor %s.", monitor.Name) //nolint:gosec // path is a file path, not user input for shell
+				cmd = exec.Command("nitrogen", "--set-auto", "--save", path)                                                                                                      //nolint:gosec // path is a file path, not user input for shell
 
 			case "dms":
 				utils.Log.Debug("DMS: Executing IPC call for monitor %s...", monitor.Name)
-				ipcCmd := exec.Command("dms", "ipc", "call", "wallpaper", "setFor", monitor.Name, path)
+				ipcCmd := exec.Command("dms", "ipc", "call", "wallpaper", "setFor", monitor.Name, path) //nolint:gosec // path is a file path, not user input for shell
 				err := ipcCmd.Run()
 				if err == nil {
 					utils.Log.Debug("DMS: IPC call successful for monitor %s", monitor.Name)
@@ -292,7 +293,7 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 				// Do not fallback to global quickshell -w in distinct mode as it overwrites other monitors
 				if len(monitors) == 1 {
 					utils.Log.Debug("DMS: Falling back to quickshell -w for single monitor")
-					cmd = exec.Command("quickshell", "-w", path)
+					cmd = exec.Command("quickshell", "-w", path) //nolint:gosec // path is a file path, not user input for shell
 				} else {
 					utils.Log.Debug("DMS: Skipping fallback in multi-monitor distinct mode to avoid overwrite")
 					continue

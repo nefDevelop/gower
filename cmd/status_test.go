@@ -96,8 +96,12 @@ func TestStatusAll(t *testing.T) {
 		ID: "wall_2", Path: "/path/to/wall_2.png", Source: "test", URL: "http://example.com/wall_2.png", Dimension: "2560x1440", Color: "#000000", Theme: "dark",
 	}
 
-	_ = mockController.Controller.AddWallpaperToFeed(*mockController.MockWallpapers["wall_1"])
-	_ = mockController.Controller.AddWallpaperToFeed(*mockController.MockWallpapers["wall_2"])
+	if err := mockController.AddWallpaperToFeed(*mockController.MockWallpapers["wall_1"]); err != nil {
+		t.Fatalf("Failed to add wallpaper to feed: %v", err)
+	}
+	if err := mockController.AddWallpaperToFeed(*mockController.MockWallpapers["wall_2"]); err != nil {
+		t.Fatalf("Failed to add wallpaper to feed: %v", err)
+	}
 	output, err := executeCommand(rootCmd, "status")
 	if err != nil {
 		t.Fatalf("Error executing status: %v", err)
@@ -155,8 +159,12 @@ func TestStatusJSON(t *testing.T) {
 		ID: "wall_2", Path: "/path/to/wall_2.png", Source: "test", URL: "http://example.com/wall_2.png", Dimension: "2560x1440", Color: "#000000", Theme: "dark",
 	}
 
-	_ = mockController.Controller.AddWallpaperToFeed(*mockController.MockWallpapers["wall_1"])
-	_ = mockController.Controller.AddWallpaperToFeed(*mockController.MockWallpapers["wall_2"])
+	if err := mockController.AddWallpaperToFeed(*mockController.MockWallpapers["wall_1"]); err != nil {
+		t.Fatalf("Failed to add wallpaper to feed: %v", err)
+	}
+	if err := mockController.AddWallpaperToFeed(*mockController.MockWallpapers["wall_2"]); err != nil {
+		t.Fatalf("Failed to add wallpaper to feed: %v", err)
+	}
 	output, err := executeCommand(rootCmd, "status", "--json")
 	if err != nil {
 		t.Fatalf("Error executing status --json: %v", err)
@@ -197,7 +205,9 @@ func TestStatusFlags(t *testing.T) {
 		ID: "wall_1", Path: "/path/to/wall_1.jpg", Source: "test", URL: "http://example.com/wall_1.jpg", Dimension: "1920x1080", Color: "#FFFFFF", Theme: "light",
 	}
 	// Add the wallpaper to the feed so the real controller can find it.
-	_ = mockController.Controller.AddWallpaperToFeed(*mockController.MockWallpapers["wall_1"])
+	if err := mockController.AddWallpaperToFeed(*mockController.MockWallpapers["wall_1"]); err != nil {
+		t.Fatalf("Failed to add wallpaper to feed: %v", err)
+	}
 
 	// Test --providers
 	output, err := executeCommand(rootCmd, "status", "--providers")
