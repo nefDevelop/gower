@@ -748,12 +748,27 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 			localFileExists = true
 		}
 	}
+
+	// Fallback: if Path is empty or invalid, but URL is a local file, use it.
+	// This is common in unit tests or for wallpapers indexed from local folders.
+	if !localFileExists && wp.URL != "" {
+		if _, err := os.Stat(wp.URL); err == nil {
+			wp.Path = wp.URL
+			localFileExists = true
+			changed = true
+		}
+	}
+
 	if !localFileExists {
-		progress(fmt.Sprintf("Downloading %s for analysis", wp.ID))
+		if progress != nil {
+			progress(fmt.Sprintf("Downloading %s for analysis", wp.ID))
+		}
 		localPath, err := c.DownloadWallpaper(wp) // This also generates thumbnail and analyzes color
 		if err != nil {
 			utils.Log.Error("Failed to download %s for analysis: %v", wp.ID, err)
-			progress(fmt.Sprintf("Error downloading %s for analysis: %v", wp.ID, err))
+			if progress != nil {
+				progress(fmt.Sprintf("Error downloading %s for analysis: %v", wp.ID, err))
+			}
 			return wp, false, true // Mark for deletion if download fails
 		}
 		wp.Path = localPath
