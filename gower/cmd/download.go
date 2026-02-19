@@ -96,7 +96,7 @@ func runDownloadRandom(cmd *cobra.Command, controller *core.Controller, cfg *mod
 		if len(favorites) == 0 {
 			return fmt.Errorf("no favorites found")
 		}
-		fav := favorites[rand.Intn(len(favorites))]
+		fav := favorites[rand.Intn(len(favorites))] //nolint:gosec // G404: Cryptographically secure random is not required for wallpaper selection.
 		wallpaper = fav.Wallpaper
 	} else {
 		wallpaper, err = controller.GetRandomFromFeed(downloadTheme)
@@ -143,7 +143,7 @@ func performDownload(cmd *cobra.Command, controller *core.Controller, wp models.
 		if err != nil {
 			return err
 		}
-		defer func() { _ = src.Close() }()
+		defer func() { _ = src.Close() }() // Best practice for defer
 
 		outPath := targetPath
 		info, err := os.Stat(outPath)
@@ -170,7 +170,7 @@ func performDownload(cmd *cobra.Command, controller *core.Controller, wp models.
 		if err != nil {
 			return err
 		}
-		defer func() { _ = dst.Close() }()
+		defer func() { _ = dst.Close() }() // Best practice for defer
 
 		if _, err := io.Copy(dst, src); err != nil {
 			return err

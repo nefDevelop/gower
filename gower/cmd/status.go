@@ -153,7 +153,7 @@ func runStatus(cmd *cobra.Command, args []string) {
 			if installed {
 				status = colorize("Installed", colorGreen)
 			}
-			_, _ = fmt.Fprintf(w, "  %s:\t%s\n", dep, status)
+			_, _ = fmt.Fprintf(w, "  %s:\t%s\n", dep, status) // Error check is not critical for CLI output
 		}
 		_ = w.Flush()
 		cmd.Println()
@@ -166,7 +166,7 @@ func runStatus(cmd *cobra.Command, args []string) {
 			state = colorize(fmt.Sprintf("Running (PID: %d)", output.Daemon.PID), colorGreen)
 		}
 		w := newTabWriter()
-		_, _ = fmt.Fprintf(w, "Status:\t%s\n", state)
+		_, _ = fmt.Fprintf(w, "Status:\t%s\n", state) // Error check is not critical for CLI output
 		_ = w.Flush()
 		cmd.Println()
 	}
@@ -175,13 +175,13 @@ func runStatus(cmd *cobra.Command, args []string) {
 		cmd.Println("--- Wallpaper ---")
 		w := newTabWriter()
 		for i, wp := range output.Wallpaper.Wallpapers {
-			_, _ = fmt.Fprintf(w, "Monitor %d ID:\t%s\n", i+1, wp.ID)
-			_, _ = fmt.Fprintf(w, "Monitor %d Path:\t%s\n", i+1, wp.Path)
-			_, _ = fmt.Fprintf(w, "Monitor %d Source:\t%s\n", i+1, wp.Source)
-			_, _ = fmt.Fprintf(w, "Monitor %d URL:\t%s\n", i+1, wp.URL)
-			_, _ = fmt.Fprintf(w, "Monitor %d Dimension:\t%s\n", i+1, wp.Dimension)
-			_, _ = fmt.Fprintf(w, "Monitor %d Color:\t%s\n", i+1, wp.Color)
-			_, _ = fmt.Fprintf(w, "Monitor %d Theme:\t%s\n", i+1, wp.Theme)
+			_, _ = fmt.Fprintf(w, "Monitor %d ID:\t%s\n", i+1, wp.ID)               // Error check is not critical for CLI output
+			_, _ = fmt.Fprintf(w, "Monitor %d Path:\t%s\n", i+1, wp.Path)           // Error check is not critical for CLI output
+			_, _ = fmt.Fprintf(w, "Monitor %d Source:\t%s\n", i+1, wp.Source)       // Error check is not critical for CLI output
+			_, _ = fmt.Fprintf(w, "Monitor %d URL:\t%s\n", i+1, wp.URL)             // Error check is not critical for CLI output
+			_, _ = fmt.Fprintf(w, "Monitor %d Dimension:\t%s\n", i+1, wp.Dimension) // Error check is not critical for CLI output
+			_, _ = fmt.Fprintf(w, "Monitor %d Color:\t%s\n", i+1, wp.Color)         // Error check is not critical for CLI output
+			_, _ = fmt.Fprintf(w, "Monitor %d Theme:\t%s\n", i+1, wp.Theme)         // Error check is not critical for CLI output
 		}
 		_ = w.Flush()
 		cmd.Println()

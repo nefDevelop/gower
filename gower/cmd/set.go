@@ -242,7 +242,7 @@ func runSetRandom(cmd *cobra.Command, args []string) error {
 			if len(favorites) == 0 {
 				return fmt.Errorf("no favorites found")
 			}
-			fav := favorites[rand.Intn(len(favorites))]
+			fav := favorites[rand.Intn(len(favorites))] //nolint:gosec // G404: Cryptographically secure random is not required for wallpaper selection.
 			wallpaper = fav.Wallpaper
 		} else {
 			var err error
@@ -335,7 +335,7 @@ func applyWallpapers(cmd *cobra.Command, controller *core.Controller, wallpapers
 		if !config.Quiet {
 			cmd.Printf("Running custom command: %s\n", finalCmd)
 		}
-		err := exec.Command("sh", "-c", finalCmd).Run()
+		err := exec.Command("sh", "-c", finalCmd).Run() //nolint:gosec // User provides the command template, this is an advanced feature.
 		if err != nil {
 			return fmt.Errorf("error running custom wallpaper command: %w", err)
 		}

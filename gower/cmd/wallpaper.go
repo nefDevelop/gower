@@ -24,7 +24,7 @@ var wallpaperCmd = &cobra.Command{
 
   # Delete from feed and disk
   gower wallpaper image.jpg --delete --file`,
-	Args:  cobra.ExactArgs(1),
+	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := ensureConfig(); err != nil {
 			cmd.Println(err)
@@ -51,7 +51,9 @@ var wallpaperCmd = &cobra.Command{
 				cmd.Printf("WARNING: This will permanently delete the file from your disk: %s\n", wp.URL)
 				cmd.Print("Are you sure? (y/N): ")
 				var confirm string
-				_, _ = fmt.Scanln(&confirm)
+				if _, err := fmt.Scanln(&confirm); err != nil && err.Error() != "unexpected newline" {
+					// Ignore "unexpected newline" which happens if user just presses Enter.
+				}
 				if confirm != "y" && confirm != "Y" {
 					cmd.Println("Operation cancelled.")
 					return

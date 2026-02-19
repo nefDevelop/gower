@@ -2,10 +2,12 @@ package cmd
 
 import (
 	"fmt"
+	"math/rand" // For seeding global math/rand
 	"os"
 	"os/exec"       // Added for executing the GUI app
 	"path/filepath" // Added for path manipulation
 	"runtime"       // Added for checking OS
+	"time"          // For seeding global math/rand
 
 	"gower/internal/utils"
 
@@ -85,7 +87,7 @@ interface to manage your wallpapers.`,
 		}
 
 		// Execute the GUI application
-		guiCmd := exec.Command(absGuiAppPath)
+		guiCmd := exec.Command(absGuiAppPath) //nolint:gosec // Path is constructed internally, not from user input.
 		guiCmd.Stdout = os.Stdout
 		guiCmd.Stderr = os.Stderr
 		guiCmd.Stdin = os.Stdin
@@ -121,4 +123,7 @@ func init() {
 
 	// Add the gui command to the root command
 	rootCmd.AddCommand(guiCmd)
+
+	// Seed the global math/rand for non-cryptographic random operations
+	rand.Seed(time.Now().UnixNano())
 }

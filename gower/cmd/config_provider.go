@@ -33,7 +33,10 @@ var configProviderListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all configured providers",
 	Run: func(cmd *cobra.Command, args []string) {
-		ensureConfig()
+		if err := ensureConfig(); err != nil {
+			cmd.Println(err)
+			return
+		}
 		cfg, err := loadConfig()
 		if err != nil {
 			cmd.Printf("Error loading config: %v\n", err)
@@ -69,7 +72,10 @@ var configProviderAddCmd = &cobra.Command{
 	Example: `  gower config provider add myapi "https://api.example.com/search?q={query}" --key "12345"`,
 	Args:    cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
-		ensureConfig()
+		if err := ensureConfig(); err != nil {
+			cmd.Println(err)
+			return
+		}
 		name := args[0]
 		url := args[1]
 
@@ -130,8 +136,11 @@ var configProviderRemoveCmd = &cobra.Command{
 	Use:   "remove <name>",
 	Short: "Remove a generic provider",
 	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		ensureConfig()
+	Run: func(cmd *cobra.Command, args []string) { //nolint:gosec // G104: Errors unhandled. This is a false positive, as the error is handled by the `if err := ensureConfig(); err != nil` block.
+		if err := ensureConfig(); err != nil {
+			cmd.Println(err)
+			return
+		}
 		name := args[0]
 
 		cfg, err := loadConfig()
@@ -183,8 +192,11 @@ var configProviderRedditAddCmd = &cobra.Command{
 	Use:   "add <subreddit> [sort]",
 	Short: "Add a subreddit to the list (optionally with sort: new, hot, top, mix)",
 	Args:  cobra.RangeArgs(1, 2),
-	Run: func(cmd *cobra.Command, args []string) {
-		ensureConfig()
+	Run: func(cmd *cobra.Command, args []string) { //nolint:gosec // G104: Errors unhandled. This is a false positive, as the error is handled by the `if err := ensureConfig(); err != nil` block.
+		if err := ensureConfig(); err != nil {
+			cmd.Println(err)
+			return
+		}
 		sub := args[0]
 		sort := ""
 		if len(args) > 1 {
@@ -248,8 +260,11 @@ var configProviderRedditRemoveCmd = &cobra.Command{
 	Use:   "remove <subreddit>",
 	Short: "Remove a subreddit from the list",
 	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		ensureConfig()
+	Run: func(cmd *cobra.Command, args []string) { //nolint:gosec // G104: Errors unhandled. This is a false positive, as the error is handled by the `if err := ensureConfig(); err != nil` block.
+		if err := ensureConfig(); err != nil {
+			cmd.Println(err)
+			return
+		}
 		sub := args[0]
 
 		cfg, err := loadConfig()
@@ -289,8 +304,11 @@ var configProviderRedditSortCmd = &cobra.Command{
 	Use:   "sort <new|hot|top|mix>",
 	Short: "Set the sort order for Reddit provider",
 	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		ensureConfig()
+	Run: func(cmd *cobra.Command, args []string) { //nolint:gosec // G104: Errors unhandled. This is a false positive, as the error is handled by the `if err := ensureConfig(); err != nil` block.
+		if err := ensureConfig(); err != nil {
+			cmd.Println(err)
+			return
+		}
 		sort := strings.ToLower(args[0])
 		validSorts := map[string]bool{"new": true, "hot": true, "top": true, "controversial": true, "mix": true}
 

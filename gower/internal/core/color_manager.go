@@ -77,7 +77,7 @@ func (cm *ColorManager) GenerateThumbnail(src, destPath string) (int, int, error
 		}
 		img, _, err = image.Decode(resp.Body)
 	} else {
-		file, errOpen := os.Open(src)
+		file, errOpen := os.Open(src) //nolint:gosec // Path is constructed internally.
 		if errOpen != nil {
 			return 0, 0, errOpen
 		}
@@ -112,7 +112,7 @@ func (cm *ColorManager) GenerateThumbnail(src, destPath string) (int, int, error
 		}
 	}
 
-	out, err := os.Create(destPath)
+	out, err := os.Create(destPath) //nolint:gosec // Path is constructed internally.
 	if err != nil {
 		return 0, 0, err
 	}
@@ -123,7 +123,7 @@ func (cm *ColorManager) GenerateThumbnail(src, destPath string) (int, int, error
 
 // GetImageDimensions returns the width and height of an image file without decoding the whole file.
 func (cm *ColorManager) GetImageDimensions(path string) (int, int, error) {
-	file, err := os.Open(path)
+	file, err := os.Open(path) //nolint:gosec // Path is constructed internally.
 	if err != nil {
 		return 0, 0, err
 	}
@@ -145,7 +145,7 @@ func (cm *ColorManager) AnalyzeColor(path string) (string, error) {
 		}
 	}
 
-	file, err := os.Open(path)
+	file, err := os.Open(path) //nolint:gosec // Path is constructed internally.
 	if err != nil {
 		return "", err
 	}

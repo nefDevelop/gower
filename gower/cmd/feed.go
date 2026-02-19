@@ -195,7 +195,7 @@ var feedRandomCmd = &cobra.Command{
 				return
 			}
 			// Simple random pick from favorites
-			fav := favorites[rand.Intn(len(favorites))]
+			fav := favorites[rand.Intn(len(favorites))] //nolint:gosec // Not security-critical, seeding is done in root.
 			wallpaper = fav.Wallpaper
 		} else {
 			var err error
@@ -392,7 +392,7 @@ func displayTable(cmd *cobra.Command, wallpapers interface{}) {
 	}
 
 	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 3, ' ', 0)
-	_, _ = fmt.Fprintln(w, "ID\tRES\tTHEME\tSOURCE\tSEEN")
+	_, _ = fmt.Fprintln(w, "ID\tRES\tTHEME\tSOURCE\tSEEN") // Error check is not critical for CLI output
 
 	for _, wp := range wps {
 		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%t\n", wp.ID, wp.Dimension, wp.Theme, wp.Source, wp.Seen)

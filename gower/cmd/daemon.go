@@ -162,7 +162,9 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 			}
 			// If we reach here, PID file exists but process is not running or PID is invalid.
 			// Clean up the stale PID file.
-			_ = os.Remove(pidFile)
+			if err := os.Remove(pidFile); err != nil && !os.IsNotExist(err) {
+				utils.Log.Error("Failed to remove stale PID file: %v", err)
+			}
 			utils.Log.Info("Removed stale PID file: %s", pidFile)
 			if !config.Quiet {
 				cmd.Println("Found stale PID file, removed it. Attempting to start daemon.")
@@ -178,7 +180,7 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 		// Pass --foreground to the child process so it runs in foreground mode
 		// and doesn't try to fork again.
 		procArgs := append(os.Args[1:], "--foreground")
-		command := exec.Command(exe, procArgs...)
+		command := exec.Command(exe, procArgs...) //nolint:gosec // Starting self, not a security issue.
 
 		if err := command.Start(); err != nil {
 			cmd.Printf("Error starting daemon: %v\n", err)
@@ -215,7 +217,9 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 			}
 		}
 		// If PID file exists but process is not running, or it was our own stale PID, remove it.
-		os.Remove(pidFile)
+		if err := os.Remove(pidFile); err != nil && !os.IsNotExist(err) {
+			utils.Log.Error("Failed to remove stale PID file in foreground: %v", err)
+		}
 	}
 
 	pid := os.Getpid()
@@ -224,7 +228,9 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 		return
 	}
 	defer func() {
-		_ = os.Remove(pidFile) // Ensure PID file is removed on daemon exit
+		if err := os.Remove(pidFile); err != nil && !os.IsNotExist(err) {
+			utils.Log.Error("Failed to remove PID file on exit: %v", err)
+		}
 		utils.Log.Info("Daemon stopped, PID file removed.")
 	}()
 
@@ -236,8 +242,12 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 	cleanupLogs()
 
 	// Cleanup any stale control files on start
-	_ = os.Remove(getStopFilePath())
-	_ = os.Remove(getPauseFilePath())
+	if err := os.Remove(getStopFilePath()); err != nil && !os.IsNotExist(err) {
+		utils.Log.Error("Failed to remove stale stop file: %v", err)
+	}
+	if err := os.Remove(getPauseFilePath()); err != nil && !os.IsNotExist(err) {
+		utils.Log.Error("Failed to remove stale pause file: %v", err)
+	}
 
 	// Print configuration details
 	cfg, err := loadConfig()
@@ -395,7 +405,7 @@ func changeWallpaper(cmd *cobra.Command) {
 				utils.Log.Info("Daemon: No favorites found to set.")
 				return
 			}
-			fav := favorites[rand.Intn(len(favorites))]
+			fav := favorites[rand.Intn(len(favorites))] //nolint:gosec // Not security-critical, seeding is done in root.
 			wallpaper = fav.Wallpaper
 		} else {
 			wallpaper, err = controller.GetRandomFromFeed(targetTheme)
@@ -415,6 +425,11 @@ func changeWallpaper(cmd *cobra.Command) {
 			utils.Log.Error("Daemon: Failed to download wallpaper %s: %v", wp.ID, err)
 			continue // Skip this wallpaper if download fails
 		}
+
+		// Update feed with local path so it's persisted in feed.json
+		wp.Path = path
+		_ = controller.AddWallpaperToFeed(wp)
+
 		selectedPaths = append(selectedPaths, path)
 		if config.Debug {
 			lum := controller.ColorManager.GetLuminance(wp.Color)
@@ -473,8 +488,12 @@ func runDaemonStop(cmd *cobra.Command, args []string) {
 		}
 		// If forcing, try to remove control files anyway
 		if daemonForce {
-			os.Remove(getStopFilePath())
-			os.Remove(getPauseFilePath())
+			if err := os.Remove(getStopFilePath()); err != nil && !os.IsNotExist(err) {
+				utils.Log.Error("Forced stop: failed to remove stop file: %v", err)
+			}
+			if err := os.Remove(getPauseFilePath()); err != nil && !os.IsNotExist(err) {
+				utils.Log.Error("Forced stop: failed to remove pause file: %v", err)
+			}
 		}
 		return
 	}
@@ -484,7 +503,7 @@ func runDaemonStop(cmd *cobra.Command, args []string) {
 	if f, err := os.Create(stopFile); err != nil {
 		cmd.Printf("Error creating stop signal: %v\n", err)
 	} else {
-		_ = f.Close()
+		_ = f.Close() // Error on close is not critical here.
 		if !config.Quiet {
 			cmd.Println("Stop signal sent.")
 		}
@@ -492,7 +511,9 @@ func runDaemonStop(cmd *cobra.Command, args []string) {
 
 	if daemonForce {
 		// Also remove pid file to allow immediate restart
-		os.Remove(pidFile)
+		if err := os.Remove(pidFile); err != nil && !os.IsNotExist(err) {
+			utils.Log.Error("Forced stop: failed to remove pid file: %v", err)
+		}
 		if !config.Quiet {
 			cmd.Println("Forcing stop: removed pid file.")
 		}
@@ -554,7 +575,9 @@ func cleanupLogs() {
 		if !file.IsDir() {
 			info, err := file.Info()
 			if err == nil && info.ModTime().Before(cutoff) {
-				os.Remove(filepath.Join(logsDir, file.Name()))
+				if err := os.Remove(filepath.Join(logsDir, file.Name())); err != nil {
+					utils.Log.Error("Failed to remove old log file %s: %v", file.Name(), err)
+				}
 			}
 		}
 	}

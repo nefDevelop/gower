@@ -28,7 +28,9 @@ func TestDownloadCommand(t *testing.T) {
 	// Mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("fake image content"))
+		if _, err := w.Write([]byte("fake image content")); err != nil {
+			t.Logf("Error writing response in mock server: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -36,12 +38,14 @@ func TestDownloadCommand(t *testing.T) {
 	executeCommand(rootCmd, "config", "init")
 	cfg, _ := loadConfig()
 	ctrl := core.NewController(cfg)
-	_ = ctrl.AddWallpaperToFeed(models.Wallpaper{
+	if err := ctrl.AddWallpaperToFeed(models.Wallpaper{
 		ID:     "test-dl",
 		URL:    server.URL + "/img.jpg",
 		Source: "test",
 		Theme:  "dark",
-	})
+	}); err != nil {
+		t.Fatalf("Failed to add wallpaper to feed: %v", err)
+	}
 
 	// Test download by ID
 	output, err := executeCommand(rootCmd, "download", "test-dl")

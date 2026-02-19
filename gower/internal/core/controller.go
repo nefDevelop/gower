@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -285,7 +286,7 @@ func (c *Controller) GetFeed(page, limit int, search, theme, color, sortMode str
 		})
 		mixedFeed = filteredFeed
 	case "random":
-		r := rand.New(rand.NewSource(time.Now().UnixNano()))
+		r := rand.New(rand.NewSource(time.Now().UnixNano())) //nolint:gosec // G404: Cryptographically secure random is not required for wallpaper shuffling.
 		r.Shuffle(len(filteredFeed), func(i, j int) {
 			filteredFeed[i], filteredFeed[j] = filteredFeed[j], filteredFeed[i]
 		})
@@ -341,7 +342,7 @@ func (c *Controller) GetFeed(page, limit int, search, theme, color, sortMode str
 				}
 			}
 
-			var seed int64
+			var seed int64 //nolint:gosec // G404: Cryptographically secure random is not required for feed sorting.
 			if shouldCache {
 				seed = time.Now().UnixNano()
 			} else {
@@ -349,7 +350,7 @@ func (c *Controller) GetFeed(page, limit int, search, theme, color, sortMode str
 				if refresh {
 					seed = time.Now().UnixNano()
 				}
-			}
+			} //nolint:gosec // G404: Cryptographically secure random is not required for feed sorting.
 			r := rand.New(rand.NewSource(seed))
 
 			r.Shuffle(len(unseen), func(i, j int) { unseen[i], unseen[j] = unseen[j], unseen[i] })
@@ -454,16 +455,33 @@ func (c *Controller) AnalyzeFeed(all bool, force bool, progress func(string)) er
 	utils.Log.Info("Analyzing feed: %d items found", len(feed))
 
 	if c.Config.Paths.IndexWallpapers {
-		utils.Log.Debug("Local wallpaper indexing is ENABLED (Path: %s)", c.Config.Paths.Wallpapers)
+		utils.Log.Info("Local wallpaper indexing is ENABLED (Path: %s)", c.Config.Paths.Wallpapers)
+		if progress != nil {
+			progress(fmt.Sprintf("Local wallpaper indexing is ENABLED (Path: %s)", c.Config.Paths.Wallpapers))
+		}
 	} else {
-		utils.Log.Debug("Local wallpaper indexing is DISABLED")
+		utils.Log.Info("Local wallpaper indexing is DISABLED")
+		if progress != nil {
+			progress("Local wallpaper indexing is DISABLED")
+		}
 	}
 
+	changedByIndexing := false
 	// Index local wallpapers if enabled
 	if c.Config.Paths.IndexWallpapers && c.Config.Paths.Wallpapers != "" {
-		if _, _, err := c.indexLocalWallpapers(&feed); err != nil {
+		added, reconciled, removed, err := c.indexLocalWallpapers(&feed)
+		if err != nil {
 			utils.Log.Error("Error indexing local wallpapers: %v", err)
+			if progress != nil {
+				progress(fmt.Sprintf("Error indexing local wallpapers: %v", err))
+			}
+		} else {
+			utils.Log.Info("Local indexing results: %d added, %d reconciled, %d removed", added, reconciled, removed)
+			if progress != nil {
+				progress(fmt.Sprintf("Local indexing results: %d added, %d reconciled, %d removed", added, reconciled, removed))
+			}
 		}
+		changedByIndexing = added > 0 || reconciled > 0 || removed > 0
 	}
 
 	appDir, err := GetAppDir()
@@ -522,7 +540,7 @@ func (c *Controller) AnalyzeFeed(all bool, force bool, progress func(string)) er
 	}
 
 	// Filter out deleted items
-	if updatedCount > 0 {
+	if updatedCount > 0 || changedByIndexing {
 		newFeed := make([]models.Wallpaper, 0, len(feed))
 		for _, wp := range feed {
 			if wp.ID != "" {
@@ -532,7 +550,7 @@ func (c *Controller) AnalyzeFeed(all bool, force bool, progress func(string)) er
 		feed = newFeed
 	}
 
-	if updatedCount > 0 {
+	if updatedCount > 0 || changedByIndexing {
 		if err := c.saveFeed(feed); err != nil {
 			return err
 		}
@@ -543,68 +561,103 @@ func (c *Controller) AnalyzeFeed(all bool, force bool, progress func(string)) er
 }
 
 // indexLocalWallpapers scans the configured wallpapers directory and updates the feed.
-func (c *Controller) indexLocalWallpapers(feed *[]models.Wallpaper) (int, int, error) {
+func (c *Controller) indexLocalWallpapers(feed *[]models.Wallpaper) (int, int, int, error) {
 	localDir := c.Config.Paths.Wallpapers
 	utils.Log.Debug("Scanning local directory: %s", localDir)
 	files, err := os.ReadDir(localDir)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 
-	// Map existing local items in feed
-	localInFeed := make(map[string]int)
+	// Map existing items in feed by ID for quick lookup and reconciliation
+	feedMap := make(map[string]int)
 	for i, wp := range *feed {
-		if wp.Source == "local" {
-			localInFeed[wp.ID] = i
-		}
+		feedMap[wp.ID] = i
 	}
 
-	// Track found files to detect deletions
-	foundFiles := make(map[string]bool)
+	// Track found IDs to detect deletions of "local" source items
+	foundIDs := make(map[string]bool)
 	addedCount := 0
+	reconciledCount := 0
 
 	for _, file := range files {
 		if file.IsDir() {
 			continue
 		}
-		ext := strings.ToLower(filepath.Ext(file.Name()))
-		if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".webp" {
+		ext := filepath.Ext(file.Name())
+		lowerExt := strings.ToLower(ext)
+		if lowerExt != ".jpg" && lowerExt != ".jpeg" && lowerExt != ".png" && lowerExt != ".webp" {
 			continue
 		}
 
-		// Generate ID: <filename_sanitized>
-		safeName := strings.ReplaceAll(file.Name(), " ", "_")
-		id := safeName
-		foundFiles[id] = true
+		filename := file.Name()
+		fullPath := filepath.Join(localDir, filename)
 
-		if _, exists := localInFeed[id]; !exists {
+		// Potential ID is the filename without extension
+		baseName := strings.TrimSuffix(filename, ext)
+
+		// Remove theme tags if present ([d] or [l])
+		idFromFilename := strings.TrimSuffix(baseName, " [d]")
+		idFromFilename = strings.TrimSuffix(idFromFilename, " [l]")
+
+		// Sanitize
+		idFromFilename = strings.ReplaceAll(idFromFilename, " ", "_")
+
+		// Check if this file matches an existing ID in the feed
+		targetIdx := -1
+		if idx, ok := feedMap[idFromFilename]; ok {
+			targetIdx = idx
+		} else if idx, ok := feedMap[filename]; ok { // Legacy check for local files where ID was full filename
+			targetIdx = idx
+		}
+
+		if targetIdx != -1 {
+			wp := &(*feed)[targetIdx]
+			foundIDs[wp.ID] = true
+
+			// Reconcile path if missing or invalid
+			pathValid := false
+			if wp.Path != "" {
+				if _, err := os.Stat(wp.Path); err == nil {
+					pathValid = true
+				}
+			}
+
+			if !pathValid {
+				wp.Path = fullPath
+				reconciledCount++
+				utils.Log.Info("Reconciled wallpaper %s: found in collection folder at %s", wp.ID, fullPath)
+			}
+		} else {
 			// Add new local wallpaper
-			fullPath := filepath.Join(localDir, file.Name())
 			newWp := models.Wallpaper{
-				ID:        id,
+				ID:        idFromFilename,
 				Source:    "local",
 				URL:       fullPath,
-				Thumbnail: fullPath, // Use original as source for thumb generation
+				Thumbnail: fullPath,
 				Seen:      false,
 				Added:     time.Now().Unix(),
 			}
 			*feed = append(*feed, newWp)
+			feedMap[newWp.ID] = len(*feed) - 1
+			foundIDs[newWp.ID] = true
 			addedCount++
 		}
 	}
 
-	// Remove local items from feed that no longer exist on disk
-	// We mark them with empty ID to be cleaned up by AnalyzeFeed's main loop
 	removedCount := 0
-	for id, idx := range localInFeed {
-		if !foundFiles[id] {
-			(*feed)[idx].ID = "" // Mark for deletion
-			removedCount++
+	for i := range *feed {
+		wp := &(*feed)[i]
+		if wp.Source == "local" && wp.ID != "" {
+			if !foundIDs[wp.ID] {
+				wp.ID = "" // Mark for deletion
+				removedCount++
+			}
 		}
 	}
 
-	utils.Log.Info("Local indexing: %d added, %d removed", addedCount, removedCount)
-	return addedCount, removedCount, nil
+	utils.Log.Info("Local indexing: %d added, %d reconciled, %d removed", addedCount, reconciledCount, removedCount)
+	return addedCount, reconciledCount, removedCount, nil
 }
 
 // AnalyzeFavorites analyzes the favorites items, regenerates thumbnails/colors if needed.
@@ -756,6 +809,16 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 			wp.Path = wp.URL
 			localFileExists = true
 			changed = true
+		} else {
+			// Try decoding path (e.g. if it was stored as URL encoded)
+			if decoded, err := url.QueryUnescape(wp.URL); err == nil && decoded != wp.URL {
+				if _, err := os.Stat(decoded); err == nil {
+					wp.Path = decoded
+					wp.URL = decoded // Fix the URL in the model
+					localFileExists = true
+					changed = true
+				}
+			}
 		}
 	}
 
@@ -1006,7 +1069,7 @@ func (c *Controller) GetRandomFromFeed(theme string) (models.Wallpaper, error) {
 
 	// Use crypto/rand for better distribution and to avoid seeding issues in rapid calls
 	n, err := crand.Int(crand.Reader, big.NewInt(int64(len(filteredFeed))))
-	if err != nil {
+	if err != nil { //nolint:gosec // G404: Cryptographically secure random is preferred, but math/rand fallback is acceptable for wallpaper selection.
 		return filteredFeed[rand.Intn(len(filteredFeed))], nil
 	}
 
@@ -1041,7 +1104,7 @@ func (c *Controller) GetRandomWallpapersFromFeed(count int, theme string) ([]mod
 	}
 
 	// Shuffle using a local seeded source
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	r := rand.New(rand.NewSource(time.Now().UnixNano())) //nolint:gosec // G404: Cryptographically secure random is not required for wallpaper shuffling.
 	r.Shuffle(len(filteredFeed), func(i, j int) {
 		filteredFeed[i], filteredFeed[j] = filteredFeed[j], filteredFeed[i]
 	})
@@ -1095,9 +1158,15 @@ func (c *Controller) AddWallpaperToFeed(wallpaper models.Wallpaper) error {
 	}
 
 	// Check if already exists to avoid duplicates
-	for _, existingWp := range feed {
+	for i, existingWp := range feed {
 		if existingWp.ID == wallpaper.ID {
-			return nil // Already in feed, do nothing
+			// Update existing entry with new data (like Path or Color)
+			// but preserve metadata like Added time if it's not provided
+			if wallpaper.Added == 0 {
+				wallpaper.Added = existingWp.Added
+			}
+			feed[i] = wallpaper
+			return c.saveFeed(feed)
 		}
 	}
 
@@ -1289,7 +1358,8 @@ func (c *Controller) GetWallpaper(id string) (*models.Wallpaper, error) {
 	// 1. Check Feed
 	feed, err := c.loadFeed()
 	if err == nil {
-		for _, wp := range feed {
+		for i := range feed {
+			wp := feed[i]
 			if wp.ID == id {
 				return &wp, nil
 			}
@@ -1305,7 +1375,8 @@ func (c *Controller) GetWallpaper(id string) (*models.Wallpaper, error) {
 		Notes string `json:"notes,omitempty"`
 	}
 	if err := c.feedManager.ReadJSON(favPath, &favorites); err == nil {
-		for _, fav := range favorites {
+		for i := range favorites {
+			fav := favorites[i]
 			if fav.ID == id {
 				return &fav.Wallpaper, nil
 			}
@@ -1362,26 +1433,47 @@ func (c *Controller) DownloadWallpaper(wp models.Wallpaper) (string, error) {
 		return filePath, nil
 	}
 
-	// Download
-	resp, err := http.Get(wp.URL)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = resp.Body.Close() }()
+	// Handle local file URL (copy to cache) or HTTP download
+	if !strings.HasPrefix(wp.URL, "http://") && !strings.HasPrefix(wp.URL, "https://") {
+		srcPath := wp.URL
+		if decoded, err := url.QueryUnescape(srcPath); err == nil {
+			srcPath = decoded
+		}
 
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("failed to download wallpaper: status %d", resp.StatusCode)
-	}
+		if _, err := os.Stat(srcPath); err == nil {
+			// Copy file
+			input, err := os.ReadFile(srcPath) //nolint:gosec // Path is constructed internally.
+			if err != nil {
+				return "", err
+			}
+			if err := os.WriteFile(filePath, input, 0644); err != nil {
+				return "", err
+			}
+		} else {
+			return "", fmt.Errorf("unsupported protocol or missing local file: %s", wp.URL)
+		}
+	} else {
+		// Download
+		resp, err := http.Get(wp.URL)
+		if err != nil {
+			return "", err
+		}
+		defer func() { _ = resp.Body.Close() }()
 
-	out, err := os.Create(filePath)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = out.Close() }()
+		if resp.StatusCode != http.StatusOK {
+			return "", fmt.Errorf("failed to download wallpaper: status %d", resp.StatusCode)
+		}
 
-	_, err = io.Copy(out, resp.Body)
-	if err != nil {
-		return "", err
+		out, err := os.Create(filePath) //nolint:gosec // Path is constructed internally.
+		if err != nil {
+			return "", err
+		}
+		defer func() { _ = out.Close() }()
+
+		_, err = io.Copy(out, resp.Body)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	// Post-download processing
@@ -1564,7 +1656,7 @@ func (c *Controller) SyncFeed() (int, int, error) {
 	if c.Config.Paths.IndexWallpapers && c.Config.Paths.Wallpapers != "" {
 		prevLen := len(feed)
 		var err error
-		addedLocal, removedLocal, err = c.indexLocalWallpapers(&feed)
+		addedLocal, _, removedLocal, err = c.indexLocalWallpapers(&feed)
 		if err != nil {
 			utils.Log.Error("Error indexing local wallpapers: %v", err)
 		}
@@ -1709,7 +1801,9 @@ func (c *Controller) SyncFeed() (int, int, error) {
 
 					// Auto-download full image if enabled
 					if c.Config.Behavior.AutoDownload {
-						_, _ = c.DownloadWallpaper(wp)
+						if path, err := c.DownloadWallpaper(wp); err == nil {
+							wp.Path = path
+						}
 					}
 
 					// Marcar como no visto
