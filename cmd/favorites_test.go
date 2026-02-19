@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"gower/internal/core"
 	"gower/pkg/models"
 )
 
@@ -172,7 +173,7 @@ func TestFavoritesExportAndImport(t *testing.T) {
 	// Test import with existing favorites and a new one
 	executeCommand(rootCmd, "favorites", "add", "fav-id-3") // Add a new one
 	// Create a new import file with fav-id-1 and fav-id-4
-	newImportFavs := []FavoriteWallpaper{
+	newImportFavs := []core.FavoriteWallpaper{
 		{Wallpaper: models.Wallpaper{ID: "fav-id-1", URL: "url-1", Source: "src-1"}},
 		{Wallpaper: models.Wallpaper{ID: "fav-id-4", URL: "url-4", Source: "src-4"}},
 	}
@@ -204,7 +205,7 @@ func TestFavoritesListColor(t *testing.T) {
 	executeCommand(rootCmd, "config", "init")
 
 	// Manually save favorites with colors to test filtering
-	favs := []FavoriteWallpaper{
+	favs := []core.FavoriteWallpaper{
 		{Wallpaper: models.Wallpaper{ID: "red-wp", Color: "#FF0000"}, Notes: "Red"},
 		{Wallpaper: models.Wallpaper{ID: "blue-wp", Color: "#0000FF"}, Notes: "Blue"},
 	}

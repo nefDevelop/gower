@@ -34,6 +34,12 @@ type FeedCache struct {
 	IDs  []string `json:"ids"`
 }
 
+// FavoriteWallpaper represents a wallpaper in the favorites list with optional notes.
+type FavoriteWallpaper struct {
+	models.Wallpaper
+	Notes string `json:"notes,omitempty"`
+}
+
 // GetAppDir returns the application directory, preferring XDG but falling back to legacy .gower
 func GetAppDir() (string, error) {
 	homeDir, err := os.UserHomeDir()
@@ -615,18 +621,14 @@ func (c *Controller) indexLocalWallpapers(feed *[]models.Wallpaper) (int, int, i
 			wp := &(*feed)[targetIdx]
 			foundIDs[wp.ID] = true
 
-			// Reconcile path if missing or invalid
-			pathValid := false
-			if wp.Path != "" {
-				if _, err := os.Stat(wp.Path); err == nil {
-					pathValid = true
+			// Reconcile path. We prioritize the collection folder path.
+			// If the current path is not already pointing to this specific file in the collection, update it.
+			if wp.Path != fullPath {
+				if wp.Path != "" {
+					utils.Log.Info("Wallpaper %s: Found in collection folder. Updating path from '%s' to '%s'", wp.ID, wp.Path, fullPath)
 				}
-			}
-
-			if !pathValid {
 				wp.Path = fullPath
 				reconciledCount++
-				utils.Log.Info("Reconciled wallpaper %s: found in collection folder at %s", wp.ID, fullPath)
 			}
 		} else {
 			// Add new local wallpaper
@@ -672,13 +674,7 @@ func (c *Controller) AnalyzeFavorites(all bool, force bool, progress func(string
 	favPath := filepath.Join(appDir, "data", "favorites.json")
 	thumbDir := filepath.Join(appDir, "cache", "thumbs")
 
-	// Define struct locally to match JSON
-	type Favorite struct {
-		models.Wallpaper
-		Notes string `json:"notes,omitempty"`
-	}
-
-	var favorites []Favorite
+	var favorites []FavoriteWallpaper
 	if err := c.feedManager.ReadJSON(favPath, &favorites); err != nil {
 		return err
 	}
@@ -687,7 +683,7 @@ func (c *Controller) AnalyzeFavorites(all bool, force bool, progress func(string
 
 	type job struct {
 		Index  int
-		Fav    Favorite
+		Fav    FavoriteWallpaper
 		Delete bool
 	}
 
@@ -736,7 +732,7 @@ func (c *Controller) AnalyzeFavorites(all bool, force bool, progress func(string
 
 	if updatedCount > 0 {
 		// Filter deleted
-		newFavorites := make([]Favorite, 0, len(favorites))
+		newFavorites := make([]FavoriteWallpaper, 0, len(favorites))
 		for _, fav := range favorites {
 			if fav.ID != "" {
 				newFavorites = append(newFavorites, fav)
@@ -766,16 +762,7 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 	}
 	thumbPath := filepath.Join(thumbDir, wp.ID+".jpg")
 
-	info, errStat := os.Stat(thumbPath)
-	thumbExists := errStat == nil && info.Size() > 0
-
-	// Check if existing thumbnail is valid image data
-	if thumbExists && !force {
-		if _, _, err := c.ColorManager.GetImageDimensions(thumbPath); err != nil {
-			thumbExists = false // Treat as missing to force regeneration
-			utils.Log.Info("Thumbnail for %s is corrupt or invalid. Regenerating...", wp.ID)
-		}
-	}
+	var sourceFilePath string // This will hold the path to the wallpaper file we will use for analysis
 
 	// Helper function to delete associated files
 	deleteAssociatedFiles := func(wallpaper models.Wallpaper) {
@@ -783,50 +770,64 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 		_ = os.Remove(filepath.Join(thumbDir, wallpaper.ID+".jpg"))
 		utils.Log.Info("Deleted thumbnail: %s", filepath.Join(thumbDir, wallpaper.ID+".jpg"))
 
-		// Delete main cached file ONLY if it's NOT a local source.
-		// For local source, the main file is the user's original file, which we should not delete automatically.
-		if wallpaper.Source != "local" {
-			if path, found := c.FindWallpaperCacheFile(wallpaper); found {
-				_ = os.Remove(path)
-				utils.Log.Info("Deleted cached wallpaper file: %s", path)
-			}
+		// Delete main file ONLY if it's in the cache directory.
+		// We should NEVER delete files from the user's configured wallpaper directory automatically.
+		cacheExpectedPath, _ := c.GetWallpaperLocalPath(wallpaper)
+		if sourceFilePath == cacheExpectedPath { // Only delete if it's the cached version
+			_ = os.Remove(sourceFilePath)
+			utils.Log.Info("Deleted cached wallpaper file: %s", sourceFilePath)
 		}
 	}
 
-	// 1. Ensure the wallpaper's full image is cached locally.
-	// This also generates the thumbnail and analyzes color if successful.
-	localFileExists := false
+	// --- Determine the source file path for the wallpaper ---
+	// 1. Check if wp.Path is already set and valid
 	if wp.Path != "" {
 		if _, err := os.Stat(wp.Path); err == nil {
-			localFileExists = true
+			sourceFilePath = wp.Path
+			utils.Log.Debug("Wallpaper %s: Using existing wp.Path '%s'.", wp.ID, sourceFilePath)
+		} else {
+			utils.Log.Debug("Wallpaper %s wp.Path '%s' is invalid or does not exist. Searching for file.", wp.ID, wp.Path)
 		}
 	}
 
-	// Fallback: if Path is empty or invalid, but URL is a local file, use it.
-	// This is common in unit tests or for wallpapers indexed from local folders.
-	if !localFileExists && wp.URL != "" {
-		if _, err := os.Stat(wp.URL); err == nil {
-			wp.Path = wp.URL
-			localFileExists = true
-			changed = true
-		} else {
-			// Try decoding path (e.g. if it was stored as URL encoded)
-			if decoded, err := url.QueryUnescape(wp.URL); err == nil && decoded != wp.URL {
-				if _, err := os.Stat(decoded); err == nil {
-					wp.Path = decoded
-					wp.URL = decoded // Fix the URL in the model
-					localFileExists = true
-					changed = true
+	// 2. If indexing is enabled, check user's configured wallpapers directory.
+	// We check this even if wp.Path was valid, to prioritize the persistent location over cache.
+	if c.Config.Paths.IndexWallpapers && c.Config.Paths.Wallpapers != "" {
+		if path, found := c.FindInCollection(wp); found {
+			if sourceFilePath != path {
+				sourceFilePath = path
+				wp.Path = sourceFilePath
+				changed = true
+				utils.Log.Info("Wallpaper %s: Found in collection folder. Using path: %s", wp.ID, sourceFilePath)
+				if progress != nil {
+					progress(fmt.Sprintf("Found %s in collection folder.", wp.ID))
 				}
 			}
 		}
 	}
 
-	if !localFileExists {
+	// 3. If still not found, check the cache directory
+	if sourceFilePath == "" {
+		cachePath, err := c.GetWallpaperLocalPath(wp) // This is the cache path
+		if err == nil {
+			if _, err := os.Stat(cachePath); err == nil {
+				sourceFilePath = cachePath
+				wp.Path = sourceFilePath // Update wp.Path to point to the cache
+				changed = true
+				utils.Log.Info("Found wallpaper %s in cache: %s", wp.ID, cachePath)
+				if progress != nil {
+					progress(fmt.Sprintf("Found %s in cache.", wp.ID))
+				}
+			}
+		}
+	}
+
+	// 4. If still not found, download it to the cache
+	if sourceFilePath == "" {
 		if progress != nil {
 			progress(fmt.Sprintf("Downloading %s for analysis", wp.ID))
 		}
-		localPath, err := c.DownloadWallpaper(wp) // This also generates thumbnail and analyzes color
+		downloadedPath, err := c.DownloadWallpaper(wp) // This downloads to cache
 		if err != nil {
 			utils.Log.Error("Failed to download %s for analysis: %v", wp.ID, err)
 			if progress != nil {
@@ -834,24 +835,32 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 			}
 			return wp, false, true // Mark for deletion if download fails
 		}
-		wp.Path = localPath
+		sourceFilePath = downloadedPath
+		wp.Path = sourceFilePath // Update wp.Path to the newly downloaded file in cache
 		changed = true
 	}
 
-	// At this point, wp.Path is guaranteed to be a local, existing file.
-	// And DownloadWallpaper should have already generated the thumbnail and analyzed color.
-	// So, we primarily need to *verify* the thumbnail and color, and regenerate only if forced or invalid.
+	// At this point, sourceFilePath is guaranteed to be a local, existing file.
+	// Use sourceFilePath for all subsequent operations (thumbnail, color analysis, validation).
 
 	// 2. Verify/Regenerate Thumbnail and Color
-	// If thumbnail is missing, or if we are forcing a full regeneration (force+all), generate it
-	// Note: DownloadWallpaper already generates it, so this block is mainly for `force` or if `DownloadWallpaper` failed to generate it.
-	if !thumbExists || force {
-		utils.Log.Info("Generating thumbnail for %s from %s", wp.ID, wp.Path)
+	info, errStat := os.Stat(thumbPath)
+	thumbExists := errStat == nil && info.Size() > 0
+
+	// Check if existing thumbnail is valid image data (only if not forcing regeneration)
+	if thumbExists && !force {
+		if _, _, err := c.ColorManager.GetImageDimensions(thumbPath); err != nil {
+			thumbExists = false // Treat as missing to force regeneration
+			utils.Log.Info("Thumbnail for %s is corrupt or invalid. Regenerating...", wp.ID)
+		}
+	}
+
+	if !thumbExists || force { // If thumbnail is missing or we are forcing regeneration
+		utils.Log.Info("Generating thumbnail for %s from %s", wp.ID, sourceFilePath)
 		if progress != nil {
 			progress(fmt.Sprintf("Generating thumbnail for %s", wp.ID))
 		}
-		// Use wp.Path as the source, which is guaranteed to be local and exist.
-		w, h, err := c.ColorManager.GenerateThumbnail(wp.Path, thumbPath)
+		w, h, err := c.ColorManager.GenerateThumbnail(sourceFilePath, thumbPath)
 		if err == nil {
 			// Check validity immediately after generation
 			if valid, reason := c.isValidImage(w, h, false); !valid { // Solo validar aspect_ratio
@@ -869,7 +878,7 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 			}
 			wp.Extension = ".jpg"
 			changed = true
-			// If we generated it, we can set ratio if missing
+			// If we generated it, we can set ratio and dimension if missing
 			if wp.Ratio == "" && w > 0 && h > 0 {
 				wp.Ratio = calculateRatio(w, h)
 				wp.Dimension = fmt.Sprintf("%dx%d", w, h) // Always set original dimension if available
@@ -877,7 +886,7 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 			}
 			// Color analysis will be done in the next step, or if DownloadWallpaper already did it, it's fine.
 		} else {
-			utils.Log.Error("Failed to generate thumbnail for %s from %s: %v", wp.ID, wp.Path, err)
+			utils.Log.Error("Failed to generate thumbnail for %s from %s: %v", wp.ID, sourceFilePath, err)
 			if progress != nil {
 				progress(fmt.Sprintf("Failed to generate thumbnail for %s: %v", wp.ID, err))
 			}
@@ -964,8 +973,10 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 
 	// 5. Rename local file with [d] or [l] tag if enabled (for existing items)
 	// This logic is currently inside the `if !thumbExists || force` block and also in the `else` block.
-	// It should be consolidated and run after `wp.Theme` is definitively set.
-	if wp.Source == "local" && c.Config.Paths.IndexWallpapers && wp.Theme != "" {
+	// This applies to files in the user's collection folder.
+
+	userWallpaperPath, _ := c.GetUserWallpaperPath(wp)
+	if wp.Source == "local" && c.Config.Paths.IndexWallpapers && wp.Theme != "" && sourceFilePath == userWallpaperPath {
 		localPath := wp.URL
 		dir := filepath.Dir(localPath)
 		filename := filepath.Base(localPath)
@@ -997,6 +1008,7 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 			if err := os.Rename(localPath, newPath); err == nil {
 				utils.Log.Info("Renaming local file: %s -> %s", filename, newFilename)
 				wp.URL = newPath
+				wp.Path = newPath      // Update wp.Path to the new renamed path
 				wp.Thumbnail = newPath // Update thumbnail path if it was pointing to the old URL
 				changed = true
 			} else {
@@ -1004,39 +1016,6 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 			}
 		}
 	}
-
-	// 6. Check and fix main wallpaper filename if it exists (already exists)
-	// This part is for non-local wallpapers to ensure cached files have correct names.
-	if wp.Source != "local" {
-		expectedPath, err := c.GetWallpaperLocalPath(wp)
-		if err == nil {
-			actualPath, found := c.FindWallpaperCacheFile(wp)
-
-			// Safety check: Only rename if the file is actually inside the cache directory.
-			// This prevents moving user's local files even if Source is mislabeled.
-			isInsideCache := strings.Contains(actualPath, filepath.Join("cache", "wallpapers"))
-			if found && actualPath != expectedPath && isInsideCache {
-				// Check if expected path already exists to avoid overwrite error on rename
-				if _, err := os.Stat(expectedPath); os.IsNotExist(err) {
-					utils.Log.Info("Renaming cached wallpaper from %s to %s", filepath.Base(actualPath), filepath.Base(expectedPath))
-					if progress != nil {
-						progress(fmt.Sprintf("Renaming cached wallpaper from %s to %s", filepath.Base(actualPath), filepath.Base(expectedPath)))
-					}
-					if err := os.Rename(actualPath, expectedPath); err != nil {
-						utils.Log.Error("Failed to rename %s: %v", filepath.Base(actualPath), err)
-					}
-				} else if actualPath != expectedPath {
-					// Expected path exists, and it's not the same file. Remove the old one with the bad name.
-					utils.Log.Info("Warning: Found duplicate for %s. Removing old file with incorrect name: %s", wp.ID, filepath.Base(actualPath))
-					if progress != nil {
-						progress(fmt.Sprintf("Warning: Found duplicate for %s. Removing old file with incorrect name: %s", wp.ID, filepath.Base(actualPath)))
-					}
-					_ = os.Remove(actualPath)
-				}
-			}
-		}
-	}
-
 	return wp, changed, false
 }
 
@@ -1317,13 +1296,17 @@ func (c *Controller) RemoveFromFeed(id string) error {
 
 // DeleteWallpaper removes a wallpaper from the feed and optionally deletes the file from disk.
 func (c *Controller) DeleteWallpaper(id string, deleteFile bool) error {
-	wp, err := c.GetWallpaper(id)
+	wp, err := c.GetWallpaper(id) // This finds it in feed OR favorites
 	if err != nil {
 		return err
 	}
 
 	if err := c.RemoveFromFeed(id); err != nil {
 		return err
+	}
+
+	if err := c.RemoveFromFavorites(id); err != nil {
+		utils.Log.Error("Failed to remove wallpaper %s from favorites: %v", id, err)
 	}
 
 	if deleteFile {
@@ -1348,6 +1331,40 @@ func (c *Controller) DeleteWallpaper(id string, deleteFile bool) error {
 	return c.RebuildColorIndex()
 }
 
+// RemoveFromFavorites removes a wallpaper from the favorites list by ID.
+func (c *Controller) RemoveFromFavorites(id string) error {
+	appDir, err := GetAppDir()
+	if err != nil {
+		return err
+	}
+	favPath := filepath.Join(appDir, "data", "favorites.json")
+
+	var favorites []FavoriteWallpaper
+	if err := c.feedManager.ReadJSON(favPath, &favorites); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	newFavorites := make([]FavoriteWallpaper, 0, len(favorites))
+	found := false
+	for _, fav := range favorites {
+		if fav.ID == id {
+			found = true
+			continue
+		}
+		newFavorites = append(newFavorites, fav)
+	}
+
+	if !found {
+		return nil
+	}
+
+	utils.Log.Info("Removed wallpaper %s from favorites", id)
+	return c.feedManager.WriteJSON(favPath, newFavorites)
+}
+
 // GetFeedWallpapers returns all wallpapers in the feed.
 func (c *Controller) GetFeedWallpapers() ([]models.Wallpaper, error) {
 	return c.loadFeed()
@@ -1370,10 +1387,7 @@ func (c *Controller) GetWallpaper(id string) (*models.Wallpaper, error) {
 	// We need to manually load favorites here since Controller doesn't manage them directly yet,
 	// or we can assume the caller handles it. However, for convenience:
 	favPath := filepath.Join(filepath.Dir(c.getFeedPathString()), "favorites.json")
-	var favorites []struct {
-		models.Wallpaper
-		Notes string `json:"notes,omitempty"`
-	}
+	var favorites []FavoriteWallpaper
 	if err := c.feedManager.ReadJSON(favPath, &favorites); err == nil {
 		for i := range favorites {
 			fav := favorites[i]
@@ -1415,6 +1429,64 @@ func (c *Controller) GetWallpaperLocalPath(wp models.Wallpaper) (string, error) 
 	safeID := strings.ReplaceAll(wp.ID, "/", "_")
 	filename := fmt.Sprintf("%s%s", safeID, ext)
 	return filepath.Join(cacheDir, filename), nil
+}
+
+// GetUserWallpaperPath returns the expected path for a wallpaper in the user's configured wallpapers directory.
+func (c *Controller) GetUserWallpaperPath(wp models.Wallpaper) (string, error) {
+	if c.Config.Paths.Wallpapers == "" {
+		return "", fmt.Errorf("user wallpapers directory not configured")
+	}
+
+	// Determine filename logic similar to GetWallpaperLocalPath
+	urlStr := wp.URL
+	if qIndex := strings.Index(urlStr, "?"); qIndex != -1 {
+		urlStr = urlStr[:qIndex]
+	}
+	ext := filepath.Ext(urlStr)
+	if ext == "" {
+		ext = ".jpg" // Default extension
+	}
+
+	safeID := strings.ReplaceAll(wp.ID, "/", "_")
+	filename := fmt.Sprintf("%s%s", safeID, ext)
+	return filepath.Join(c.Config.Paths.Wallpapers, filename), nil
+}
+
+// FindInCollection attempts to find the wallpaper file in the user's configured collection directory.
+// It checks for the standard filename (ID.ext) and tagged versions (ID [d].ext, ID [l].ext).
+func (c *Controller) FindInCollection(wp models.Wallpaper) (string, bool) {
+	if c.Config.Paths.Wallpapers == "" {
+		return "", false
+	}
+
+	// 1. Try exact match with GetUserWallpaperPath (ID.ext)
+	if path, err := c.GetUserWallpaperPath(wp); err == nil {
+		if _, err := os.Stat(path); err == nil {
+			return path, true
+		}
+	}
+
+	// 2. Try with tags [d] or [l]
+	safeID := strings.ReplaceAll(wp.ID, "/", "_")
+
+	// Get extension from URL
+	urlStr := wp.URL
+	if qIndex := strings.Index(urlStr, "?"); qIndex != -1 {
+		urlStr = urlStr[:qIndex]
+	}
+	ext := filepath.Ext(urlStr)
+	if ext == "" {
+		ext = ".jpg"
+	}
+
+	for _, tag := range []string{" [d]", " [l]"} {
+		path := filepath.Join(c.Config.Paths.Wallpapers, safeID+tag+ext)
+		if _, err := os.Stat(path); err == nil {
+			return path, true
+		}
+	}
+
+	return "", false
 }
 
 // DownloadWallpaper downloads the wallpaper image to the cache directory and returns the local path.
@@ -2067,6 +2139,7 @@ func (c *Controller) GetLastProviderUpdateTime() (time.Time, error) {
 			}
 		}
 	}
+	// Closing brace for the 'if wp.Source == "local" ...' block
 	return lastTime, nil
 }
 
@@ -2092,11 +2165,7 @@ func (c *Controller) UpdateWallpaperPath(id, path string) error {
 
 	// 2. Update Favorites
 	favPath := filepath.Join(filepath.Dir(c.getFeedPathString()), "favorites.json")
-	type Favorite struct {
-		models.Wallpaper
-		Notes string `json:"notes,omitempty"`
-	}
-	var favorites []Favorite
+	var favorites []FavoriteWallpaper
 	if err := c.feedManager.ReadJSON(favPath, &favorites); err == nil {
 		changed := false
 		for i := range favorites {

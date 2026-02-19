@@ -61,7 +61,7 @@ var importFavoritesCmd = &cobra.Command{
 			return
 		}
 
-		var importedFavorites []FavoriteWallpaper
+		var importedFavorites []core.FavoriteWallpaper
 		if err := json.Unmarshal(data, &importedFavorites); err != nil {
 			cmd.Printf("Error unmarshalling import file: %v\n", err)
 			return
