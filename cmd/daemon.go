@@ -430,6 +430,9 @@ func changeWallpaper(cmd *cobra.Command) {
 		wp.Path = path
 		_ = controller.AddWallpaperToFeed(wp)
 
+		// Also update favorites if present
+		_ = controller.UpdateWallpaperPath(wp.ID, path)
+
 		selectedPaths = append(selectedPaths, path)
 		if config.Debug {
 			lum := controller.ColorManager.GetLuminance(wp.Color)

@@ -2069,3 +2069,48 @@ func (c *Controller) GetLastProviderUpdateTime() (time.Time, error) {
 	}
 	return lastTime, nil
 }
+
+// UpdateWallpaperPath updates the local path for a wallpaper in both Feed and Favorites if they exist.
+func (c *Controller) UpdateWallpaperPath(id, path string) error {
+	// 1. Update Feed
+	feed, err := c.loadFeed()
+	if err == nil {
+		changed := false
+		for i := range feed {
+			if feed[i].ID == id {
+				if feed[i].Path != path {
+					feed[i].Path = path
+					changed = true
+				}
+				break
+			}
+		}
+		if changed {
+			_ = c.saveFeed(feed)
+		}
+	}
+
+	// 2. Update Favorites
+	favPath := filepath.Join(filepath.Dir(c.getFeedPathString()), "favorites.json")
+	type Favorite struct {
+		models.Wallpaper
+		Notes string `json:"notes,omitempty"`
+	}
+	var favorites []Favorite
+	if err := c.feedManager.ReadJSON(favPath, &favorites); err == nil {
+		changed := false
+		for i := range favorites {
+			if favorites[i].ID == id {
+				if favorites[i].Path != path {
+					favorites[i].Path = path
+					changed = true
+				}
+				break
+			}
+		}
+		if changed {
+			return c.feedManager.WriteJSON(favPath, favorites)
+		}
+	}
+	return nil
+}
