@@ -167,6 +167,15 @@ var feedAnalyzeCmd = &cobra.Command{
 			cmd.Printf("Error analyzing feed: %v\n", err)
 			return
 		}
+
+		// If --all is used, also analyze favorites to ensure full consistency
+		if feedAll {
+			cmd.Println("Analyzing favorites (implied by --all)...")
+			if err := controller.AnalyzeFavorites(true, feedForce, progressFunc); err != nil {
+				cmd.Printf("Error analyzing favorites: %v\n", err)
+			}
+		}
+
 		cmd.Println(colorize(symbolCheck+" Analysis complete.", colorGreen))
 	},
 }

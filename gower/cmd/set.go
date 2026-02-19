@@ -320,6 +320,9 @@ func applyWallpapers(cmd *cobra.Command, controller *core.Controller, wallpapers
 		if err != nil {
 			return fmt.Errorf("error downloading wallpaper %s: %w", wp.ID, err)
 		}
+
+		// Update path in feed and favorites
+		_ = controller.UpdateWallpaperPath(wp.ID, localPaths[i])
 	}
 
 	// Determine command to run, prioritizing the flag, then auto-detection.

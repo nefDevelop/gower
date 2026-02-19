@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"gower/internal/core"
+	"gower/internal/utils"
 	"gower/pkg/models"
 
 	"github.com/spf13/cobra"
@@ -124,6 +125,12 @@ func performDownload(cmd *cobra.Command, controller *core.Controller, wp models.
 		if !config.Quiet {
 			cmd.Printf("Warning: Failed to update feed with local path: %v\n", err)
 		}
+	}
+
+	// Also update favorites if present
+	if err := controller.UpdateWallpaperPath(wp.ID, cachePath); err != nil {
+		// Log error but don't fail the download
+		utils.Log.Error("Failed to update path in favorites: %v", err)
 	}
 
 	if !config.Quiet {
