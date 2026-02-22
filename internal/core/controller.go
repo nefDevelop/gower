@@ -42,26 +42,30 @@ type FavoriteWallpaper struct {
 
 // GetAppDir returns the application directory, preferring XDG but falling back to legacy .gower
 func GetAppDir() (string, error) {
-	homeDir, err := os.UserHomeDir()
+	// Usar os.UserConfigDir para soportar estándares multiplataforma (ej. AppData en Windows)
+	configDir, err := os.UserConfigDir()
 	if err != nil {
-		return "", err
+		// Fallback a home/.config si UserConfigDir falla
+		homeDir, errHome := os.UserHomeDir()
+		if errHome != nil {
+			return "", errHome
+		}
+		configDir = filepath.Join(homeDir, ".config")
 	}
 
-	xdgDir := filepath.Join(homeDir, ".config", "gower")
-	legacyDir := filepath.Join(homeDir, ".gower")
+	primaryDir := filepath.Join(configDir, "gower")
 
-	if _, err := os.Stat(filepath.Join(xdgDir, "config.json")); err == nil {
-		return xdgDir, nil
-	}
-	if _, err := os.Stat(filepath.Join(legacyDir, "config.json")); err == nil {
-		return legacyDir, nil
-	}
-	if _, err := os.Stat(legacyDir); err == nil {
-		if _, err := os.Stat(xdgDir); os.IsNotExist(err) {
-			return legacyDir, nil
+	// Comprobar ubicación legacy (.gower en home) por retrocompatibilidad
+	if homeDir, err := os.UserHomeDir(); err == nil {
+		legacyDir := filepath.Join(homeDir, ".gower")
+		// Si existe config en legacy y NO en primary, usar legacy
+		if _, err := os.Stat(filepath.Join(legacyDir, "config.json")); err == nil {
+			if _, err := os.Stat(filepath.Join(primaryDir, "config.json")); os.IsNotExist(err) {
+				return legacyDir, nil
+			}
 		}
 	}
-	return xdgDir, nil
+	return primaryDir, nil
 }
 
 // NewController creates a new Controller.
