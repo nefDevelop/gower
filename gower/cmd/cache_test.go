@@ -11,20 +11,14 @@ import (
 )
 
 func TestCacheCleanCmd(t *testing.T) {
-	// Create a temporary directory for the test
-	tmpDir, err := os.MkdirTemp("", "gower-cache-test")
+	_ = setupTestEnv(t)
+
+	appDir, err := core.GetAppDir()
 	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
+		t.Fatalf("Failed to get app dir: %v", err)
 	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
-
-	// Set the user home directory to the temporary directory
-	// Use t.Setenv for automatic restoration
-	t.Setenv("HOME", tmpDir)
-	t.Setenv("USERPROFILE", tmpDir) // for Windows
-
 	// Create some dummy files and directories in the cache
-	cacheDir := filepath.Join(tmpDir, ".gower", "cache")
+	cacheDir := filepath.Join(appDir, "cache")
 	wallpapersDir := filepath.Join(cacheDir, "wallpapers")
 	thumbsDir := filepath.Join(cacheDir, "thumbs")
 	if err := os.MkdirAll(wallpapersDir, 0755); err != nil {
@@ -64,19 +58,14 @@ func TestCacheCleanCmd(t *testing.T) {
 }
 
 func TestCacheSizeCmd(t *testing.T) {
-	// Create a temporary directory for the test
-	tmpDir, err := os.MkdirTemp("", "gower-cache-test")
+	_ = setupTestEnv(t)
+
+	appDir, err := core.GetAppDir()
 	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
+		t.Fatalf("Failed to get app dir: %v", err)
 	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
-
-	// Set the user home directory to the temporary directory
-	t.Setenv("HOME", tmpDir)
-	t.Setenv("USERPROFILE", tmpDir) // for Windows
-
 	// Create a dummy file with a known size
-	cacheDir := filepath.Join(tmpDir, ".gower", "cache")
+	cacheDir := filepath.Join(appDir, "cache")
 	wallpapersDir := filepath.Join(cacheDir, "wallpapers")
 	if err := os.MkdirAll(wallpapersDir, 0755); err != nil {
 		t.Fatalf("Failed to create wallpapers dir: %v", err)

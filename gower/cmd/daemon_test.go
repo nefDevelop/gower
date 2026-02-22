@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"gower/internal/core"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -39,7 +40,11 @@ func TestDaemonStatusRunning(t *testing.T) {
 	}()
 
 	// Write PID file
-	pidFile := filepath.Join(tmpDir, ".gower", "gower.pid")
+	appDir, err := core.GetAppDir()
+	if err != nil {
+		t.Fatalf("Failed to get app dir: %v", err)
+	}
+	pidFile := filepath.Join(appDir, "gower.pid")
 	if err := os.MkdirAll(filepath.Dir(pidFile), 0755); err != nil {
 		t.Fatalf("Failed to create config dir: %v", err)
 	}
@@ -71,7 +76,11 @@ func TestDaemonStop(t *testing.T) {
 		}
 	}()
 
-	pidFile := filepath.Join(tmpDir, ".gower", "gower.pid")
+	appDir, err := core.GetAppDir()
+	if err != nil {
+		t.Fatalf("Failed to get app dir: %v", err)
+	}
+	pidFile := filepath.Join(appDir, "gower.pid")
 	os.MkdirAll(filepath.Dir(pidFile), 0755)
 	_ = os.WriteFile(pidFile, []byte(strconv.Itoa(cmd.Process.Pid)), 0644)
 
