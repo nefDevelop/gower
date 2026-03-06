@@ -28,12 +28,13 @@ func NewLogger(writer io.Writer, debug bool) *Logger {
 
 // InitLogger initializes the global logger to write to a file.
 func InitLogger(debug bool) error {
-	home, err := os.UserHomeDir()
+	configDir, err := os.UserConfigDir()
 	if err != nil {
-		return err
+		homeDir, _ := os.UserHomeDir()
+		configDir = filepath.Join(homeDir, ".config")
 	}
 
-	logDir := filepath.Join(home, ".gower", "logs")
+	logDir := filepath.Join(configDir, "gower", "logs")
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		return err
 	}

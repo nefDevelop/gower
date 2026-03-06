@@ -21,13 +21,12 @@ func executeCommand(root *cobra.Command, args ...string) (string, error) {
 
 // setupTestHome creates a temporary directory and sets the HOME environment variable.
 func setupTestHome(t *testing.T) string {
-	tmpDir, err := os.MkdirTemp("", "gower-test")
-	if err != nil {
-		t.Fatal(err)
-	}
+	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 	// For Windows compatibility
 	t.Setenv("USERPROFILE", tmpDir)
+	t.Setenv("APPDATA", tmpDir)
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
 	return tmpDir
 }
 

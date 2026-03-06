@@ -71,6 +71,7 @@ func GetAppDir() (string, error) {
 // NewController creates a new Controller.
 var NewController = func(config *models.Config) *Controller {
 	providerManager := NewProviderManager()
+	jsonManager := utils.NewSecureJSONManager()
 
 	// Register native providers
 	if config.Providers.Wallhaven.Enabled {

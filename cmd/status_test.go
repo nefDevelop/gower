@@ -39,17 +39,16 @@ var originalStatusNewController = core.NewController
 
 func setupStatusMocks(t *testing.T) (*MockStatusController, func()) {
 	// Setup temp home for config
-	tmpDir, err := os.MkdirTemp("", "gower-test-status")
-	if err != nil {
-		t.Fatal(err)
-	}
-	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
+	tmpDir := setupTestHome(t)
 
 	// Create config file
-	configDir := filepath.Join(tmpDir, ".gower")
+	configDir := filepath.Join(tmpDir, ".config", "gower")
 	os.MkdirAll(configDir, 0755)
 	os.WriteFile(filepath.Join(configDir, "config.json"), []byte("{}"), 0644)
+	
+	// Create data dir
+	dataDir := filepath.Join(configDir, "data")
+	os.MkdirAll(dataDir, 0755)
 
 	mockController := &MockStatusController{
 		MockWallpapers: make(map[string]*models.Wallpaper),
@@ -70,8 +69,6 @@ func setupStatusMocks(t *testing.T) (*MockStatusController, func()) {
 	cleanup := func() {
 		core.NewController = originalStatusNewController
 		saveState = originalSaveState
-		os.Setenv("HOME", originalHome)
-		os.RemoveAll(tmpDir)
 	}
 
 	return mockController, cleanup
@@ -83,7 +80,7 @@ func TestStatusAll(t *testing.T) {
 	defer cleanup()
 
 	// Manually create state.json for wallpaper status
-	statePath := filepath.Join(os.Getenv("HOME"), ".gower", "state.json")
+	statePath := filepath.Join(os.Getenv("HOME"), ".config", "gower", "state.json")
 	stateData := `{"current_wallpaper_id": "wall_1", "current_wallpapers": ["wall_1", "wall_2"]}`
 	os.WriteFile(statePath, []byte(stateData), 0644)
 
@@ -146,7 +143,7 @@ func TestStatusJSON(t *testing.T) {
 	defer cleanup()
 
 	// Manually create state.json for wallpaper status
-	statePath := filepath.Join(os.Getenv("HOME"), ".gower", "state.json")
+	statePath := filepath.Join(os.Getenv("HOME"), ".config", "gower", "state.json")
 	stateData := `{"current_wallpaper_id": "wall_1", "current_wallpapers": ["wall_1","wall_2"]}`
 	os.WriteFile(statePath, []byte(stateData), 0644)
 
@@ -196,7 +193,7 @@ func TestStatusFlags(t *testing.T) {
 	defer cleanup()
 
 	// Manually create state.json for wallpaper status
-	statePath := filepath.Join(os.Getenv("HOME"), ".gower", "state.json")
+	statePath := filepath.Join(os.Getenv("HOME"), ".config", "gower", "state.json")
 	stateData := `{"current_wallpaper_id": "wall_1", "current_wallpapers": ["wall_1"]}`
 	os.WriteFile(statePath, []byte(stateData), 0644)
 
@@ -268,7 +265,7 @@ func TestStatusWallpaperNoWallpapers(t *testing.T) {
 	defer cleanup()
 
 	// No state.json or empty state.json
-	statePath := filepath.Join(os.Getenv("HOME"), ".gower", "state.json")
+	statePath := filepath.Join(os.Getenv("HOME"), ".config", "gower", "state.json")
 	_ = os.WriteFile(statePath, []byte(`{}`), 0644)
 
 	output, err := executeCommand(rootCmd, "status", "--wallpapers")

@@ -22,6 +22,9 @@ func NewSecureJSONManager() *SecureJSONManager {
 
 // WriteJSON writes data to a JSON file atomically and manages backups.
 func (m *SecureJSONManager) WriteJSON(filePath string, data interface{}) error {
+	if m == nil {
+		m = NewSecureJSONManager()
+	}
 	// 1. Marshal new data to ensure it's valid before touching anything
 	jsonData, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
@@ -40,6 +43,9 @@ func (m *SecureJSONManager) WriteJSON(filePath string, data interface{}) error {
 
 // ReadJSON reads data from a JSON file, falling back to backup if necessary.
 func (m *SecureJSONManager) ReadJSON(filePath string, v interface{}) error {
+	if m == nil {
+		m = NewSecureJSONManager()
+	}
 	// Try reading main file
 	err := m.readAndUnmarshal(filePath, v)
 	if err == nil {
@@ -101,6 +107,9 @@ func (m *SecureJSONManager) atomicWrite(filePath string, data []byte) error {
 }
 
 func (m *SecureJSONManager) manageBackup(filePath string) error {
+	if m == nil {
+		return nil
+	}
 	// Check if file exists
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return nil // Nothing to backup yet
