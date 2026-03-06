@@ -1,67 +1,99 @@
-# Makefile para el proyecto Gower
+# Makefile para Gower - Wallpaper Manager CLI
+# Soporta Linux y Windows (cmd.exe / PowerShell / bash)
 
-# Variables
+# --- Variables ---
 BINARY_NAME=gower
-GO_FLAGS=-v
 DIST_DIR=dist
+VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+BUILD_TIME?=$(shell date +"%Y-%m-%dT%H:%M:%S%z" 2>/dev/null || echo "unknown")
 
-# --- Objetivos Principales ---
+# Flags de compilación
+LDFLAGS=-ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME)"
 
-.PHONY: all build build-linux build-windows build-all install test test-integration clean help
+# Detección de OS para comandos de sistema
+ifeq ($(OS),Windows_NT)
+    # Windows (cmd.exe)
+    EXE=.exe
+    RM=del /F /Q
+    RM_DIR=rmdir /S /Q
+    MKDIR=mkdir
+    # Función para normalizar rutas en Windows (convertir / a \)
+    FIX_PATH=$(subst /,\,$(1))
+    # Para evitar errores si el archivo no existe
+    NULL_OUTPUT=2>NUL
+    # Comandos condicionales
+    RM_CMD=if exist $(BINARY_NAME)$(EXE) $(RM) $(BINARY_NAME)$(EXE)
+    RM_DIST=if exist $(DIST_DIR) $(RM_DIR) $(DIST_DIR)
+    MKDIR_LINUX=if not exist "$(DIST_DIR)\linux" $(MKDIR) "$(DIST_DIR)\linux"
+    MKDIR_WINDOWS=if not exist "$(DIST_DIR)\windows" $(MKDIR) "$(DIST_DIR)\windows"
+else
+    # Linux / macOS / WSL
+    EXE=
+    RM=rm -f
+    RM_DIR=rm -rf
+    MKDIR=mkdir -p
+    FIX_PATH=$(1)
+    NULL_OUTPUT=2>/dev/null
+    RM_CMD=$(RM) $(BINARY_NAME) $(BINARY_NAME).exe
+    RM_DIST=$(RM_DIR) $(DIST_DIR)
+    MKDIR_LINUX=$(MKDIR) $(DIST_DIR)/linux
+    MKDIR_WINDOWS=$(MKDIR) $(DIST_DIR)/windows
+endif
+
+# --- Objetivos ---
+
+.PHONY: all build build-linux build-windows build-all test test-integration lint clean help
 
 all: build
 
-# Construye el binario para el sistema operativo actual
+## build: Compila el binario para el sistema operativo actual
 build:
-	@echo "Construyendo el binario $(BINARY_NAME) para el SO actual..."
-	go build -o $(BINARY_NAME) .
+	@echo "==> Construyendo $(BINARY_NAME)$(EXE) para $(OS)..."
+	go build $(LDFLAGS) -o $(BINARY_NAME)$(EXE) .
 
-# Construye el binario para Linux
+## build-linux: Compila el binario para Linux (amd64)
 build-linux:
-	@echo "Construyendo para Linux (amd64)..."
-	@mkdir -p $(DIST_DIR)/linux
-	GOOS=linux GOARCH=amd64 go build -o $(DIST_DIR)/linux/$(BINARY_NAME) .
+	@echo "==> Construyendo para Linux (amd64)..."
+	@$(MKDIR_LINUX) $(NULL_OUTPUT) || true
+	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(DIST_DIR)/linux/$(BINARY_NAME) .
 
-# Construye el binario para Windows
+## build-windows: Compila el binario para Windows (amd64)
 build-windows:
-	@echo "Construyendo para Windows (amd64)..."
-	@mkdir -p $(DIST_DIR)/windows
-	GOOS=windows GOARCH=amd64 go build -o $(DIST_DIR)/windows/$(BINARY_NAME).exe .
+	@echo "==> Construyendo para Windows (amd64)..."
+	@$(MKDIR_WINDOWS) $(NULL_OUTPUT) || true
+	GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o $(DIST_DIR)/windows/$(BINARY_NAME).exe .
 
-# Construye para todas las plataformas soportadas
+## build-all: Compila para todas las plataformas soportadas
 build-all: build-linux build-windows
 
-# Instala el binario en el GOPATH
-install:
-	@echo "Instalando $(BINARY_NAME)..."
-	go install .
-
-# Ejecuta los tests unitarios
+## test: Ejecuta todos los tests unitarios
 test:
-	@echo "Ejecutando tests unitarios..."
-	go test $(GO_FLAGS) ./...
+	@echo "==> Ejecutando tests unitarios..."
+	go test -v ./...
 
-# Ejecuta los tests de integración
+## test-integration: Ejecuta los tests de integración (usando tags)
 test-integration:
-	@echo "Ejecutando tests de integración..."
-	go test $(GO_FLAGS) -tags=integration ./...
+	@echo "==> Ejecutando tests de integración..."
+	go test -v -tags=integration ./...
 
-# Limpia los artefactos de compilación
+## lint: Ejecuta el linter básico (go vet)
+lint:
+	@echo "==> Analizando código con go vet..."
+	go vet ./...
+
+## clean: Elimina los binarios y el directorio de distribución
 clean:
-	@echo "Limpiando..."
-	@if [ -f $(BINARY_NAME) ]; then rm $(BINARY_NAME); fi
-	@if [ -f $(BINARY_NAME).exe ]; then rm $(BINARY_NAME).exe; fi
-	@if [ -d $(DIST_DIR) ]; then rm -r $(DIST_DIR); fi
+	@echo "==> Limpiando artefactos..."
+	@$(RM_CMD) $(NULL_OUTPUT) || true
+	@$(RM_DIST) $(NULL_OUTPUT) || true
 
-# Muestra esta ayuda
+## help: Muestra esta ayuda
 help:
 	@echo "Objetivos disponibles:"
-	@echo "  make build           - Construye el binario para el SO actual"
-	@echo "  make build-linux     - Construye el binario para Linux"
-	@echo "  make build-windows   - Construye el binario para Windows"
-	@echo "  make build-all       - Construye para todas las plataformas"
-	@echo "  make install         - Instala el binario en GOPATH"
-	@echo "  make test            - Ejecuta los tests unitarios"
-	@echo "  make test-integration- Ejecuta los tests de integración"
-	@echo "  make clean           - Limpia los binarios compilados"
-	@echo "  make help            - Muestra esta ayuda"
+	@echo ""
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' || \
+	(echo "  build           - Compila para el OS actual" && \
+	 echo "  build-linux     - Compila para Linux" && \
+	 echo "  build-windows   - Compila para Windows" && \
+	 echo "  test            - Ejecuta tests" && \
+	 echo "  clean           - Limpia binarios")

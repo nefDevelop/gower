@@ -42,7 +42,7 @@ from various online sources.`,
 			utils.Log.Info("Execution started: %s %v", cmd.CommandPath(), args)
 		}
 	},
-	Version: "0.1.0",
+	// Version se establece vía SetVersionInfo
 }
 
 // guiCmd represents the gui command
