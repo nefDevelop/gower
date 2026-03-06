@@ -91,15 +91,7 @@ Para cambiar automáticamente tu fondo de pantalla cada 30 minutos:
 gower daemon start --interval 30
 ```
 
-### 5. Interfaz Gráfica (GUI)
-
-Gower también cuenta con una interfaz gráfica experimental:
-
-```bash
-gower gui
-```
-
-### 6. Versión
+### 5. Versión
 
 Verifica la versión instalada y la fecha de compilación:
 
@@ -107,7 +99,7 @@ Verifica la versión instalada y la fecha de compilación:
 gower version
 ```
 
-### 7. Gestión de Archivos Locales
+### 6. Gestión de Archivos Locales
 
 Gower puede indexar tus propios fondos de pantalla. Activa `index_wallpapers` en la configuración y apunta `wallpapers` a tu carpeta.
 
@@ -401,9 +393,6 @@ Importa datos de la aplicación.
 
 Muestra la versión actual, el commit de git y la fecha de compilación.
 
-#### `gower gui`
-
-Lanza la interfaz gráfica de usuario de Gower (requiere que el componente GUI esté instalado en la subcarpeta `gower-gui`).
 
 ## 🛠️ Construir desde el código fuente
 
