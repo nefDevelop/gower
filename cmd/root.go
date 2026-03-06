@@ -40,6 +40,7 @@ from various online sources.`,
 		}
 	},
 	// Version se establece vía SetVersionInfo
+	Version: "0.1.0",
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
