@@ -5,7 +5,9 @@
 
 **Gower** es una potente herramienta de línea de comandos para descubrir, gestionar y cambiar los fondos de pantalla de tu escritorio desde diversas fuentes en línea y locales.
 
-![Gower Demo](https://user-images.githubusercontent.com/12345/67890.gif) <!-- Placeholder for a demo GIF -->
+> [!WARNING]
+> **En desarrollo**: Gower se encuentra actualmente en fase de desarrollo activo. Puede haber errores, cambios bruscos en la configuración e inestabilidad general. Úsalo bajo tu propia responsabilidad.
+
 
 ## ✨ Características
 
@@ -86,10 +88,26 @@ gower feed show --page 2 --limit 10 --theme dark
 Para cambiar automáticamente tu fondo de pantalla cada 30 minutos:
 
 ```bash
-gower daemon --interval 30m
+gower daemon start --interval 30
 ```
 
-### 5. Gestión de Archivos Locales
+### 5. Interfaz Gráfica (GUI)
+
+Gower también cuenta con una interfaz gráfica experimental:
+
+```bash
+gower gui
+```
+
+### 6. Versión
+
+Verifica la versión instalada y la fecha de compilación:
+
+```bash
+gower version
+```
+
+### 7. Gestión de Archivos Locales
 
 Gower puede indexar tus propios fondos de pantalla. Activa `index_wallpapers` en la configuración y apunta `wallpapers` a tu carpeta.
 
@@ -115,7 +133,7 @@ Un archivo de configuración de ejemplo podría ser:
   "providers": {
     "wallhaven": {
       "enabled": true,
-      "apiKey": "TU_API_KEY_DE_WALLHAVEN"
+      "api_key": "TU_API_KEY_DE_WALLHAVEN"
     },
     "reddit": {
       "enabled": true,
@@ -123,7 +141,7 @@ Un archivo de configuración de ejemplo podría ser:
       "sort": "hot",
       "limit": 100
     },
-    "nasa": { "enabled": true },
+    "nasa": { "enabled": true, "api_key": "DEMO_KEY" },
     "bing": { "enabled": true, "market": "en-US" }
   },
   "search": {
@@ -315,13 +333,15 @@ Gestiona la configuración de la aplicación.
 Controla el demonio que cambia el fondo de pantalla automáticamente.
 
 - `gower daemon start`: Inicia el demonio en segundo plano.
-  - `--interval <minutos>`: Intervalo en minutos para cambiar el fondo de pantalla.
+  - `--interval <minutos>`: Intervalo en minutos para cambiar el fondo de pantalla (por defecto 30).
   - `--from-favorites`: Usa solo favoritos para los cambios.
   - `--theme <dark|light>`: Filtra por tema.
+  - `--foreground`: Ejecuta el demonio en primer plano (útil para depuración o scripts de sistema).
 - `gower daemon stop`: Detiene el demonio.
-  - `--force`: Fuerza la detención.
+  - `--force`: Fuerza la detención eliminando los archivos de control.
 - `gower daemon status`: Muestra el estado actual del demonio (corriendo o detenido).
-- `gower daemon pause`: Pausa temporalmente los cambios de fondo de pantalla.
+  - `--json`: Devuelve el estado en formato JSON.
+- `gower daemon pause`: Pausa temporalmente los cambios de fondo de pantalla sin detener el proceso.
 - `gower daemon resume`: Reanuda los cambios de fondo de pantalla.
 
 #### `gower status`
@@ -376,6 +396,14 @@ Importa datos de la aplicación.
 
 - `gower import config <archivo>`: Importa la configuración desde un archivo JSON.
 - `gower import favorites --file <archivo>`: Importa favoritos desde un archivo JSON.
+
+#### `gower version`
+
+Muestra la versión actual, el commit de git y la fecha de compilación.
+
+#### `gower gui`
+
+Lanza la interfaz gráfica de usuario de Gower (requiere que el componente GUI esté instalado en la subcarpeta `gower-gui`).
 
 ## 🛠️ Construir desde el código fuente
 
