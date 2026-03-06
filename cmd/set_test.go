@@ -28,8 +28,11 @@ func resetSetFlags() {
 }
 
 func TestController_GetWallpaperAndDownload(t *testing.T) {
-	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	setupTestHome(t)
+
+	if err := createConfigStructure(rootCmd); err != nil {
+		t.Fatalf("Error creating config structure: %v", err)
+	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -59,12 +62,11 @@ func TestController_GetWallpaperAndDownload(t *testing.T) {
 func TestSetUndoCommand(t *testing.T) {
 	t.Setenv("XDG_CURRENT_DESKTOP", "test")
 	resetSetFlags()
-	_, cleanup := setupTestHomeWithState(t, &State{
+	setupTestHomeWithState(t, &State{
 		CurrentWallpaperID:  "current-wp",
 		PreviousWallpaperID: "previous-wp",
 		PreviousWallpapers:  []string{"previous-wp", "previous-wp-2"},
 	})
-	defer cleanup()
 
 	// Mock server for image download
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -105,16 +107,12 @@ func TestSetUndoCommand(t *testing.T) {
 }
 
 // setupTestHomeWithState is a helper for tests that need a pre-configured state.json
-func setupTestHomeWithState(t *testing.T, state *State) (string, func()) {
-	tempDir, err := os.MkdirTemp("", "gower-test-home-")
-	assert.NoError(t, err)
+func setupTestHomeWithState(t *testing.T, state *State) string {
+	tempDir := setupTestHome(t)
 
-	originalHome := os.Getenv("HOME")
-	t.Setenv("HOME", tempDir)
-
-	// Create .gower dir and write state
-	gowerDir := filepath.Join(tempDir, ".gower")
-	err = os.MkdirAll(gowerDir, 0755)
+	// Create .config/gower dir and write state
+	gowerDir := filepath.Join(tempDir, ".config", "gower")
+	err := os.MkdirAll(gowerDir, 0755)
 	assert.NoError(t, err)
 
 	statePath := filepath.Join(gowerDir, "state.json")
@@ -128,12 +126,7 @@ func setupTestHomeWithState(t *testing.T, state *State) (string, func()) {
 	err = os.WriteFile(configPath, []byte("{}"), 0644)
 	assert.NoError(t, err)
 
-	cleanup := func() {
-		_ = os.Setenv("HOME", originalHome)
-		os.RemoveAll(tempDir)
-	}
-
-	return tempDir, cleanup
+	return tempDir
 }
 
 // newTestRootCmd creates a fresh instance of the root command for isolated testing.

@@ -11,10 +11,11 @@ import (
 )
 
 func TestConfigProviderList(t *testing.T) {
-	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	setupTestHome(t)
 
-	executeCommand(rootCmd, "config", "init")
+	if err := createConfigStructure(rootCmd); err != nil {
+		t.Fatalf("Error creating config structure: %v", err)
+	}
 
 	output, err := executeCommand(rootCmd, "config", "provider", "list")
 	if err != nil {
@@ -31,9 +32,10 @@ func TestConfigProviderList(t *testing.T) {
 
 func TestConfigProviderGenericAddAndRemove(t *testing.T) {
 	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
 
-	executeCommand(rootCmd, "config", "init")
+	if err := createConfigStructure(rootCmd); err != nil {
+		t.Fatalf("Error creating config structure: %v", err)
+	}
 
 	providerName := "test_provider"
 	providerURL := "https://api.test.com/search?q={query}"
@@ -118,10 +120,11 @@ func TestConfigProviderGenericAddAndRemove(t *testing.T) {
 }
 
 func TestConfigProviderReddit(t *testing.T) {
-	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	setupTestHome(t)
 
-	executeCommand(rootCmd, "config", "init")
+	if err := createConfigStructure(rootCmd); err != nil {
+		t.Fatalf("Error creating config structure: %v", err)
+	}
 
 	// Test Add
 	sub := "cyberpunk"

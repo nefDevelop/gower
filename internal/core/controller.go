@@ -91,7 +91,6 @@ var NewController = func(config *models.Config) *Controller {
 	// Unsplash provider was removed as it was not implemented.
 
 	// Register generic providers
-	jsonManager := utils.NewSecureJSONManager()
 	appDir, _ := GetAppDir()
 
 	for _, providerConfig := range config.GenericProviders {

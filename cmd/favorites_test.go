@@ -23,10 +23,11 @@ func resetFavoritesFlags() {
 
 func TestFavoritesListEmpty(t *testing.T) {
 	resetFavoritesFlags()
-	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	setupTestHome(t)
 
-	executeCommand(rootCmd, "config", "init")
+	if err := createConfigStructure(rootCmd); err != nil {
+		t.Fatalf("Error creating config structure: %v", err)
+	}
 
 	output, err := executeCommand(rootCmd, "favorites", "list")
 	if err != nil {
@@ -40,10 +41,11 @@ func TestFavoritesListEmpty(t *testing.T) {
 
 func TestFavoritesAddAndList(t *testing.T) {
 	resetFavoritesFlags()
-	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	setupTestHome(t)
 
-	executeCommand(rootCmd, "config", "init")
+	if err := createConfigStructure(rootCmd); err != nil {
+		t.Fatalf("Error creating config structure: %v", err)
+	}
 
 	// Add a favorite
 	output, err := executeCommand(rootCmd, "favorites", "add", "test-id-1", "--notes", "My cool wallpaper")
@@ -78,10 +80,11 @@ func TestFavoritesAddAndList(t *testing.T) {
 
 func TestFavoritesRemove(t *testing.T) {
 	resetFavoritesFlags()
-	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	setupTestHome(t)
 
-	executeCommand(rootCmd, "config", "init")
+	if err := createConfigStructure(rootCmd); err != nil {
+		t.Fatalf("Error creating config structure: %v", err)
+	}
 	executeCommand(rootCmd, "favorites", "add", "test-id-1")
 	executeCommand(rootCmd, "favorites", "add", "test-id-2")
 
@@ -128,9 +131,10 @@ func TestFavoritesRemove(t *testing.T) {
 func TestFavoritesExportAndImport(t *testing.T) {
 	resetFavoritesFlags()
 	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
 
-	executeCommand(rootCmd, "config", "init")
+	if err := createConfigStructure(rootCmd); err != nil {
+		t.Fatalf("Error creating config structure: %v", err)
+	}
 	executeCommand(rootCmd, "favorites", "add", "fav-id-1")
 	executeCommand(rootCmd, "favorites", "add", "fav-id-2")
 
@@ -200,9 +204,10 @@ func TestFavoritesExportAndImport(t *testing.T) {
 func TestFavoritesListColor(t *testing.T) {
 	resetFavoritesFlags()
 	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
 
-	executeCommand(rootCmd, "config", "init")
+	if err := createConfigStructure(rootCmd); err != nil {
+		t.Fatalf("Error creating config structure: %v", err)
+	}
 
 	// Manually save favorites with colors to test filtering
 	favs := []core.FavoriteWallpaper{
@@ -250,9 +255,10 @@ func TestFavoritesListColor(t *testing.T) {
 func TestFavoritesAddWithPersistence(t *testing.T) {
 	resetFavoritesFlags()
 	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
 
-	executeCommand(rootCmd, "config", "init")
+	if err := createConfigStructure(rootCmd); err != nil {
+		t.Fatalf("Error creating config structure: %v", err)
+	}
 
 	// Setup wallpapers dir
 	wallpapersDir := filepath.Join(tmpDir, "Wallpapers")
@@ -288,9 +294,10 @@ func TestFavoritesAddWithPersistence(t *testing.T) {
 func TestFavoritesGetColors(t *testing.T) {
 	resetFavoritesFlags()
 	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
 
-	executeCommand(rootCmd, "config", "init")
+	if err := createConfigStructure(rootCmd); err != nil {
+		t.Fatalf("Error creating config structure: %v", err)
+	}
 
 	// Manually create colors.json with favorite palette entries
 	colorsPath := filepath.Join(tmpDir, ".config", "gower", "data", "colors.json")

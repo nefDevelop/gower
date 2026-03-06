@@ -5,8 +5,6 @@ import (
 	"gower/pkg/models"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -69,17 +67,12 @@ var originalSetNewWallpaperChanger = core.NewWallpaperChanger
 
 func setupMocks(t *testing.T) (*MockSetController, *MockSetWallpaperChanger) {
 	// Setup temp home for config
-	tmpDir, err := os.MkdirTemp("", "gower-test-set-monitor")
-	if err != nil {
-		t.Fatal(err)
-	}
-	originalHome := os.Getenv("HOME")
-	_ = os.Setenv("HOME", tmpDir)
+	setupTestHome(t)
 
-	// Create config file
-	configDir := filepath.Join(tmpDir, ".gower")
-	os.MkdirAll(configDir, 0755)
-	os.WriteFile(filepath.Join(configDir, "config.json"), []byte("{}"), 0644)
+	// Inicializar la estructura completa de configuración
+	if err := createConfigStructure(rootCmd); err != nil {
+		t.Fatalf("Error creating config structure: %v", err)
+	}
 
 	// Initialize real controller to get valid managers
 	cfg := &models.Config{
@@ -128,8 +121,6 @@ func setupMocks(t *testing.T) (*MockSetController, *MockSetWallpaperChanger) {
 		loadState = originalLoadState
 		saveState = originalSaveState
 		// Reset flags
-		_ = os.Setenv("HOME", originalHome)
-		os.RemoveAll(tmpDir)
 		setID = ""
 		setURL = ""
 		setRandom = false

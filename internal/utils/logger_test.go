@@ -43,22 +43,23 @@ func TestLogger_Levels(t *testing.T) {
 func TestInitLogger_FileCreation(t *testing.T) {
 	// This test still checks file creation, but it's less critical now.
 	// We keep it to ensure the production code path works.
-	tmpDir, err := os.MkdirTemp("", "gower-logger-init-test")
-	assert.NoError(t, err)
-	defer func() { _ = os.RemoveAll(tmpDir) }()
+	tmpDir := t.TempDir()
 
-	// Temporarily override user home directory
-	originalHome := os.Getenv("HOME")
-	_ = os.Setenv("HOME", tmpDir)
-	defer func() { _ = os.Setenv("HOME", originalHome) }()
+	// Temporarily override user home and config directory
+	t.Setenv("HOME", tmpDir)
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	t.Setenv("APPDATA", tmpDir)
 
 	// Reset global logger after test
 	defer func() { Log = nil }()
 
-	err = InitLogger(true)
+	err := InitLogger(true)
 	assert.NoError(t, err)
 
-	logDir := filepath.Join(tmpDir, ".gower", "logs")
+	configDir, _ := os.UserConfigDir()
+	t.Logf("Config dir used: %s", configDir)
+
+	logDir := filepath.Join(configDir, "gower", "logs")
 	filename := "gower-" + time.Now().Format("2006-01-02") + ".log"
 	logPath := filepath.Join(logDir, filename)
 

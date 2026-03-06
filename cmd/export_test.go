@@ -13,9 +13,10 @@ import (
 
 func TestExportConfig(t *testing.T) {
 	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
 
-	executeCommand(rootCmd, "config", "init")
+	if err := createConfigStructure(rootCmd); err != nil {
+		t.Fatalf("Error creating config structure: %v", err)
+	}
 	executeCommand(rootCmd, "config", "set", "behavior.theme=light")
 
 	exportFile := filepath.Join(tmpDir, "exported_config.json")
@@ -44,9 +45,10 @@ func TestExportConfig(t *testing.T) {
 
 func TestExportFeed(t *testing.T) {
 	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
 
-	executeCommand(rootCmd, "config", "init")
+	if err := createConfigStructure(rootCmd); err != nil {
+		t.Fatalf("Error creating config structure: %v", err)
+	}
 	// Add some dummy wallpapers to the feed
 	cfg, _ := loadConfig()
 	controller := core.NewController(cfg)
@@ -82,12 +84,14 @@ func TestExportFeed(t *testing.T) {
 
 func TestExportAllZip(t *testing.T) {
 	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
 
-	executeCommand(rootCmd, "config", "init")
+	if err := createConfigStructure(rootCmd); err != nil {
+		t.Fatalf("Error creating config structure: %v", err)
+	}
 
 	// Create dummy cache file to test image inclusion
-	cacheDir := filepath.Join(tmpDir, ".gower", "cache", "wallpapers")
+	configDir, _ := os.UserConfigDir()
+	cacheDir := filepath.Join(configDir, "gower", "cache", "wallpapers")
 	os.MkdirAll(cacheDir, 0755)
 	os.WriteFile(filepath.Join(cacheDir, "test_img.jpg"), []byte("fake image"), 0644)
 
@@ -107,9 +111,10 @@ func TestExportAllZip(t *testing.T) {
 func TestExportAll(t *testing.T) {
 	exportFile = "" // Reset global flag variable to avoid pollution from previous tests
 	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
 
-	executeCommand(rootCmd, "config", "init")
+	if err := createConfigStructure(rootCmd); err != nil {
+		t.Fatalf("Error creating config structure: %v", err)
+	}
 	executeCommand(rootCmd, "config", "set", "behavior.theme=dark")
 	executeCommand(rootCmd, "favorites", "add", "fav-1")
 

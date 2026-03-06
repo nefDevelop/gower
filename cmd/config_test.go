@@ -21,22 +21,19 @@ func TestConfigInit(t *testing.T) {
 		t.Errorf("Salida inesperada: %s", output)
 	}
 
-	var configPath string
+	// La ruta estándar ahora es siempre tmpDir/.config/gower/config.json debido a setupTestEnv
+	configPath := filepath.Join(tmpDir, ".config", "gower", "config.json")
 	if runtime.GOOS == "windows" {
-		// En Windows, UserConfigDir apunta a APPDATA
-		configPath = filepath.Join(tmpDir, "gower", "config.json")
-	} else {
-		// En Linux/macOS, apunta a HOME/.config
-		configPath = filepath.Join(tmpDir, ".config", "gower", "config.json")
+		configPath = filepath.Join(tmpDir, "AppData", "Roaming", "gower", "config.json")
 	}
 
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		t.Errorf("El archivo de configuración no fue creado")
+		t.Errorf("El archivo de configuración no fue creado en %s", configPath)
 	}
 }
 
 func TestConfigShow(t *testing.T) {
-	_ = setupTestEnv(t) // No necesitamos la ruta del dir, solo configurar el entorno
+	setupTestEnv(t)
 
 	executeCommand(rootCmd, "config", "init")
 
@@ -51,7 +48,7 @@ func TestConfigShow(t *testing.T) {
 }
 
 func TestConfigSetAndGet(t *testing.T) {
-	_ = setupTestEnv(t)
+	setupTestEnv(t)
 
 	executeCommand(rootCmd, "config", "init")
 
@@ -89,7 +86,7 @@ func TestConfigSetAndGet(t *testing.T) {
 }
 
 func TestConfigReset(t *testing.T) {
-	_ = setupTestEnv(t)
+	setupTestEnv(t)
 
 	executeCommand(rootCmd, "config", "init")
 	// Cambiamos un valor
@@ -154,15 +151,12 @@ func TestConfigExportAndImport(t *testing.T) {
 }
 
 func TestConfigUpdate(t *testing.T) {
-	tmpDir := setupTestEnv(t)
+	setupTestEnv(t)
 
 	// 1. Crear un archivo de configuración parcial/antiguo manualmente
-	var configDir string
-	if runtime.GOOS == "windows" {
-		configDir = filepath.Join(tmpDir, "gower")
-	} else {
-		configDir = filepath.Join(tmpDir, ".config", "gower")
-	}
+	configDir, _ := os.UserConfigDir()
+	configDir = filepath.Join(configDir, "gower")
+	
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		t.Fatalf("Failed to create config dir for test: %v", err)
 	}
@@ -195,7 +189,7 @@ func TestConfigUpdate(t *testing.T) {
 }
 
 func TestConfigFromFavorites(t *testing.T) {
-	_ = setupTestEnv(t)
+	setupTestEnv(t)
 
 	executeCommand(rootCmd, "config", "init")
 
@@ -213,8 +207,7 @@ func TestConfigFromFavorites(t *testing.T) {
 }
 
 func TestConfigGetConfigFolder(t *testing.T) {
-	tmpDir := setupTestEnv(t)
-	defer os.RemoveAll(tmpDir)
+	setupTestEnv(t)
 
 	executeCommand(rootCmd, "config", "init")
 
@@ -223,12 +216,8 @@ func TestConfigGetConfigFolder(t *testing.T) {
 		t.Fatalf("Error executing config get config-folder: %v", err)
 	}
 
-	expectedConfigDir := ""
-	if runtime.GOOS == "windows" {
-		expectedConfigDir = filepath.Join(tmpDir, "gower")
-	} else {
-		expectedConfigDir = filepath.Join(tmpDir, ".config", "gower")
-	}
+	expectedConfigDir, _ := os.UserConfigDir()
+	expectedConfigDir = filepath.Join(expectedConfigDir, "gower")
 
 	if strings.TrimSpace(output) != expectedConfigDir {
 		t.Errorf("Expected config folder '%s', got '%s'", expectedConfigDir, strings.TrimSpace(output))

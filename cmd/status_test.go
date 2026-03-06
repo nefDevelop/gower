@@ -39,16 +39,12 @@ var originalStatusNewController = core.NewController
 
 func setupStatusMocks(t *testing.T) (*MockStatusController, func()) {
 	// Setup temp home for config
-	tmpDir := setupTestHome(t)
+	setupTestHome(t)
 
-	// Create config file
-	configDir := filepath.Join(tmpDir, ".config", "gower")
-	os.MkdirAll(configDir, 0755)
-	os.WriteFile(filepath.Join(configDir, "config.json"), []byte("{}"), 0644)
-	
-	// Create data dir
-	dataDir := filepath.Join(configDir, "data")
-	os.MkdirAll(dataDir, 0755)
+	// Inicializar la estructura completa de configuración
+	if err := createConfigStructure(rootCmd); err != nil {
+		t.Fatalf("Error creating config structure: %v", err)
+	}
 
 	mockController := &MockStatusController{
 		MockWallpapers: make(map[string]*models.Wallpaper),
@@ -223,7 +219,8 @@ func TestStatusFlags(t *testing.T) {
 
 	// Test --storage
 	// Create some dummy files to check size
-	cacheDir := filepath.Join(os.Getenv("HOME"), ".gower", "cache")
+	configDir, _ := os.UserConfigDir()
+	cacheDir := filepath.Join(configDir, "gower", "cache")
 	_ = os.MkdirAll(cacheDir, 0755)
 	_ = os.WriteFile(filepath.Join(cacheDir, "test"), []byte("test"), 0644)
 

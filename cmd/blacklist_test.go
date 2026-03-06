@@ -9,9 +9,11 @@ import (
 
 func TestBlacklistAdd(t *testing.T) {
 	tmpDir := setupTestHome(t)
-	defer func() { _ = os.RemoveAll(tmpDir) }() // No need to check error in test cleanup
 
-	executeCommand(rootCmd, "config", "init")
+	// Inicializar la estructura de configuración necesaria para el test
+	if err := createConfigStructure(rootCmd); err != nil {
+		t.Fatalf("Error creating config structure: %v", err)
+	}
 
 	// Add to blacklist
 	output, err := executeCommand(rootCmd, "blacklist", "add", "bad-id")
@@ -27,7 +29,7 @@ func TestBlacklistAdd(t *testing.T) {
 	blacklistPath := filepath.Join(tmpDir, ".config", "gower", "data", "blacklist.json")
 	content, err := os.ReadFile(blacklistPath)
 	if err != nil {
-		t.Fatalf("Error reading blacklist file: %v", err)
+		t.Fatalf("Error reading blacklist file at %s: %v", blacklistPath, err)
 	}
 	if !strings.Contains(string(content), "bad-id") {
 		t.Errorf("Blacklist file does not contain bad-id")

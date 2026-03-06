@@ -10,17 +10,12 @@ import (
 )
 
 // setupStateTest creates a temporary directory for testing.
-func setupStateTest(t *testing.T) (string, func()) {
-	tempDir, err := os.MkdirTemp("", "gower-state-test")
-	assert.NoError(t, err)
+func setupStateTest(t *testing.T) string {
+	tempDir := setupTestHome(t)
 
-	// Override the user home dir to control where the state file is created.
-	// We can't directly override os.UserHomeDir, so we'll create the .gower
-	// directory inside our tempDir and adjust the path function for tests
-	// (or rely on a test-specific helper). For this test, we'll just
-	// manually create the file inside the expected structure.
-	gowerDir := filepath.Join(tempDir, ".gower")
-	err = os.MkdirAll(gowerDir, 0755)
+	// Create the .config/gower directory inside our tempDir
+	gowerDir := filepath.Join(tempDir, ".config", "gower")
+	err := os.MkdirAll(gowerDir, 0755)
 	assert.NoError(t, err)
 
 	// Monkey patch the stateFilePath function during tests
@@ -29,17 +24,15 @@ func setupStateTest(t *testing.T) (string, func()) {
 		return filepath.Join(gowerDir, "state.json"), nil
 	}
 
-	cleanup := func() {
+	t.Cleanup(func() {
 		stateFilePath = originalStateFilePath
-		os.RemoveAll(tempDir)
-	}
+	})
 
-	return tempDir, cleanup
+	return tempDir
 }
 
 func TestSaveAndLoadState(t *testing.T) {
-	_, cleanup := setupStateTest(t)
-	defer cleanup()
+	setupStateTest(t)
 
 	// 1. Create a new state
 	initialState := &State{
@@ -66,8 +59,7 @@ func TestSaveAndLoadState(t *testing.T) {
 }
 
 func TestLoadState_NonExistent(t *testing.T) {
-	_, cleanup := setupStateTest(t)
-	defer cleanup()
+	setupStateTest(t)
 
 	// Load state without saving one first
 	state, err := loadState()
@@ -81,8 +73,7 @@ func TestLoadState_NonExistent(t *testing.T) {
 }
 
 func TestLoadState_Corrupt(t *testing.T) {
-	_, cleanup := setupStateTest(t)
-	defer cleanup()
+	setupStateTest(t)
 
 	// Create a corrupt state file
 	stateFile, err := stateFilePath()

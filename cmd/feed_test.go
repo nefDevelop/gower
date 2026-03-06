@@ -24,10 +24,11 @@ func resetFeedFlags() {
 
 func TestFeedShow(t *testing.T) {
 	resetFeedFlags()
-	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
+	setupTestHome(t)
 
-	executeCommand(rootCmd, "config", "init")
+	if err := createConfigStructure(rootCmd); err != nil {
+		t.Fatalf("Error creating config structure: %v", err)
+	}
 
 	// Pre-populate feed
 	cfg, _ := loadConfig()
@@ -83,9 +84,10 @@ func TestFeedShow(t *testing.T) {
 
 func TestFeedStats(t *testing.T) {
 	resetFeedFlags()
-	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
-	executeCommand(rootCmd, "config", "init")
+	setupTestHome(t)
+	if err := createConfigStructure(rootCmd); err != nil {
+		t.Fatalf("Error creating config structure: %v", err)
+	}
 
 	cfg, _ := loadConfig()
 	ctrl := core.NewController(cfg)
@@ -105,9 +107,10 @@ func TestFeedStats(t *testing.T) {
 
 func TestFeedPurge(t *testing.T) {
 	resetFeedFlags()
-	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
-	executeCommand(rootCmd, "config", "init")
+	setupTestHome(t)
+	if err := createConfigStructure(rootCmd); err != nil {
+		t.Fatalf("Error creating config structure: %v", err)
+	}
 
 	cfg, _ := loadConfig()
 	ctrl := core.NewController(cfg)
@@ -140,9 +143,10 @@ func TestFeedPurge(t *testing.T) {
 
 func TestFeedRandom(t *testing.T) {
 	resetFeedFlags()
-	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
-	executeCommand(rootCmd, "config", "init")
+	setupTestHome(t)
+	if err := createConfigStructure(rootCmd); err != nil {
+		t.Fatalf("Error creating config structure: %v", err)
+	}
 
 	cfg, _ := loadConfig()
 	ctrl := core.NewController(cfg)
@@ -160,9 +164,10 @@ func TestFeedRandom(t *testing.T) {
 func TestFeedGetColors(t *testing.T) {
 	resetFeedFlags()
 	tmpDir := setupTestHome(t)
-	defer os.RemoveAll(tmpDir)
 
-	executeCommand(rootCmd, "config", "init")
+	if err := createConfigStructure(rootCmd); err != nil {
+		t.Fatalf("Error creating config structure: %v", err)
+	}
 
 	// Manually create colors.json with feed palette entries
 	colorsPath := filepath.Join(tmpDir, ".config", "gower", "data", "colors.json")
