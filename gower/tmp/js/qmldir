@@ -1,0 +1,4 @@
+singleton Backend 1.0 Backend.qml
+ColorFilter 1.0 ColorFilter.qml
+FloatingTextField 1.0 FloatingTextField.qml
+ImageGrid 1.0 ImageGrid.qml

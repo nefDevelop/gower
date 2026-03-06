@@ -1,0 +1,12 @@
+{
+  "id": "qk-gower",
+  "name": "Gower Quickshell Wrp",
+  "description": "Controll gower",
+  "version": "0.0.5",
+  "license": "MIT",
+  "author": "nefDevelop",
+  "icon": "photo",
+  "type": "widget",
+  "component": "main.qml",
+  "permissions": ["settings_read", "settings_write"]
+}
