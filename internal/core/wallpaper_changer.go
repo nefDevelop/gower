@@ -335,7 +335,7 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 	return fmt.Errorf("invalid multi-monitor mode: %s", multiMonitor)
 }
 
-func commandExists(cmd string) bool {
+var commandExists = func(cmd string) bool {
 	_, err := exec.LookPath(cmd)
 	return err == nil
 }
