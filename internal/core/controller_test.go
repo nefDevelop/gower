@@ -14,16 +14,38 @@ import (
 )
 
 func setupTestHome(t *testing.T) string {
-	tmpDir, err := os.MkdirTemp("", "gower-core-test")
-	if err != nil {
-		t.Fatal(err)
-	}
+	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tmpDir, ".config"))
+	t.Setenv("APPDATA", filepath.Join(tmpDir, "AppData", "Roaming"))
 	t.Setenv("USERPROFILE", tmpDir) // Windows
 
-	// Create data directory
-	if err := os.MkdirAll(filepath.Join(tmpDir, ".config", "gower", "data"), 0755); err != nil {
-		t.Fatal(err)
+	baseDir := filepath.Join(tmpDir, ".config", "gower")
+	dirs := []string{
+		filepath.Join(baseDir, "data"),
+		filepath.Join(baseDir, "data", "parser"),
+		filepath.Join(baseDir, "cache", "thumbs"),
+		filepath.Join(baseDir, "cache", "wallpapers"),
+		filepath.Join(baseDir, "logs"),
+	}
+
+	for _, d := range dirs {
+		if err := os.MkdirAll(d, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Create empty json files
+	emptyFiles := []string{"feed.json", "favorites.json", "blacklist.json", "colors.json"}
+	for _, f := range emptyFiles {
+		path := filepath.Join(baseDir, "data", f)
+		content := "[]"
+		if f == "colors.json" {
+			content = `{"feed_palette":[],"favorites_palette":[]}`
+		}
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	return tmpDir
