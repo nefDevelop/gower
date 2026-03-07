@@ -7,31 +7,16 @@ import (
 	"testing"
 )
 
-func setupStorageTest(t *testing.T) (string, func()) {
-	tmpDir, err := os.MkdirTemp("", "gower-storage-test")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-
-	os.Setenv("HOME", tmpDir)
-	baseDir := filepath.Join(tmpDir, ".config", "gower") // Use standard path
-	_ = os.MkdirAll(filepath.Join(baseDir, "data"), 0755)
-
-	return tmpDir, func() {
-		_ = os.RemoveAll(tmpDir)
-	}
-}
-
 func TestStorageVerifyCmd_AllGood(t *testing.T) {
-	tmpDir, cleanup := setupStorageTest(t)
-	defer cleanup()
+	tmpDir := setupTestEnv(t)
 
 	baseDir := filepath.Join(tmpDir, ".config", "gower")
 	files := []string{"config.json", "data/feed.json", "data/favorites.json", "data/blacklist.json"}
 	for _, f := range files {
 		path := filepath.Join(baseDir, f)
+		_ = os.MkdirAll(filepath.Dir(path), 0755)
 		if err := os.WriteFile(path, []byte("{}"), 0644); err != nil {
-			t.Fatalf("Failed to write test file: %v", err)
+			t.Fatalf("Failed to write test file %s: %v", path, err)
 		}
 	}
 
@@ -45,8 +30,7 @@ func TestStorageVerifyCmd_AllGood(t *testing.T) {
 }
 
 func TestStorageVerifyCmd_MissingFile(t *testing.T) {
-	_, cleanup := setupStorageTest(t)
-	defer cleanup()
+	setupTestEnv(t)
 
 	output, err := executeCommand(rootCmd, "system", "storage", "verify")
 	if err != nil {
@@ -58,11 +42,11 @@ func TestStorageVerifyCmd_MissingFile(t *testing.T) {
 }
 
 func TestStorageVerifyCmd_CorruptFile(t *testing.T) {
-	tmpDir, cleanup := setupStorageTest(t)
-	defer cleanup()
+	tmpDir := setupTestEnv(t)
 
 	baseDir := filepath.Join(tmpDir, ".config", "gower")
 	path := filepath.Join(baseDir, "config.json")
+	_ = os.MkdirAll(filepath.Dir(path), 0755)
 	if err := os.WriteFile(path, []byte("{"), 0644); err != nil {
 		t.Fatalf("Failed to write test file: %v", err)
 	}
@@ -77,12 +61,13 @@ func TestStorageVerifyCmd_CorruptFile(t *testing.T) {
 }
 
 func TestStorageRepairCmd_FromBackup(t *testing.T) {
-	tmpDir, cleanup := setupStorageTest(t)
-	defer cleanup()
+	tmpDir := setupTestEnv(t)
 
 	baseDir := filepath.Join(tmpDir, ".config", "gower")
 	filePath := filepath.Join(baseDir, "config.json")
 	backupPath := filePath + ".bak"
+
+	_ = os.MkdirAll(baseDir, 0755)
 
 	// Create a corrupt main file and a valid backup
 	if err := os.WriteFile(filePath, []byte("{"), 0644); err != nil {
@@ -111,11 +96,12 @@ func TestStorageRepairCmd_FromBackup(t *testing.T) {
 }
 
 func TestStorageRepairCmd_NoBackup(t *testing.T) {
-	tmpDir, cleanup := setupStorageTest(t)
-	defer cleanup()
+	tmpDir := setupTestEnv(t)
 
 	baseDir := filepath.Join(tmpDir, ".config", "gower")
 	filePath := filepath.Join(baseDir, "config.json")
+
+	_ = os.MkdirAll(baseDir, 0755)
 
 	// Create a corrupt main file and no backup
 	if err := os.WriteFile(filePath, []byte("{"), 0644); err != nil {

@@ -20,6 +20,7 @@ func (m *MockWallpaperChanger) DetectMonitors() ([]core.Monitor, error) {
 }
 
 func TestStatusMonitors(t *testing.T) {
+	setupTestEnv(t)
 	// Save original os.Stdout and restore it after test
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
@@ -87,6 +88,7 @@ func TestStatusMonitors(t *testing.T) {
 }
 
 func TestStatusMonitorsJSON(t *testing.T) {
+	setupTestEnv(t)
 	// Save original os.Stdout and restore it after test
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()

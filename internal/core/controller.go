@@ -103,30 +103,8 @@ var NewController = func(config *models.Config) *Controller {
 				}
 			}
 
-			// Realizar una verificación de disponibilidad de la API para proveedores genéricos
-			if providerConfig.APIURL != "" {
-				req, err := http.NewRequest(http.MethodHead, providerConfig.APIURL, nil)
-				if err != nil {
-					utils.Log.Error("Error creando solicitud HEAD para el proveedor genérico %s (URL: %s): %v", providerConfig.Name, providerConfig.APIURL, err)
-					// Continuar, ya que podría ser un problema temporal o una URL malformada que Search() puede manejar.
-				} else {
-					client := &http.Client{Timeout: 5 * time.Second} // Tiempo de espera corto para la verificación
-					resp, err := client.Do(req)
-					if err != nil {
-						utils.Log.Error("Verificación de API del proveedor genérico %s falló (URL: %s): %v", providerConfig.Name, providerConfig.APIURL, err)
-						// Continuar, ya que podría ser un problema de red temporal.
-					} else {
-						defer func() { _ = resp.Body.Close() }()
-						if resp.StatusCode == http.StatusNotFound {
-							utils.Log.Error("El proveedor genérico %s (URL: %s) devolvió 404 Not Found. Se omite el registro.", providerConfig.Name, providerConfig.APIURL)
-							continue // Omitir el registro de este proveedor
-						}
-						if resp.StatusCode >= 400 { // Registrar otros errores de cliente como advertencias
-							utils.Log.Error("El proveedor genérico %s (URL: %s) devolvió estado %d. Se procede con el registro, pero la API podría ser problemática.", providerConfig.Name, providerConfig.APIURL, resp.StatusCode)
-						}
-					}
-				}
-			}
+			// Registration of generic providers no longer performs availability check at startup
+			// to avoid blocking and potential CI hangs.
 
 			provider := &providers.GenericProvider{Config: providerConfig}
 			providerManager.RegisterProvider(provider)
@@ -1529,8 +1507,9 @@ func (c *Controller) DownloadWallpaper(wp models.Wallpaper) (string, error) {
 			return "", fmt.Errorf("unsupported protocol or missing local file: %s", wp.URL)
 		}
 	} else {
-		// Download
-		resp, err := http.Get(wp.URL)
+		// Download with timeout
+		client := &http.Client{Timeout: 30 * time.Second}
+		resp, err := client.Get(wp.URL)
 		if err != nil {
 			return "", err
 		}

@@ -244,19 +244,17 @@ func TestExploreGenericProvider_404(t *testing.T) {
 	// Esperamos un error del comando porque la búsqueda del proveedor genérico devuelve 404.
 	output, err := executeCommand(testRootCmd, "explore", "--provider", "generic_404_test", "searchterm")
 	if err == nil {
-		t.Fatal(err)
+		t.Fatal("Expected error from explore command, but got nil")
 	}
 
-	// 4. Verificar que la salida indica que el proveedor fue omitido y que el comando falló
-	// porque el proveedor no fue encontrado.
-	expectedRootErrorMessage := "provider not found: generic_404_test"
+	// 4. Verificar que la salida indica que el proveedor falló con 404
+	expectedRootErrorMessage := "generic api returned status: 404"
 	if !strings.Contains(err.Error(), expectedRootErrorMessage) {
 		t.Errorf("Se esperaba que el mensaje de error del comando contuviera '%s', se obtuvo: %v", expectedRootErrorMessage, err)
 	}
 
 	// Este es el mensaje de advertencia impreso por explore.go
-	// En este escenario, el error proviene de GetProvider, no de Search.
-	expectedExploreWarningMsg := "Error: provider not found: generic_404_test"
+	expectedExploreWarningMsg := "Warning: Error searching generic_404_test: generic api returned status: 404"
 	if !strings.Contains(output, expectedExploreWarningMsg) {
 		t.Errorf("Se esperaba que la salida contuviera el mensaje de advertencia de explore.go '%s', se obtuvo: %s", expectedExploreWarningMsg, output)
 	}

@@ -428,17 +428,11 @@ func createConfigStructure(cmd *cobra.Command) error {
 }
 
 func runConfigInit(cmd *cobra.Command, args []string) {
-	// Usar la misma lógica que getConfigPath para encontrar el directorio correcto.
-	configDir, err := os.UserConfigDir()
+	baseDir, err := core.GetAppDir()
 	if err != nil {
-		homeDir, errHome := os.UserHomeDir()
-		if errHome != nil {
-			fmt.Printf("Error getting user home or config directory: %v\n", errHome)
-			return
-		}
-		configDir = filepath.Join(homeDir, ".config")
+		fmt.Printf("Error getting application directory: %v\n", err)
+		return
 	}
-	baseDir := filepath.Join(configDir, "gower")
 	configFile := filepath.Join(baseDir, "config.json")
 
 	if _, err := os.Stat(configFile); !os.IsNotExist(err) {
@@ -450,7 +444,7 @@ func runConfigInit(cmd *cobra.Command, args []string) {
 
 	if config.DryRun {
 		if !config.Quiet {
-			cmd.Printf("[DRY-RUN] Se crearía el directorio base: %s\n", filepath.Dir(configFile))
+			cmd.Printf("[DRY-RUN] Se crearía el directorio base: %s\n", baseDir)
 			cmd.Println("[DRY-RUN] Se crearían los directorios de datos, caché y logs.")
 			cmd.Println("[DRY-RUN] Se inicializarían los archivos JSON vacíos.")
 			cmd.Printf("[DRY-RUN] Se generaría el archivo de configuración en: %s\n", configFile)
