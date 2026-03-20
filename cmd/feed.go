@@ -75,7 +75,11 @@ var feedShowCmd = &cobra.Command{
 		}
 
 		// Mostrar feed normal
-		wallpapers, err := controller.GetFeed(feedPage, feedLimit, "", feedTheme, feedColor, feedSort, feedRefresh)
+		limit := feedLimit
+		if limit <= 0 {
+			limit = 1000000 // A very large number to mean "all" for the controller
+		}
+		wallpapers, err := controller.GetFeed(feedPage, limit, "", feedTheme, feedColor, feedSort, feedRefresh)
 		if err != nil {
 			cmd.Printf("Error getting feed: %v\n", err)
 			return
@@ -91,6 +95,22 @@ var feedShowCmd = &cobra.Command{
 			displayJSON(cmd, wallpapers)
 		} else {
 			displayTable(cmd, wallpapers)
+			
+			// Add summary
+			stats, _ := controller.GetFeedStats()
+			actualLimit := feedLimit
+			if actualLimit <= 0 {
+				actualLimit = stats.Total
+			}
+			start := (feedPage - 1) * actualLimit
+			end := start + len(wallpapers)
+			if len(wallpapers) > 0 {
+				if stats.Total > actualLimit && feedLimit > 0 {
+					cmd.Printf("\nShowing %d-%d of %d feed items. Use --page or --limit to see more.\n", start+1, end, stats.Total)
+				} else {
+					cmd.Printf("\nTotal feed items: %d\n", stats.Total)
+				}
+			}
 		}
 	},
 }
@@ -336,7 +356,7 @@ func init() {
 	feedCmd.AddCommand(feedGetColorsCmd)
 
 	feedShowCmd.Flags().IntVarP(&feedPage, "page", "p", 1, "Page number")
-	feedShowCmd.Flags().IntVarP(&feedLimit, "limit", "l", 20, "Items per page")
+	feedShowCmd.Flags().IntVarP(&feedLimit, "limit", "l", 0, "Items per page (default: all)")
 	feedShowCmd.Flags().StringVar(&feedTheme, "theme", "", "Filter by theme [dark|light]")
 	feedShowCmd.Flags().StringVar(&feedColor, "color", "", "Filter by color (hex)")
 	feedShowCmd.Flags().BoolVar(&feedRefresh, "refresh", false, "Refresh feed view")
@@ -363,20 +383,21 @@ func displayStats(cmd *cobra.Command, controller *core.Controller) {
 	}
 
 	if config.JSONOutput {
-		// Asumiendo que Stats también puede ser serializado a JSON
-		// y que displayJSON puede manejar diferentes tipos
 		displayJSON(cmd, stats)
 	} else {
-		cmd.Printf("Feed Statistics:\n")
-		cmd.Printf("  Total wallpapers: %d\n", stats.Total)
-		cmd.Printf("  Dark theme: %d\n", stats.DarkCount)
-		cmd.Printf("  Light theme: %d\n", stats.LightCount)
-		cmd.Printf("  Favorites: %d\n", stats.FavoritesCount)
+		cmd.Printf("Wallpaper Statistics:\n")
+		cmd.Printf("  Feed size (history): %d\n", stats.Total)
+		cmd.Printf("  Favorites:           %d\n", stats.FavoritesCount)
+		cmd.Printf("  -------------------------\n")
+		cmd.Printf("  Total Managed:       %d\n", stats.Total+stats.FavoritesCount)
+		cmd.Printf("\nTheme distribution (Feed only):\n")
+		cmd.Printf("  Dark theme:          %d\n", stats.DarkCount)
+		cmd.Printf("  Light theme:         %d\n", stats.LightCount)
+		
 		if feedDetailed {
-			cmd.Println("  (Detailed stats not implemented yet)")
+			cmd.Println("\nDetailed statistics:")
+			cmd.Println("  (Detailed breakdown by source not implemented yet)")
 		}
-		// Necesitaríamos saber el formato exacto de LastAdded para mostrarlo
-		// fmt.Printf("  Last added: %s\n", stats.LastAdded.Format("2006-01-02 15:04:05"))
 	}
 }
 

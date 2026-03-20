@@ -106,11 +106,17 @@ var blacklistListCmd = &cobra.Command{
 			return
 		}
 
+		if len(blacklist) == 0 {
+			cmd.Println("Blacklist is empty.")
+			return
+		}
+
 		if !config.Quiet {
 			cmd.Println("Blacklisted IDs:")
 			for _, id := range blacklist {
 				cmd.Printf(" - %s\n", id)
 			}
+			cmd.Printf("\nTotal blacklisted: %d\n", len(blacklist))
 		}
 	},
 }

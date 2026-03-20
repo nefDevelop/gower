@@ -78,11 +78,15 @@ var favoritesListCmd = &cobra.Command{
 		}
 
 		// Pagination
-		start := (favPage - 1) * favLimit
+		limit := favLimit
+		if limit <= 0 {
+			limit = len(favorites)
+		}
+		start := (favPage - 1) * limit
 		if start >= len(favorites) {
 			start = len(favorites)
 		}
-		end := start + favLimit
+		end := start + limit
 		if end > len(favorites) {
 			end = len(favorites)
 		}
@@ -95,6 +99,11 @@ var favoritesListCmd = &cobra.Command{
 		} else {
 			for _, fav := range pageItems {
 				cmd.Printf("ID: %s, URL: %s, Source: %s, Notes: %s\n", fav.ID, fav.URL, fav.Source, fav.Notes)
+			}
+			if len(favorites) > limit && favLimit > 0 {
+				cmd.Printf("\nShowing %d-%d of %d favorites. Use --page or --limit to see more.\n", start+1, end, len(favorites))
+			} else {
+				cmd.Printf("\nTotal favorites: %d\n", len(favorites))
 			}
 		}
 	},
@@ -427,7 +436,7 @@ func init() {
 	favoritesCmd.AddCommand(favoritesGetColorsCmd)
 
 	favoritesListCmd.Flags().IntVar(&favPage, "page", 1, "Page number")
-	favoritesListCmd.Flags().IntVar(&favLimit, "limit", 10, "Items per page")
+	favoritesListCmd.Flags().IntVar(&favLimit, "limit", 0, "Items per page (default: all)")
 	favoritesListCmd.Flags().StringVar(&favColor, "color", "", "Filter by color (hex)")
 
 	favoritesAddCmd.Flags().StringVar(&favNotes, "notes", "", "Add notes to the favorite")
