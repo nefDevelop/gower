@@ -1087,14 +1087,20 @@ func (c *Controller) GetFeedStats() (models.FeedStats, error) {
 		Total: len(feed),
 	}
 
+	// Cargar favoritos para contar
+	appDir, _ := GetAppDir()
+	favPath := filepath.Join(appDir, "data", "favorites.json")
+	var favorites []FavoriteWallpaper
+	if err := c.feedManager.ReadJSON(favPath, &favorites); err == nil {
+		stats.FavoritesCount = len(favorites)
+	}
+
 	for _, wp := range feed {
 		if strings.ToLower(wp.Theme) == "dark" {
 			stats.DarkCount++
 		} else if strings.ToLower(wp.Theme) == "light" {
 			stats.LightCount++
 		}
-		// For FavoritesCount and LastAdded, we'd need more info in Wallpaper model
-		// or a separate favorites manager. For now, leave as 0 or default.
 	}
 
 	return stats, nil
