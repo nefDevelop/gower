@@ -76,6 +76,30 @@ func TestFavoritesAddAndList(t *testing.T) {
 	if !strings.Contains(output, "Wallpaper test-id-1 is already in favorites.") {
 		t.Errorf("Expected 'Wallpaper test-id-1 is already in favorites.', got: %s", output)
 	}
+
+	// Verify file content directly
+	favoritesPath, err := getFavoritesPath()
+	if err != nil {
+		t.Fatalf("Error getting favorites path: %v", err)
+	}
+	content, err := os.ReadFile(favoritesPath)
+	if err != nil {
+		t.Fatalf("Error reading favorites file at %s: %v", favoritesPath, err)
+	}
+	var favorites []core.FavoriteWallpaper
+	if err := json.Unmarshal(content, &favorites); err != nil {
+		t.Fatalf("Error unmarshalling favorites file: %v", err)
+	}
+	found := false
+	for _, fav := range favorites {
+		if fav.ID == "test-id-1" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Favorites file does not contain 'test-id-1'")
+	}
 }
 
 func TestFavoritesRemove(t *testing.T) {

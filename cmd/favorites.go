@@ -108,6 +108,13 @@ var favoritesAddCmd = &cobra.Command{
 		ensureConfig()
 		wallpaperID := args[0]
 
+		cfg, err := loadConfig()
+		if err != nil {
+			cmd.Printf("Error loading config: %v\n", err)
+			return
+		}
+		controller := core.NewController(cfg)
+
 		favorites, err := loadFavorites()
 		if err != nil {
 			cmd.Printf("Error loading favorites: %v\n", err)
@@ -157,8 +164,7 @@ var favoritesAddCmd = &cobra.Command{
 
 		newFav := core.FavoriteWallpaper{Wallpaper: wallpaperToAdd, Notes: favNotes}
 
-		// Check if we need to save to local folder
-		if cfg, err := loadConfig(); err == nil && cfg.Behavior.SaveFavoritesToFolder && cfg.Paths.Wallpapers != "" {
+		if cfg.Behavior.SaveFavoritesToFolder && cfg.Paths.Wallpapers != "" {
 			// Ensure directory exists
 			if err := os.MkdirAll(cfg.Paths.Wallpapers, 0755); err != nil {
 				cmd.Printf("Warning: Could not create wallpapers directory: %v\n", err)
@@ -208,9 +214,8 @@ var favoritesAddCmd = &cobra.Command{
 			return
 		}
 
-		if cfg, err := loadConfig(); err == nil {
-			_ = core.NewController(cfg).RebuildColorIndex()
-		}
+		// Rebuild color index after adding/moving a favorite
+		_ = controller.RebuildColorIndex()
 
 		cmd.Printf("Wallpaper %s added to favorites list.\n", wallpaperID)
 	},
@@ -223,6 +228,13 @@ var favoritesRemoveCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		ensureConfig()
 		wallpaperID := args[0]
+
+		cfg, err := loadConfig()
+		if err != nil {
+			cmd.Printf("Error loading config: %v\n", err)
+			return
+		}
+		controller := core.NewController(cfg)
 
 		favorites, err := loadFavorites()
 		if err != nil {
@@ -252,9 +264,8 @@ var favoritesRemoveCmd = &cobra.Command{
 			return
 		}
 
-		if cfg, err := loadConfig(); err == nil {
-			_ = core.NewController(cfg).RebuildColorIndex()
-		}
+		// Rebuild color index after adding/moving a favorite
+		_ = controller.RebuildColorIndex()
 
 		cmd.Printf("Wallpaper %s removed from favorites.\n", wallpaperID)
 	},

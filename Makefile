@@ -26,6 +26,9 @@ ifeq ($(OS),Windows_NT)
     RM_DIST=if exist $(DIST_DIR) $(RM_DIR) $(DIST_DIR)
     MKDIR_LINUX=if not exist "$(DIST_DIR)\linux" $(MKDIR) "$(DIST_DIR)\linux"
     MKDIR_WINDOWS=if not exist "$(DIST_DIR)\windows" $(MKDIR) "$(DIST_DIR)\windows"
+    # Install specific for Windows
+    INSTALL_COPY_CMD=@echo "On Windows, please copy $(BINARY_NAME)$(EXE) from the current directory to a location in your PATH."
+    INSTALL_CHMOD_CMD=
 else
     # Linux / macOS / WSL
     EXE=
@@ -38,11 +41,15 @@ else
     RM_DIST=$(RM_DIR) $(DIST_DIR)
     MKDIR_LINUX=$(MKDIR) $(DIST_DIR)/linux
     MKDIR_WINDOWS=$(MKDIR) $(DIST_DIR)/windows
+    # Install specific for Linux/macOS
+    INSTALL_TARGET_DIR=/usr/local/bin
+    INSTALL_COPY_CMD=sudo cp $(BINARY_NAME) $(INSTALL_TARGET_DIR)
+    INSTALL_CHMOD_CMD=sudo chmod +x $(INSTALL_TARGET_DIR)/$(BINARY_NAME)
 endif
 
 # --- Objetivos ---
 
-.PHONY: all build build-linux build-windows build-all test test-integration lint clean help
+.PHONY: all build build-linux build-windows build-all test test-integration lint clean install help
 
 all: build
 
@@ -65,6 +72,17 @@ build-windows:
 
 ## build-all: Compila para todas las plataformas soportadas
 build-all: build-linux build-windows
+
+## install: Instala el binario en el sistema
+install: build
+ifeq ($(OS),Windows_NT)
+	@$(INSTALL_COPY_CMD)
+else
+	@echo "==> Instalando $(BINARY_NAME) en $(INSTALL_TARGET_DIR)..."
+	$(INSTALL_COPY_CMD)
+	$(INSTALL_CHMOD_CMD)
+	@echo "==> Instalación completada. Puede que necesites ejecutar 'hash -r' o abrir una nueva terminal."
+endif
 
 ## test: Ejecuta todos los tests unitarios
 test:
@@ -95,5 +113,6 @@ help:
 	(echo "  build           - Compila para el OS actual" && \
 	 echo "  build-linux     - Compila para Linux" && \
 	 echo "  build-windows   - Compila para Windows" && \
+	 echo "  install         - Instala el binario en el sistema" && \
 	 echo "  test            - Ejecuta tests" && \
 	 echo "  clean           - Limpia binarios")
