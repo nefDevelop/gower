@@ -302,6 +302,9 @@ Gestiona la lista negra para excluir fondos de pantalla.
 - `gower blacklist remove <ID>`: Elimina un fondo de pantalla de la lista negra.
 - `gower blacklist list`: Muestra todos los fondos de pantalla en la lista negra.
 
+> [!TIP]
+> **Nota sobre el almacenamiento**: Al añadir un fondo a la lista negra, este se elimina del feed pero el archivo descargado **permanece en la caché**. Para liberar espacio y borrar físicamente los archivos de la lista negra, utiliza el comando `gower system cache prune`.
+
 #### `gower config`
 
 Gestiona la configuración de la aplicación.
@@ -357,7 +360,7 @@ Comandos de mantenimiento y utilidades del sistema.
 
 - `gower system cache clean`: Limpia el contenido del directorio de caché (imágenes, miniaturas).
 - `gower system cache size`: Muestra el tamaño actual ocupado por la caché.
-- `gower system cache prune`: Elimina archivos de la caché que ya no están referenciados en el feed o favoritos (archivos huérfanos).
+- `gower system cache prune`: Elimina archivos de la caché que ya no están referenciados en el feed o favoritos (**archivos huérfanos**). Es el comando ideal para borrar físicamente los fondos que has añadido a la **lista negra**.
 
 ##### `gower system storage`
 
