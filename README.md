@@ -1,6 +1,6 @@
 # Gower - Wallpaper Manager CLI
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/user/gower)](https://goreportcard.com/report/github.com/user/gower)
+[![Go Report Card](https://goreportcard.com/badge/github.com/nefDevelop/gower)](https://goreportcard.com/report/github.com/nefDevelop/gower)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **Gower** es una potente herramienta de línea de comandos para descubrir, gestionar y cambiar los fondos de pantalla de tu escritorio desde diversas fuentes en línea y locales.
