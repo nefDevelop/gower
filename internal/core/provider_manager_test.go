@@ -1,9 +1,11 @@
 package core
 
 import (
+	"context"
+	"testing"
+
 	"gower/internal/providers"
 	"gower/pkg/models"
-	"testing"
 )
 
 // MockProvider is a mock implementation of the Provider interface for testing.
@@ -15,7 +17,7 @@ func (m *MockProvider) GetName() string {
 	return m.name
 }
 
-func (m *MockProvider) Search(query string, options providers.SearchOptions) ([]models.Wallpaper, error) {
+func (m *MockProvider) Search(ctx context.Context, query string, options providers.SearchOptions) ([]models.Wallpaper, error) {
 	return nil, nil
 }
 

@@ -3,12 +3,13 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"gower/internal/core"
-	"gower/pkg/models"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gower/internal/core"
+	"gower/pkg/models"
 )
 
 func resetStatusFlags() {

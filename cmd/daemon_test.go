@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"gower/internal/core"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"gower/internal/core"
 )
 
 func TestDaemonStatusNotRunning(t *testing.T) {

@@ -2,9 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"math/rand" // For seeding global math/rand
 	"os"
-	"time" // For seeding global math/rand
 
 	"gower/internal/utils"
 
@@ -62,7 +60,4 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&config.NoColor, "no-color", false, "Desactivar colores en output.")
 	rootCmd.PersistentFlags().StringVar(&config.ConfigFile, "config", "", "Ruta al archivo de configuración.")
 	rootCmd.PersistentFlags().BoolVar(&config.DryRun, "dry-run", false, "Simula la ejecución sin realizar cambios.")
-
-	// Seed the global math/rand for non-cryptographic random operations
-	rand.Seed(time.Now().UnixNano())
 }

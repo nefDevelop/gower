@@ -110,4 +110,5 @@ type LimitsConfig struct {
 	RateLimitRequests int `json:"rate_limit_requests"`
 	RateLimitPeriod   int `json:"rate_limit_period"`
 	LogRetentionDays  int `json:"log_retention_days,omitempty"`
+	AnalysisWorkers   int `json:"analysis_workers,omitempty"`
 }

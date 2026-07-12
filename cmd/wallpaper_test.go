@@ -1,12 +1,13 @@
 package cmd
 
 import (
-	"gower/internal/core"
-	"gower/pkg/models"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gower/internal/core"
+	"gower/pkg/models"
 )
 
 func TestWallpaperShow(t *testing.T) {

@@ -5,11 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"os"
+	"os/signal"
+	"path/filepath"
 	"strings"
+	"syscall"
 	"text/tabwriter"
 	"time"
 
 	"gower/internal/core"
+	"gower/internal/utils"
 	"gower/pkg/models"
 
 	"github.com/spf13/cobra"
@@ -296,6 +301,125 @@ var feedUpdateCmd = &cobra.Command{
 	},
 }
 
+var feedWatchCmd = &cobra.Command{
+	Use:   "watch",
+	Short: "Watch wallpapers directory for changes",
+	Long: `Monitors the configured wallpapers directory for new files
+and automatically syncs and analyzes them.
+
+The watch polls every 30 seconds. Use --interval to customize.`,
+	Run: runFeedWatch,
+}
+
+var (
+	watchInterval int
+)
+
+func runFeedWatch(cmd *cobra.Command, args []string) {
+	if err := ensureConfig(); err != nil {
+		return
+	}
+	cfg, err := loadConfig()
+	if err != nil {
+		cmd.PrintErrf("Error loading config: %v\n", err)
+		return
+	}
+
+	watchDir := cfg.Paths.Wallpapers
+	if watchDir == "" {
+		cmd.PrintErrln("No wallpapers directory configured. Set 'paths.wallpapers' in config.")
+		return
+	}
+
+	if _, err := os.Stat(watchDir); os.IsNotExist(err) {
+		cmd.PrintErrf("Wallpapers directory does not exist: %s\n", watchDir)
+		return
+	}
+
+	if watchInterval <= 0 {
+		watchInterval = 30
+	}
+
+	if !config.Quiet {
+		cmd.Printf("Watching %s (every %ds)...\n", watchDir, watchInterval)
+		cmd.Println("Press Ctrl+C to stop.")
+	}
+
+	lastScan := make(map[string]time.Time)
+
+	// Initial scan
+	scanDir(watchDir, lastScan, cmd)
+
+	ticker := time.NewTicker(time.Duration(watchInterval) * time.Second)
+	defer ticker.Stop()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
+	defer signal.Stop(sigChan)
+
+	for {
+		select {
+		case <-ticker.C:
+			newFiles := scanDir(watchDir, lastScan, cmd)
+			if len(newFiles) > 0 {
+				if !config.Quiet {
+					cmd.Printf("Found %d new file(s). Syncing feed...\n", len(newFiles))
+				}
+				controller := core.NewController(cfg)
+				added, _, err := controller.SyncFeed()
+				if err != nil {
+					utils.Log.Error("Watch sync error: %v", err)
+					if !config.Quiet {
+						cmd.PrintErrf("Sync error: %v\n", err)
+					}
+				} else if added > 0 && !config.Quiet {
+					cmd.Printf("Added %d new wallpaper(s) to feed.\n", added)
+				}
+			}
+
+		case sig := <-sigChan:
+			if !config.Quiet {
+				cmd.Printf("Received %v, stopping watch.\n", sig)
+			}
+			return
+		}
+	}
+}
+
+func scanDir(dir string, lastScan map[string]time.Time, cmd *cobra.Command) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+
+	var newFiles []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(entry.Name()))
+		if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".webp" {
+			continue
+		}
+
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+
+		fullPath := filepath.Join(dir, entry.Name())
+		prevMod, exists := lastScan[fullPath]
+		lastScan[fullPath] = info.ModTime()
+
+		if !exists {
+			newFiles = append(newFiles, fullPath)
+		} else if info.ModTime().After(prevMod) {
+			newFiles = append(newFiles, fullPath)
+		}
+	}
+	return newFiles
+}
+
 var feedGetColorsCmd = &cobra.Command{
 	Use:   "get colors",
 	Short: "Get the color palette of feed wallpapers from colors.json",
@@ -334,6 +458,9 @@ func init() {
 	feedCmd.AddCommand(feedAnalyzeCmd)
 	feedCmd.AddCommand(feedRandomCmd)
 	feedCmd.AddCommand(feedGetColorsCmd)
+	feedCmd.AddCommand(feedWatchCmd)
+
+	feedWatchCmd.Flags().IntVar(&watchInterval, "interval", 30, "Polling interval in seconds")
 
 	feedShowCmd.Flags().IntVarP(&feedPage, "page", "p", 1, "Page number")
 	feedShowCmd.Flags().IntVarP(&feedLimit, "limit", "l", 20, "Items per page")

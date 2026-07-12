@@ -1,21 +1,32 @@
 package providers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"gower/internal/utils"
-	"gower/pkg/models"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+
+	"gower/internal/utils"
+	"gower/pkg/models"
 )
 
 // BingBaseURL es la URL base para la API de Bing Image of the Day.
 var BingBaseURL = "https://www.bing.com/HPImageArchive.aspx"
 
 type BingProvider struct {
-	Market string
+	Market      string
+	RateLimiter *utils.RateLimiter
+	Log         *utils.Logger
+}
+
+func (p *BingProvider) log() *utils.Logger {
+	if p.Log != nil {
+		return p.Log
+	}
+	return utils.Log
 }
 
 func NewBingProvider(market string) *BingProvider {
@@ -29,7 +40,7 @@ func (p *BingProvider) GetName() string {
 	return "bing"
 }
 
-func (p *BingProvider) Search(query string, opts SearchOptions) ([]models.Wallpaper, error) {
+func (p *BingProvider) Search(ctx context.Context, query string, opts SearchOptions) ([]models.Wallpaper, error) {
 	// Bing devuelve las imágenes del día (hasta 8 días atrás)
 	limit := opts.Limit
 	if limit <= 0 {
@@ -51,9 +62,16 @@ func (p *BingProvider) Search(query string, opts SearchOptions) ([]models.Wallpa
 
 	u.RawQuery = q.Encode()
 
-	utils.Log.Debug("Bing fetching: %s", u.String())
+	p.log().Debug("Bing fetching: %s", u.String())
 
-	resp, err := http.Get(u.String())
+	if p.RateLimiter != nil {
+		p.RateLimiter.Wait()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := utils.DefaultHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

@@ -3,7 +3,6 @@ package core
 import (
 	"encoding/json"
 	"fmt"
-	"gower/internal/utils"
 	"image"
 	_ "image/gif" // Support GIF decoding
 	"image/jpeg"
@@ -17,10 +16,21 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"gower/internal/utils"
 )
 
 // ColorManager handles image processing tasks such as thumbnail generation and color analysis.
-type ColorManager struct{}
+type ColorManager struct {
+	Log *utils.Logger
+}
+
+func (cm *ColorManager) log() *utils.Logger {
+	if cm.Log != nil {
+		return cm.Log
+	}
+	return utils.Log
+}
 
 // StandardPalette defines a set of base colors for quantization.
 var StandardPalette = []string{
@@ -210,7 +220,7 @@ func (cm *ColorManager) analyzeColorMatugen(path string) (string, error) {
 // IsDark determines if a hex color is considered dark based on luminance.
 func (cm *ColorManager) IsDark(hex string) bool {
 	lum := cm.GetLuminance(hex)
-	utils.Log.Debug("Color Analysis - Hex: %s, Luminance: %.2f (Dark: %v)", hex, lum, lum < 100)
+	cm.log().Debug("Color Analysis - Hex: %s, Luminance: %.2f (Dark: %v)", hex, lum, lum < 100)
 	return lum < 100
 }
 

@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -49,7 +50,7 @@ func TestBingProvider_Search(t *testing.T) {
 	defer func() { BingBaseURL = originalBingBaseURL }()
 
 	provider := NewBingProvider("en-US")
-	wallpapers, err := provider.Search("", SearchOptions{Page: 1}) // Request page 1 (idx=0)
+	wallpapers, err := provider.Search(context.Background(), "", SearchOptions{Page: 1})
 	if err != nil {
 		t.Fatalf("Search failed: %v", err)
 	}

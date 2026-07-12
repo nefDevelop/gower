@@ -54,8 +54,11 @@ var favoritesListCmd = &cobra.Command{
 			// Use favorites palette
 			_, palette, err := controller.LoadColorPalettes()
 			if err != nil {
-				cmd.Printf("Warning: could not load color palette: %v\n", err)
-			} else {
+				if !config.JSONOutput {
+					cmd.Printf("Warning: could not load color palette: %v\n", err)
+				}
+			}
+			if err == nil {
 				var filtered []core.FavoriteWallpaper
 				for _, fav := range favorites {
 					targetBucket := controller.ColorManager.FindNearestColorInPalette(favColor, palette)

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"gower/internal/core"
@@ -42,7 +43,9 @@ func init() {
 }
 
 func runExplore(cmd *cobra.Command, args []string) error {
-	ensureConfig()
+	if err := ensureConfig(); err != nil {
+		return err
+	}
 
 	term := ""
 	if len(args) > 0 {
@@ -129,10 +132,10 @@ func runExplore(cmd *cobra.Command, args []string) error {
 		if !config.Quiet && !config.JSONOutput {
 			cmd.Printf("Querying provider: %s...\n", p.GetName())
 		}
-		results, err := p.Search(term, searchOpts)
+		results, err := p.Search(context.Background(), term, searchOpts)
 		if err != nil {
-			if !config.Quiet {
-				cmd.Printf("Warning: Error searching %s: %v\n", p.GetName(), err) // Cambiado a Warning
+			if !config.Quiet && !config.JSONOutput {
+				cmd.Printf("Warning: Error searching %s: %v\n", p.GetName(), err)
 			}
 			if encounteredError == nil { // Almacenar el primer error
 				encounteredError = fmt.Errorf("provider %s: %w", p.GetName(), err)
@@ -142,7 +145,7 @@ func runExplore(cmd *cobra.Command, args []string) error {
 
 		// Save to parser cache
 		if err := controller.SaveParserSearch(p.GetName(), term, results); err != nil {
-			if !config.Quiet {
+			if !config.Quiet && !config.JSONOutput {
 				cmd.Printf("Warning: Failed to save parser cache for %s: %v\n", p.GetName(), err)
 			}
 		}

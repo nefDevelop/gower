@@ -25,7 +25,7 @@ func init() {
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
-	Short: "Muestra la versión de gower",
+	Short: "Show gower version",
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Printf("Gower Version: %s\n", Version)
 		fmt.Printf("Build Time:    %s\n", BuildTime)

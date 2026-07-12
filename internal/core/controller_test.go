@@ -2,7 +2,6 @@ package core
 
 import (
 	"encoding/json"
-	"gower/pkg/models"
 	"image"
 	"image/color"
 	"image/png"
@@ -11,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"gower/pkg/models"
 )
 
 func setupTestHome(t *testing.T) string {

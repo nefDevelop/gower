@@ -3,418 +3,128 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/user/gower)](https://goreportcard.com/report/github.com/user/gower)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Gower** es una potente herramienta de línea de comandos para descubrir, gestionar y cambiar los fondos de pantalla de tu escritorio desde diversas fuentes en línea y locales.
+**Gower** is a powerful CLI tool to discover, manage, and change desktop wallpapers from online and local sources.
+**Gower** es una potente herramienta de línea de comandos para descubrir, gestionar y cambiar los fondos de pantalla de tu escritorio desde diversas fuentes.
 
 > [!WARNING]
-> **En desarrollo**: Gower se encuentra actualmente en fase de desarrollo activo. Puede haber errores, cambios bruscos en la configuración e inestabilidad general. Úsalo bajo tu propia responsabilidad.
+> **In development / En desarrollo**: Gower is in active development. Bugs, breaking changes, and instability may occur. Use at your own risk.
 
+## ✨ Features / Características
 
-## ✨ Características
+- **Multi-Provider**: Download from Wallhaven, Reddit, NASA APOD, Bing, Unsplash, and custom JSON APIs
+  **Múltiples Proveedores**: Descarga desde Wallhaven, Reddit, NASA, Bing, Unsplash y APIs configurables
+- **Feed History**: Track wallpapers you've seen with search, filter, and purge
+- **Favorites & Blacklist**: Save preferred wallpapers and avoid unwanted ones
+- **Daemon Mode**: Auto-change wallpapers on a schedule in the background
+- **Smart Dark Mode**: Detects system theme (dark/light) and selects matching wallpapers
+- **Rate Limiting**: Respectful API usage with configurable limits
+- **Multi-Monitor**: Supports clone and distinct wallpaper modes per monitor
+- **Flexible Output**: Table or JSON output for scripting
 
-- **Múltiples Proveedores**: Descarga fondos de pantalla de varias fuentes:
-  - Wallhaven
-  - Reddit
-  - NASA Picture of the Day
-  - Bing Wallpaper of the Day
-  - Proveedores genéricos configurables (JSON API)
-- **Gestión de Historial (Feed)**: Lleva un registro de los fondos de pantalla que has visto, con opciones para buscar, filtrar y purgar.
-- **Favoritos y Lista Negra**: Guarda tus fondos de pantalla preferidos y evita los que no te gustan.
-- **Modo Demonio**: Ejecuta `gower` en segundo plano para cambiar tu fondo de pantalla automáticamente a intervalos definidos.
-- **Configuración Avanzada**: Personaliza todo, desde las dimensiones de la imagen y los proveedores hasta los comandos para establecer el fondo de pantalla.
-- **Eficiente y Respetuoso**: Límites de frecuencia para las APIs, gestión de energía para portátiles y almacenamiento en caché local.
-- **Modo Oscuro Inteligente**: Detecta el tema de tu sistema (oscuro/claro) y selecciona fondos de pantalla acordes automáticamente.
-- **Salida Flexible**: Muestra la información en formato de tabla o JSON, ideal para scripting.
+## 📦 Installation / Instalación
 
-## 📦 Instalación
-
-### Desde el código fuente
-
-Asegúrate de tener Go instalado (versión 1.18 o superior).
+### From source / Desde el código fuente
 
 ```bash
-git clone https://github.com/user/gower.git
+# Prerequisites / Requisitos: Go 1.25+
+git clone https://github.com/user/gower
 cd gower
-go install .
+make build
 ```
 
-### Binarios (Próximamente)
-
-Se proporcionarán binarios precompilados para Linux, macOS y Windows en la sección de [Releases](https://github.com/user/gower/releases).
-
-## 🚀 Uso Básico
-
-Gower funciona a través de subcomandos. Aquí están los más importantes:
-
-### 1. Actualizar el historial local (Feed)
-
-Este comando busca nuevos fondos de pantalla de los proveedores habilitados y los añade a tu historial local (feed).
+### Binary / Binario
 
 ```bash
-gower feed update
+make build-all
+# Binaries in ./dist/
 ```
 
-> **Nota**: La primera vez, es una buena idea ejecutar `gower feed update --force` para ignorar los límites de frecuencia y poblar tu historial.
-
-### 2. Establecer un fondo de pantalla
-
-Puedes establecer un fondo de pantalla aleatorio de tu historial:
+## 🚀 Quick Start / Inicio rápido
 
 ```bash
+# Init config / Inicializar configuración
+gower config init
+
+# Explore wallpapers / Explorar fondos de pantalla
+gower explore
+
+# Sync feed / Sincronizar historial
+gower feed sync
+
+# Set a random wallpaper / Establecer fondo aleatorio
 gower set random
+
+# Start daemon / Iniciar demonio
+gower daemon start
+
+# Watch directory for new wallpapers / Vigilar directorio
+gower feed watch
+
+# Show feed statistics / Estadísticas del feed
+gower stats
 ```
 
-O establecer un fondo de pantalla específico por su ID:
+## 📖 Commands / Comandos
+
+| Command | Description | Descripción |
+|---------|-------------|-------------|
+| `config init` | Init configuration | Inicializar configuración |
+| `config show` | Show current config | Mostrar configuración |
+| `config set` | Set a config value | Cambiar un valor |
+| `explore` | Search providers | Buscar en proveedores |
+| `feed sync` | Sync feed from providers | Sincronizar historial |
+| `feed list` | List feed items | Listar historial |
+| `set` | Set wallpaper | Establecer fondo |
+| `favorites` | Manage favorites | Gestionar favoritos |
+| `blacklist` | Manage blacklist | Gestionar lista negra |
+| `daemon` | Background service | Servicio en segundo plano |
+| `daemon install` | Install systemd user service | Instalar servicio systemd |
+| `daemon uninstall` | Remove systemd user service | Eliminar servicio systemd |
+| `status` | Show system status | Mostrar estado del sistema |
+| `export/import` | Data portability | Portabilidad de datos |
+| `feed watch` | Watch directory for new wallpapers | Vigilar directorio por cambios |
+| `stats` | Show detailed feed statistics | Estadísticas detalladas del feed |
+
+## 🛠️ Configuration / Configuración
+
+Configuration is stored in `$XDG_CONFIG_HOME/gower/config.json` (Linux) or `~/.gower/config.json` (legacy).
+
+Key settings / Ajustes principales:
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `providers.wallhaven.enabled` | `true` | Enable Wallhaven provider |
+| `providers.reddit.subreddit` | `wallpapers` | Reddit subreddits (comma-separated) |
+| `search.min_width` | `1920` | Minimum wallpaper width |
+| `search.min_height` | `1080` | Minimum wallpaper height |
+| `behavior.change_interval` | `30` | Daemon change interval (minutes) |
+| `behavior.multi_monitor` | `clone` | Multi-monitor mode (clone/distinct) |
+| `limits.analysis_workers` | `5` | Concurrent analysis workers |
+| `providers.unsplash.enabled` | `false` | Enable Unsplash provider |
+| `providers.unsplash.api_key` | `""` | Unsplash API key (required) |
+
+## 🏗️ Architecture / Arquitectura
+
+```
+gower/
+├── cmd/              # CLI commands (Cobra)
+├── internal/
+│   ├── core/         # Core logic (Controller, Services, Color, Wallpaper)
+│   ├── providers/    # Wallhaven, Reddit, NASA, Bing, Unsplash, Generic
+│   └── utils/        # Logger, HTTP client, Rate limiter, File security
+├── pkg/models/       # Shared types (Config, Wallpaper, FeedStats)
+└── main.go           # Entry point
+```
+
+## 🧪 Development / Desarrollo
 
 ```bash
-gower set <WALLPAPER_ID>
+make test           # Run tests
+make lint           # Go vet
+golangci-lint run   # Full lint (requires golangci-lint v2)
+go generate ./...   # Regenerate config code (after model changes)
 ```
 
-### 3. Ver el historial
+## 📄 License / Licencia
 
-Muestra los fondos de pantalla en tu historial local.
-
-```bash
-gower feed show
-```
-
-Puedes paginar y filtrar los resultados:
-
-```bash
-gower feed show --page 2 --limit 10 --theme dark
-```
-
-### 4. Modo Demonio
-
-Para cambiar automáticamente tu fondo de pantalla cada 30 minutos:
-
-```bash
-gower daemon start --interval 30
-```
-
-### 5. Versión
-
-Verifica la versión instalada y la fecha de compilación:
-
-```bash
-gower version
-```
-
-### 6. Gestión de Archivos Locales
-
-Gower puede indexar tus propios fondos de pantalla. Activa `index_wallpapers` en la configuración y apunta `wallpapers` a tu carpeta.
-
-Si te cansas de una imagen local y quieres borrarla definitivamente de tu disco duro:
-
-```bash
-gower wallpaper <ID_LOCAL> --delete --file
-```
-
-## ⚙️ Configuración
-
-Gower busca un archivo de configuración `config.json` en las siguientes ubicaciones:
-
-- `$HOME/.config/gower/config.json`
-- `$HOME/.gower/config.json`
-
-Puedes especificar una ruta de configuración diferente con el flag `--config`.
-
-Un archivo de configuración de ejemplo podría ser:
-
-```json
-{
-  "providers": {
-    "wallhaven": {
-      "enabled": true,
-      "api_key": "TU_API_KEY_DE_WALLHAVEN"
-    },
-    "reddit": {
-      "enabled": true,
-      "subreddit": "wallpapers+wallpaper",
-      "sort": "hot",
-      "limit": 100
-    },
-    "nasa": { "enabled": true, "api_key": "DEMO_KEY" },
-    "bing": { "enabled": true, "market": "en-US" }
-  },
-  "search": {
-    "min_width": 1920,
-    "min_height": 1080,
-    "aspect_ratio": "16:9"
-  },
-  "behavior": {
-    "respect_dark_mode": true,
-    "change_interval": 30,
-    "multi_monitor": "distinct",
-    "auto_download": false,
-    "from_favorites": false
-  },
-  "paths": {
-    "wallpapers": "/home/user/Pictures/Wallpapers",
-    "index_wallpapers": true // Indexar imágenes de esta carpeta en el feed
-  },
-  "limits": {
-    "feed_soft_limit": 200,
-    "feed_hard_limit": 1000
-  }
-}
-```
-
-## 📜 Lista de Comandos
-
-A continuación se presenta una lista detallada de todos los comandos y opciones disponibles.
-
-### Comando Raíz
-
-`gower` es el comando principal para interactuar con la aplicación.
-
-```
-gower [subcomando] [flags]
-```
-
-#### Opciones Globales (Persistentes)
-
-Estas opciones se pueden usar con cualquier subcomando.
-
-- `--debug`: Habilita la salida de depuración para diagnósticos.
-- `--quiet`, `-q`: Suprime toda la salida excepto los errores.
-- `--json`: Formatea la salida como JSON en lugar de texto o tablas.
-- `--no-color`: Desactiva la salida con colores.
-- `--config <ruta>`: Especifica la ruta al archivo de configuración.
-- `--dry-run`: Simula la ejecución de un comando sin realizar cambios reales en el sistema.
-
----
-
-### Subcomandos
-
-#### `gower wallpaper`
-
-Visualiza o gestiona un fondo de pantalla específico.
-
-- **Uso**: `gower wallpaper <ID> [flags]`
-- **Flags**:
-  - `--delete`: Elimina el fondo de pantalla del feed.
-  - `--file`: Elimina también el archivo físico del disco (usar con `--delete`).
-  - `--force`: Fuerza la eliminación del archivo sin confirmación.
-
-#### `gower explore`
-
-Busca fondos de pantalla en los proveedores configurados.
-
-- **Uso**: `gower explore [término_de_búsqueda] [flags]`
-- **Flags**:
-  - `--provider <nombre>`: Usa un proveedor específico para la búsqueda.
-  - `--all`: Busca en todos los proveedores habilitados simultáneamente.
-  - `--min-width <píxeles>`: Filtra por ancho mínimo de imagen. //Solo válido en api que devuelvan esa informacion
-  - `--min-height <píxeles>`: Filtra por altura mínima de imagen. //Solo válido en api que devuelvan esa informacion
-  - `--aspect-ratio <ratio>`: Filtra por proporción de aspecto (ej. "16:9"). //Solo válido en api que devuelvan esa informacion
-  - `--color <hex>`: Busca imágenes por un color dominante (código hexadecimal). //Solo válido en api que devuelvan esa informacion
-  - `--page, -p <número>`: Solicita una página específica de resultados.
-  - `--force-update`: Fuerza una nueva búsqueda en el proveedor, ignorando la caché.
-
-#### `gower feed`
-
-Gestiona el historial local de fondos de pantalla (feed).
-
-- `gower feed show`: Muestra el historial.
-  - `--page, -p <número>`: Número de página a mostrar.
-  - `--limit, -l <número>`: Cantidad de ítems por página.
-  - `--theme <dark|light>`: Filtra por tema.
-  - `--color <hex>`: Filtra por color.
-  - `--sort <modo>`: Ordena los resultados. Modos disponibles:
-    - `smart`: (Por defecto) Mezcla equilibrada y estable por 1 hora.
-    - `newest`: Más recientes primero.
-    - `oldest`: Más antiguos primero.
-    - `source`: Agrupados por proveedor.
-    - `unseen`: No vistos primero.
-    - `random`: Aleatorio puro (cambia en cada ejecución).
-  - `--refresh`: Fuerza una nueva mezcla aleatoria si se usa el orden `smart`.
-    > **Algoritmo Smart**: El modo `smart` presenta una mezcla equilibrada de fondos nuevos y vistos. El orden se mantiene **estable durante una hora** gracias a un sistema de caché, lo que facilita la navegación entre páginas incluso si eliminas elementos. Usa `--refresh` para barajar de nuevo inmediatamente.
-
-- `gower feed get colors`: Devuelve la paleta de colores dominante de los fondos de pantalla del feed almacenada en `colors.json`.
-- `gower feed update`: Sincroniza el feed desde las cachés de los proveedores o realiza una nueva búsqueda si es necesario.
-  - `--force`: Ignora los límites de frecuencia para forzar la actualización.
-- `gower feed purge`: Elimina todo el historial del feed.
-  - `--force`: Confirma la eliminación sin preguntar.
-- `gower feed stats`: Muestra estadísticas sobre el feed.
-- `gower feed analyze`: Analiza los ítems del feed para extraer metadatos (colores, dimensiones) y realizar mantenimiento de la caché. Repara nombres de archivo incorrectos, elimina ítems corruptos y actualiza la información de color si falta.
-  - `--all`: Re-analiza todos los ítems para actualizar colores y metadatos, incluso si ya existen.
-  - `--force`: Fuerza la regeneración de miniaturas y re-análisis de colores.
-  - `--quiet`: Suprime la salida de progreso en consola.
-- `gower feed random`: Obtiene un fondo de pantalla aleatorio del feed o de favoritos.
-  - `--theme <dark|light>`: Filtra por tema.
-  - `--from-favorites`: Elige un fondo de pantalla aleatorio de la lista de favoritos en lugar del feed.
-
-#### `gower set`
-
-Establece un fondo de pantalla.
-
-- **Uso**: `gower set [ID|URL|random] [flags]`
-- `gower set random`: Establece un fondo de pantalla aleatorio (equivalente a `gower set --random`).
-- `gower set undo`: Revierte al fondo de pantalla anterior. En modo multi-monitor, restaura la configuración completa de monitores.
-- **Flags**:
-  - `--id <ID>`: ID del fondo de pantalla a establecer.
-  - `--url <URL>`: URL directa de una imagen para establecer como fondo de pantalla.
-  - `--random`, `-r`: Activa el modo aleatorio.
-  - `--theme <dark|light|auto>`: Filtra por tema al buscar uno aleatorio.
-  - `--from-favorites`: Selecciona y descarga un fondo aleatorio de tus favoritos.
-  - `--multi-monitor <clone|distinct>`: Define el comportamiento para múltiples monitores.
-    - `clone`: El mismo fondo de pantalla se aplica a todos los monitores.
-    - `distinct`: Se intentará aplicar un fondo de pantalla diferente a cada monitor. (Nota: La compatibilidad y el comportamiento exacto pueden variar según el entorno de escritorio. Algunos entornos pueden no soportar fondos de pantalla distintos por monitor o requerir configuraciones adicionales).
-  - `--target-monitor <ID_monitor>`: Establece el fondo de pantalla solo en el monitor especificado por su ID (ej. "eDP-1", "DP-1"). Puedes ver los IDs de tus monitores con `gower status --monitors`. Este flag anula el comportamiento de `multi-monitor` para el fondo de pantalla actual.
-
-#### `gower download`
-
-Descarga un fondo de pantalla a la caché o a un directorio específico.
-
-- **Uso**: `gower download [ID|URL|random] [flags]`
-- **Flags**:
-  - `--output, -o <ruta>`: Ruta del archivo o directorio de destino. Si no se especifica, intenta usar el directorio configurado en `paths.wallpapers`.
-  - `--random, -r`: Descarga un fondo de pantalla aleatorio.
-  - `--theme <dark|light>`: Filtra por tema al descargar uno aleatorio.
-  - `--from-favorites`: Descarga uno aleatorio solo de los favoritos.
-  - `--to-collection`: Guarda la imagen directamente en la carpeta de colección configurada (`paths.wallpapers`).
-
-#### `gower favorites`
-
-Gestiona la lista de fondos de pantalla favoritos.
-
-- `gower favorites list`: Muestra la lista de favoritos.
-  - `--page <número>`: Página a mostrar.
-  - `--limit <número>`: Ítems por página.
-  - `--color <hex>`: Filtra por color.
-- `gower favorites get colors`: Devuelve la paleta de colores dominante de los fondos de pantalla favoritos almacenada en `colors.json`.
-- `gower favorites add <ID>`: Añade un fondo de pantalla a favoritos.
-  - Si `behavior.save_favorites_to_folder` es `true`, la imagen se copiará a tu carpeta de wallpapers para persistencia.
-  - `--notes <texto>`: Añade notas personales al favorito.
-- `gower favorites remove <ID>`: Elimina un fondo de pantalla de favoritos.
-- `gower favorites export --file <ruta>`: Exporta la lista de favoritos a un archivo JSON.
-- `gower favorites import --file <ruta>`: Importa favoritos desde un archivo JSON.
-- `gower favorites analyze`: Analiza los favoritos para asegurar que las imágenes y miniaturas existen.
-- `gower favorites analyze`: Analiza los favoritos para generar miniaturas y extraer metadatos de color. Es útil para actualizar los colores después de un cambio en el algoritmo de análisis.
-  - `--all`: Re-analiza todos los ítems, no solo los que no tienen color.
-  - `--force`: Fuerza la regeneración de miniaturas y el re-análisis de colores.
-
-#### `gower blacklist`
-
-Gestiona la lista negra para excluir fondos de pantalla.
-
-- `gower blacklist add <ID>`: Añade un fondo de pantalla a la lista negra.
-- `gower blacklist remove <ID>`: Elimina un fondo de pantalla de la lista negra.
-- `gower blacklist list`: Muestra todos los fondos de pantalla en la lista negra.
-
-> [!TIP]
-> **Nota sobre el almacenamiento**: Al añadir un fondo a la lista negra, este se elimina del feed pero el archivo descargado **permanece en la caché**. Para liberar espacio y borrar físicamente los archivos de la lista negra, utiliza el comando `gower system cache prune`.
-
-#### `gower config`
-
-Gestiona la configuración de la aplicación.
-
-- `gower config init`: Crea la estructura de configuración y el archivo `config.json` inicial.
-- `gower config show`: Muestra la configuración actual en formato JSON.
-- `gower config get <clave>`: Obtiene el valor de una clave de configuración (ej. `providers.reddit.limit`). También puede usar la clave especial `config-folder` para obtener la ruta del directorio de configuración.
-- `gower config set <clave=valor>`: Establece el valor de una clave de configuración.
-- `gower config reset`: Restablece la configuración a sus valores por defecto.
-- `gower config update`: Actualiza la estructura del archivo de configuración existente con nuevos campos.
-- `gower config provider`: Gestiona los proveedores de fondos de pantalla.
-  - `list`: Lista todos los proveedores configurados.
-  - `add <nombre> <url>`: Añade un proveedor genérico.
-  - `remove <nombre>`: Elimina un proveedor genérico.
-  - `reddit add <subreddit> [sort]`: Añade un subreddit a la lista de fuentes. Opcionalmente puedes especificar el orden (new, hot, top, mix).
-  - `reddit remove <subreddit>`: Elimina un subreddit de la lista.
-  - `reddit sort <mode>`: Establece el ordenamiento global por defecto para Reddit (new, hot, top, mix).
-
-#### `gower daemon`
-
-Controla el demonio que cambia el fondo de pantalla automáticamente.
-
-- `gower daemon start`: Inicia el demonio en segundo plano.
-  - `--interval <minutos>`: Intervalo en minutos para cambiar el fondo de pantalla (por defecto 30).
-  - `--from-favorites`: Usa solo favoritos para los cambios.
-  - `--theme <dark|light>`: Filtra por tema.
-  - `--foreground`: Ejecuta el demonio en primer plano (útil para depuración o scripts de sistema).
-- `gower daemon stop`: Detiene el demonio.
-  - `--force`: Fuerza la detención eliminando los archivos de control.
-- `gower daemon status`: Muestra el estado actual del demonio (corriendo o detenido).
-  - `--json`: Devuelve el estado en formato JSON.
-- `gower daemon pause`: Pausa temporalmente los cambios de fondo de pantalla sin detener el proceso.
-- `gower daemon resume`: Reanuda los cambios de fondo de pantalla.
-
-#### `gower status`
-
-Muestra un resumen del estado general de la aplicación.
-
-- **Flags**:
-  - `--providers`: Muestra solo el estado de los proveedores.
-  - `--storage`: Muestra solo el uso de almacenamiento.
-  - `--daemon`: Muestra solo el estado del demonio.
-  - `--system`: Muestra información del sistema, como el entorno de escritorio detectado y las dependencias.
-  - `--monitors`: Muestra información detallada sobre los monitores detectados (ID, resolución, posición, etc.).
-  - `--wallpapers`: Muestra información detallada de los fondos de pantalla actuales, incluyendo sus rutas y metadatos, en formato JSON si se usa con `--json`.
-  - `--json`: Muestra toda la información en formato JSON.
-
-#### `gower system`
-
-Comandos de mantenimiento y utilidades del sistema.
-
-##### `gower system cache`
-
-- `gower system cache clean`: Limpia el contenido del directorio de caché (imágenes, miniaturas).
-- `gower system cache size`: Muestra el tamaño actual ocupado por la caché.
-- `gower system cache prune`: Elimina archivos de la caché que ya no están referenciados en el feed o favoritos (**archivos huérfanos**). Es el comando ideal para borrar físicamente los fondos que has añadido a la **lista negra**.
-
-##### `gower system storage`
-
-- `gower system storage verify`: Verifica la integridad de los archivos de datos (configuración, feed, favoritos, etc.).
-- `gower system storage repair`: Intenta reparar archivos corruptos utilizando copias de seguridad automáticas si están disponibles.
-
-#### `gower completion`
-
-Genera scripts de autocompletado para tu shell.
-
-- **Uso**: `gower completion [bash|zsh|fish|powershell]`
-- Ejemplo para bash: `source <(gower completion bash)`
-
-#### `gower export`
-
-Exporta datos de la aplicación.
-
-- `gower export all`: Exporta toda la configuración, feed y favoritos.
-  - `--file <ruta.zip>`: Exporta todo a un único archivo ZIP.
-  - `--include-images`: Incluye las imágenes descargadas en el ZIP.
-- `gower export config`: Exporta solo la configuración.
-- `gower export feed`: Exporta solo el feed.
-- `gower export favorites`: Exporta solo los favoritos.
-
-#### `gower import`
-
-Importa datos de la aplicación.
-
-- `gower import config <archivo>`: Importa la configuración desde un archivo JSON.
-- `gower import favorites --file <archivo>`: Importa favoritos desde un archivo JSON.
-
-#### `gower version`
-
-Muestra la versión actual, el commit de git y la fecha de compilación.
-
-
-## 🛠️ Construir desde el código fuente
-
-```bash
-# Clona el repositorio
-git clone https://github.com/user/gower.git
-cd gower
-
-# Instala dependencias y verifica el código
-go mod tidy
-go vet ./...
-
-# Ejecuta los tests
-go test ./...
-
-# Construye el binario
-go build -o gower .
-```
-
-## 📄 Licencia
-
-Este proyecto está bajo la Licencia MIT. Ver el archivo [LICENSE](LICENSE) para más detalles.
+MIT

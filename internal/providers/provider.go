@@ -1,6 +1,10 @@
 package providers
 
-import "gower/pkg/models"
+import (
+	"context"
+
+	"gower/pkg/models"
+)
 
 // SearchOptions defines the criteria for searching wallpapers.
 type SearchOptions struct {
@@ -19,5 +23,5 @@ type SearchOptions struct {
 // Provider defines the interface for wallpaper providers.
 type Provider interface {
 	GetName() string
-	Search(query string, options SearchOptions) ([]models.Wallpaper, error)
+	Search(ctx context.Context, query string, options SearchOptions) ([]models.Wallpaper, error)
 }

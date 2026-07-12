@@ -50,7 +50,7 @@ func InitLogger(debug bool) error {
 	writers = append(writers, file) // Siempre escribir al archivo
 
 	if debug {
-		writers = append(writers, os.Stdout) // También escribir a la consola si el modo depuración está activado
+		writers = append(writers, os.Stderr) // También escribir a stderr si el modo depuración está activado
 	}
 
 	Log = NewLogger(io.MultiWriter(writers...), debug)

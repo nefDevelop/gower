@@ -11,6 +11,14 @@ import (
 // SecureJSONManager handles secure reading and writing of JSON files with backups.
 type SecureJSONManager struct {
 	BackupInterval time.Duration
+	Log            *Logger
+}
+
+func (m *SecureJSONManager) log() *Logger {
+	if m.Log != nil {
+		return m.Log
+	}
+	return Log
 }
 
 // NewSecureJSONManager creates a new manager with a default backup interval of 8 hours.
@@ -31,7 +39,7 @@ func (m *SecureJSONManager) WriteJSON(filePath string, data interface{}) error {
 	// 2. Manage Backup of existing file
 	if err := m.manageBackup(filePath); err != nil {
 		// Log warning but proceed with write, as saving current work is priority
-		Log.Error("Failed to create backup for %s: %v", filePath, err)
+		m.log().Error("Failed to create backup for %s: %v", filePath, err)
 	}
 
 	// 3. Atomic Write
@@ -48,14 +56,14 @@ func (m *SecureJSONManager) ReadJSON(filePath string, v interface{}) error {
 
 	// If main file fails, try backup
 	backupPath := filePath + ".bak"
-	Log.Error("Failed to read %s (%v). Attempting backup %s...", filePath, err, backupPath)
+	m.log().Error("Failed to read %s (%v). Attempting backup %s...", filePath, err, backupPath)
 
 	if err := m.readAndUnmarshal(backupPath, v); err != nil {
 		return fmt.Errorf("failed to read file and backup: %w", err)
 	}
 
 	// Restore main file from backup since main is corrupt
-	Log.Info("Restoring %s from backup...", filePath)
+	m.log().Info("Restoring %s from backup...", filePath)
 	if data, err := os.ReadFile(backupPath); err == nil {
 		_ = m.atomicWrite(filePath, data)
 	}

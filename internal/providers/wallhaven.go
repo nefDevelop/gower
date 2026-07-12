@@ -1,27 +1,38 @@
 package providers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"gower/internal/utils"
-	"gower/pkg/models"
 	"net/http"
 	"net/url"
 	"strconv"
+
+	"gower/internal/utils"
+	"gower/pkg/models"
 )
 
 var WallhavenBaseURL = "https://wallhaven.cc/api/v1/search"
 
 // WallhavenProvider implements the Provider interface for Wallhaven.cc.
 type WallhavenProvider struct {
-	APIKey string
+	APIKey      string
+	RateLimiter *utils.RateLimiter
+	Log         *utils.Logger
+}
+
+func (p *WallhavenProvider) log() *utils.Logger {
+	if p.Log != nil {
+		return p.Log
+	}
+	return utils.Log
 }
 
 func (p *WallhavenProvider) GetName() string {
 	return "wallhaven"
 }
 
-func (p *WallhavenProvider) Search(query string, opts SearchOptions) ([]models.Wallpaper, error) {
+func (p *WallhavenProvider) Search(ctx context.Context, query string, opts SearchOptions) ([]models.Wallpaper, error) {
 	u, err := url.Parse(WallhavenBaseURL)
 	if err != nil {
 		return nil, err
@@ -63,9 +74,16 @@ func (p *WallhavenProvider) Search(query string, opts SearchOptions) ([]models.W
 
 	u.RawQuery = q.Encode()
 
-	utils.Log.Debug("Wallhaven fetching: %s", u.String())
+	p.log().Debug("Wallhaven fetching: %s", u.String())
 
-	resp, err := http.Get(u.String())
+	if p.RateLimiter != nil {
+		p.RateLimiter.Wait()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := utils.DefaultHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

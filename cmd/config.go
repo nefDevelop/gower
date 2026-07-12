@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
-	"strconv"
 	"strings"
 
 	"gower/internal/core"
@@ -23,7 +21,7 @@ var configCmd = &cobra.Command{
 
 var configShowCmd = &cobra.Command{
 	Use:   "show",
-	Short: "Mostrar configuración",
+	Short: "Show configuration",
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := ensureConfig(); err != nil {
 			cmd.Println(err)
@@ -31,7 +29,7 @@ var configShowCmd = &cobra.Command{
 		}
 		cfg, err := loadConfig()
 		if err != nil {
-			cmd.Printf("Error cargando configuración: %v\n", err)
+			cmd.Printf("Error loading configuration: %v\n", err)
 			return
 		}
 		if !config.Quiet {
@@ -43,7 +41,7 @@ var configShowCmd = &cobra.Command{
 
 var configSetCmd = &cobra.Command{
 	Use:   "set <clave=valor>",
-	Short: "Cambiar configuración",
+	Short: "Set a configuration value",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := ensureConfig(); err != nil {
@@ -52,35 +50,35 @@ var configSetCmd = &cobra.Command{
 		}
 		parts := strings.SplitN(args[0], "=", 2)
 		if len(parts) != 2 {
-			cmd.Println("Formato requerido: clave=valor")
+			cmd.Println("Required format: key=value")
 			return
 		}
 		key, val := parts[0], parts[1]
 
 		cfg, err := loadConfig()
 		if err != nil {
-			cmd.Printf("Error cargando configuración: %v\n", err)
+			cmd.Printf("Error loading configuration: %v\n", err)
 			return
 		}
 
 		if err := setConfigValue(cfg, key, val); err != nil {
-			cmd.Printf("Error estableciendo valor: %v\n", err)
+			cmd.Printf("Error setting value: %v\n", err)
 			return
 		}
 
 		if err := saveConfig(cfg); err != nil {
-			cmd.Printf("Error guardando configuración: %v\n", err)
+			cmd.Printf("Error saving configuration: %v\n", err)
 			return
 		}
 		if !config.Quiet {
-			cmd.Printf("%s Configuración actualizada: %s = %s\n", colorize(symbolCheck, colorGreen), key, val)
+			cmd.Printf("%s Configuration updated: %s = %s\n", colorize(symbolCheck, colorGreen), key, val)
 		}
 	},
 }
 
 var configGetCmd = &cobra.Command{
-	Use:   "get <clave>",
-	Short: "Obtener valor",
+	Use:   "get <key>",
+	Short: "Get a configuration value",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := ensureConfig(); err != nil {
@@ -121,7 +119,7 @@ var configGetCmd = &cobra.Command{
 
 var configResetCmd = &cobra.Command{
 	Use:   "reset",
-	Short: "Restablecer configuración",
+	Short: "Reset configuration to defaults",
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := ensureConfig(); err != nil {
 			cmd.Println(err)
@@ -129,18 +127,18 @@ var configResetCmd = &cobra.Command{
 		}
 		defaultCfg := getDefaultConfig()
 		if err := saveConfig(&defaultCfg); err != nil {
-			cmd.Printf("Error restableciendo configuración: %v\n", err)
+			cmd.Printf("Error resetting configuration: %v\n", err)
 			return
 		}
 		if !config.Quiet {
-			cmd.Println(colorize(symbolCheck+" Configuración restablecida a los valores por defecto.", colorGreen))
+			cmd.Println(colorize(symbolCheck+" Configuration reset to defaults.", colorGreen))
 		}
 	},
 }
 
 var configUpdateCmd = &cobra.Command{
 	Use:   "update",
-	Short: "Actualizar estructura del archivo de configuración",
+	Short: "Update config file structure with new fields",
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := ensureConfig(); err != nil {
 			cmd.Println(err)
@@ -279,95 +277,17 @@ func getDefaultConfig() models.Config {
 			ShowColors: true, ItemsPerPage: 10, ImagePreview: true,
 		},
 		Limits: models.LimitsConfig{
-			FeedSoftLimit: 400, FeedHardLimit: 2000, RateLimitRequests: 45, RateLimitPeriod: 60, LogRetentionDays: 7,
+			FeedSoftLimit: 400, FeedHardLimit: 2000, RateLimitRequests: 45, RateLimitPeriod: 60, LogRetentionDays: 7, AnalysisWorkers: 5,
 		},
 	}
 }
 
 func setConfigValue(cfg *models.Config, path string, value string) error {
-	v := reflect.ValueOf(cfg).Elem()
-	parts := strings.Split(path, ".")
-
-	for _, part := range parts {
-		if v.Kind() != reflect.Struct {
-			return fmt.Errorf("ruta inválida: %s", path)
-		}
-
-		found := false
-		typ := v.Type()
-		for i := 0; i < v.NumField(); i++ {
-			field := typ.Field(i)
-			tag := field.Tag.Get("json")
-			tagVal := strings.Split(tag, ",")[0]
-			if strings.EqualFold(tagVal, part) {
-				v = v.Field(i)
-				found = true
-				break
-			}
-		}
-		if !found {
-			return fmt.Errorf("campo no encontrado: %s", part)
-		}
-	}
-
-	if !v.CanSet() {
-		return fmt.Errorf("no se puede establecer el valor para %s", path)
-	}
-
-	switch v.Kind() {
-	case reflect.String:
-		v.SetString(value)
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		i, err := strconv.ParseInt(value, 10, 64)
-		if err != nil {
-			return fmt.Errorf("valor entero inválido: %s", value)
-		}
-		v.SetInt(i)
-	case reflect.Bool:
-		b, err := strconv.ParseBool(value)
-		if err != nil {
-			return fmt.Errorf("valor booleano inválido: %s", value)
-		}
-		v.SetBool(b)
-	case reflect.Float32, reflect.Float64:
-		f, err := strconv.ParseFloat(value, 64)
-		if err != nil {
-			return fmt.Errorf("valor flotante inválido: %s", value)
-		}
-		v.SetFloat(f)
-	default:
-		return fmt.Errorf("tipo no soportado: %s", v.Kind())
-	}
-	return nil
+	return models.SetConfigValue(cfg, path, value)
 }
 
 func getConfigValue(cfg *models.Config, path string) (string, error) {
-	v := reflect.ValueOf(cfg).Elem()
-	parts := strings.Split(path, ".")
-
-	for _, part := range parts {
-		if v.Kind() != reflect.Struct {
-			return "", fmt.Errorf("ruta inválida: %s", path)
-		}
-
-		found := false
-		typ := v.Type()
-		for i := 0; i < v.NumField(); i++ {
-			field := typ.Field(i)
-			tag := field.Tag.Get("json")
-			tagVal := strings.Split(tag, ",")[0]
-			if strings.EqualFold(tagVal, part) {
-				v = v.Field(i)
-				found = true
-				break
-			}
-		}
-		if !found {
-			return "", fmt.Errorf("campo no encontrado: %s", part)
-		}
-	}
-
-	return fmt.Sprintf("%v", v.Interface()), nil
+	return models.GetConfigValue(cfg, path)
 }
 
 func createConfigStructure(cmd *cobra.Command) error {
@@ -465,7 +385,7 @@ func runConfigInit(cmd *cobra.Command, args []string) {
 
 var configInitCmd = &cobra.Command{
 	Use:   "init",
-	Short: "Configuración inicial",
+	Short: "Initialize configuration",
 	Run:   runConfigInit,
 }
 

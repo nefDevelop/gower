@@ -1,11 +1,12 @@
 package cmd
 
 import (
-	"gower/internal/core"
 	"io"
 	"os"
 	"strings"
 	"testing"
+
+	"gower/internal/core"
 )
 
 // Mock DetectMonitors for testing purposes

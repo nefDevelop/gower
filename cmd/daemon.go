@@ -2,18 +2,21 @@ package cmd
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/rand"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
-	"strconv" // Import syscall for process signal check
+	"runtime"
+	"strconv"
+	"strings"
+	"syscall"
 	"time"
 
 	"gower/internal/core"
 	"gower/internal/utils"
 	"gower/pkg/models"
-
-	"syscall"
 
 	"github.com/spf13/cobra"
 )
@@ -67,12 +70,30 @@ var daemonPauseCmd = &cobra.Command{
 		if f, err := os.Create(pauseFile); err != nil {
 			cmd.Printf("Error creating pause signal: %v\n", err)
 		} else {
-			_ = f.Close()
+			if err := f.Close(); err != nil {
+				utils.Log.Error("Failed to close pause file: %v", err)
+			}
 			if !config.Quiet {
 				cmd.Println("Daemon pause signal sent.")
 			}
 		}
 	},
+}
+
+var daemonInstallCmd = &cobra.Command{
+	Use:   "install",
+	Short: "Install daemon as a systemd user service",
+	Long: `Creates a systemd user service unit and enables it to start on boot.
+
+The daemon will run as a user service under systemd, automatically
+changing wallpapers at the configured interval.`,
+	Run: runDaemonInstall,
+}
+
+var daemonUninstallCmd = &cobra.Command{
+	Use:   "uninstall",
+	Short: "Remove the systemd user service",
+	Run: runDaemonUninstall,
 }
 
 var daemonResumeCmd = &cobra.Command{
@@ -105,6 +126,8 @@ func init() {
 	daemonCmd.AddCommand(daemonStatusCmd)
 	daemonCmd.AddCommand(daemonPauseCmd)
 	daemonCmd.AddCommand(daemonResumeCmd)
+	daemonCmd.AddCommand(daemonInstallCmd)
+	daemonCmd.AddCommand(daemonUninstallCmd)
 
 	daemonStartCmd.Flags().IntVar(&daemonInterval, "interval", 30, "Interval in minutes")
 	daemonStartCmd.Flags().BoolVar(&daemonFromFavorites, "from-favorites", false, "Include favorites")
@@ -284,32 +307,41 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 		}
 	}
 
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
+	defer signal.Stop(sigChan)
+
 	changeIntervalTicker := time.NewTicker(time.Duration(daemonInterval) * time.Minute)
 	defer changeIntervalTicker.Stop()
 
-	// Ticker to check for control signals (pause, stop)
 	controlTicker := time.NewTicker(2 * time.Second)
 	defer controlTicker.Stop()
 
 	paused := false
 
-	// Initial run
 	changeWallpaper(cmd)
 
 	for {
 		select {
+		case sig := <-sigChan:
+			if !config.Quiet {
+				cmd.Printf("Received signal %v, stopping daemon...\n", sig)
+			}
+			utils.Log.Info("Received signal %v, stopping daemon...", sig)
+			return
+
 		case <-controlTicker.C:
-			// Check for stop signal
 			if _, err := os.Stat(getStopFilePath()); err == nil {
 				if !config.Quiet {
 					cmd.Println("Stopping daemon...")
 				}
 				utils.Log.Info("Stopping daemon...")
-				os.Remove(getStopFilePath()) // Clean up
+				if err := os.Remove(getStopFilePath()); err != nil {
+					utils.Log.Error("Failed to remove stop file: %v", err)
+				}
 				return
 			}
 
-			// Check for pause signal
 			if _, err := os.Stat(getPauseFilePath()); err == nil {
 				if !paused {
 					if !config.Quiet {
@@ -549,6 +581,111 @@ func runDaemonStatus(cmd *cobra.Command, args []string) {
 		} else {
 			cmd.Println("Daemon is stopped.")
 		}
+	}
+}
+
+func runDaemonInstall(cmd *cobra.Command, args []string) {
+	if runtime.GOOS != "linux" {
+		cmd.PrintErrln("systemd integration is only supported on Linux.")
+		return
+	}
+
+	if _, err := exec.LookPath("systemctl"); err != nil {
+		cmd.PrintErrln("systemctl not found. Make sure systemd is installed.")
+		return
+	}
+
+	exe, err := os.Executable()
+	if err != nil {
+		cmd.Printf("Error getting executable path: %v\n", err)
+		return
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		cmd.Printf("Error getting home directory: %v\n", err)
+		return
+	}
+
+	serviceDir := filepath.Join(homeDir, ".config", "systemd", "user")
+	if err := os.MkdirAll(serviceDir, 0755); err != nil {
+		cmd.Printf("Error creating systemd user directory: %v\n", err)
+		return
+	}
+
+	servicePath := filepath.Join(serviceDir, "gower.service")
+	unit := fmt.Sprintf(`[Unit]
+Description=Gower Wallpaper Daemon
+Documentation=https://github.com/nefDevelop/gower
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%s daemon start --foreground
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=default.target
+`, exe)
+
+	if err := os.WriteFile(servicePath, []byte(unit), 0644); err != nil {
+		cmd.Printf("Error writing service file: %v\n", err)
+		return
+	}
+
+	utils.Log.Info("systemd service file created: %s", servicePath)
+
+	// Reload systemd and enable+start
+	for _, args := range [][]string{
+		{"--user", "daemon-reload"},
+		{"--user", "enable", "--now", "gower.service"},
+	} {
+		c := exec.Command("systemctl", args...)
+		c.Stderr = os.Stderr
+		c.Stdout = os.Stdout
+		if err := c.Run(); err != nil {
+			cmd.Printf("Warning: systemctl %s failed: %v\n", strings.Join(args, " "), err)
+		}
+	}
+
+	if !config.Quiet {
+		cmd.Printf("Daemon installed as systemd user service.\n")
+		cmd.Printf("Service file: %s\n", servicePath)
+		cmd.Println("Status: systemctl --user status gower.service")
+	}
+}
+
+func runDaemonUninstall(cmd *cobra.Command, args []string) {
+	if runtime.GOOS != "linux" {
+		cmd.PrintErrln("systemd integration is only supported on Linux.")
+		return
+	}
+
+	if _, err := exec.LookPath("systemctl"); err != nil {
+		cmd.PrintErrln("systemctl not found.")
+		return
+	}
+
+	// Stop and disable
+	c := exec.Command("systemctl", "--user", "disable", "--now", "gower.service")
+	c.Stderr = os.Stderr
+	c.Stdout = os.Stdout
+	_ = c.Run()
+
+	homeDir, err := os.UserHomeDir()
+	if err == nil {
+		servicePath := filepath.Join(homeDir, ".config", "systemd", "user", "gower.service")
+		if err := os.Remove(servicePath); err != nil && !os.IsNotExist(err) {
+			utils.Log.Error("Failed to remove service file: %v", err)
+		}
+	}
+
+	// Reload systemd
+	_ = exec.Command("systemctl", "--user", "daemon-reload").Run()
+
+	if !config.Quiet {
+		cmd.Println("Daemon systemd service removed.")
 	}
 }
 

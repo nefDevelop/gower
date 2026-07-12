@@ -112,8 +112,11 @@ func runStatus(cmd *cobra.Command, args []string) {
 		changer := core.NewWallpaperChanger("", false) // RespectDarkMode doesn't matter for detection
 		monitors, err := changer.DetectMonitors()
 		if err != nil {
-			cmd.Printf("Error detecting monitors: %v\n", err)
-		} else {
+			if !statusJSON {
+				cmd.Printf("Error detecting monitors: %v\n", err)
+			}
+		}
+		if err == nil {
 			output.Monitors = monitors
 		}
 	}

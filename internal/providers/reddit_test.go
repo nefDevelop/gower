@@ -2,10 +2,11 @@ package providers
 
 import (
 	"fmt"
-	"gower/pkg/models"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"gower/pkg/models"
 )
 
 // Since we cannot inject the URL into the provider, we cannot write a real unit test.

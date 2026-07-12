@@ -42,7 +42,7 @@ endif
 
 # --- Objetivos ---
 
-.PHONY: all build build-linux build-windows build-all test test-integration lint clean help
+.PHONY: all build build-linux build-windows build-all test test-integration lint generate clean help
 
 all: build
 
@@ -80,6 +80,11 @@ test-integration:
 lint:
 	@echo "==> Analizando código con go vet..."
 	go vet ./...
+
+## generate: Regenera los archivos generados (config paths)
+generate:
+	@echo "==> Regenerando código generado..."
+	go generate ./...
 
 ## clean: Elimina los binarios y el directorio de distribución
 clean:

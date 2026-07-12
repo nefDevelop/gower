@@ -1,11 +1,13 @@
 package providers
 
 import (
+	"context"
 	"fmt"
-	"gower/pkg/models"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"gower/pkg/models"
 )
 
 func TestGenericProvider_Search(t *testing.T) {
@@ -28,7 +30,7 @@ func TestGenericProvider_Search(t *testing.T) {
 
 	provider := &GenericProvider{Config: config}
 
-	results, err := provider.Search("test", SearchOptions{})
+	results, err := provider.Search(context.Background(), "test", SearchOptions{})
 	if err != nil {
 		t.Fatalf("Search failed: %v", err)
 	}

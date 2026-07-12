@@ -1,18 +1,29 @@
 package providers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"gower/internal/utils"
-	"gower/pkg/models"
 	"math/rand"
 	"net/http"
 	"strings"
+
+	"gower/internal/utils"
+	"gower/pkg/models"
 )
 
 // RedditProvider implements the Provider interface for Reddit.
 type RedditProvider struct {
-	Config models.RedditConfig
+	Config      models.RedditConfig
+	RateLimiter *utils.RateLimiter
+	Log         *utils.Logger
+}
+
+func (p *RedditProvider) log() *utils.Logger {
+	if p.Log != nil {
+		return p.Log
+	}
+	return utils.Log
 }
 
 // NewRedditProvider creates a new RedditProvider.
@@ -24,7 +35,7 @@ func (p *RedditProvider) GetName() string {
 	return "reddit"
 }
 
-func (p *RedditProvider) Search(query string, opts SearchOptions) ([]models.Wallpaper, error) {
+func (p *RedditProvider) Search(ctx context.Context, query string, opts SearchOptions) ([]models.Wallpaper, error) {
 	subConfig := p.Config.Subreddit
 	if subConfig == "" {
 		subConfig = "wallpapers"
@@ -71,7 +82,7 @@ func (p *RedditProvider) Search(query string, opts SearchOptions) ([]models.Wall
 		var err error
 
 		if query == "" && sort == "mix" {
-			wps, err = p.searchMixed(subreddit, limit, opts)
+			wps, err = p.searchMixed(ctx, subreddit, limit, opts)
 		} else {
 			var url string
 			timeParam := ""
@@ -84,13 +95,13 @@ func (p *RedditProvider) Search(query string, opts SearchOptions) ([]models.Wall
 			} else {
 				url = fmt.Sprintf("https://www.reddit.com/r/%s/%s.json?limit=%d%s", subreddit, sort, apiLimit, timeParam)
 			}
-			wps, err = p.fetchFromReddit(url, limit, opts)
+			wps, err = p.fetchFromReddit(ctx, url, limit, opts)
 		}
 
 		if err == nil {
 			allWallpapers = append(allWallpapers, wps...)
 		} else {
-			utils.Log.Error("Error fetching from reddit group %s (sort: %s): %v", subreddit, sort, err)
+			p.log().Error("Error fetching from reddit group %s (sort: %s): %v", subreddit, sort, err)
 		}
 	}
 
@@ -105,7 +116,7 @@ func (p *RedditProvider) Search(query string, opts SearchOptions) ([]models.Wall
 	return allWallpapers, nil
 }
 
-func (p *RedditProvider) searchMixed(subreddit string, limit int, opts SearchOptions) ([]models.Wallpaper, error) {
+func (p *RedditProvider) searchMixed(ctx context.Context, subreddit string, limit int, opts SearchOptions) ([]models.Wallpaper, error) {
 	// Dividimos el esfuerzo, pero pedimos suficiente de cada uno
 	apiLimit := 40
 
@@ -113,10 +124,9 @@ func (p *RedditProvider) searchMixed(subreddit string, limit int, opts SearchOpt
 	urlNew := fmt.Sprintf("https://www.reddit.com/r/%s/new.json?limit=%d", subreddit, apiLimit)
 	urlTop := fmt.Sprintf("https://www.reddit.com/r/%s/top.json?limit=%d&t=month", subreddit, apiLimit) // Top del mes para variar
 
-	// Hacemos las peticiones (secuenciales por simplicidad, podrían ser paralelas)
-	resHot, _ := p.fetchFromReddit(urlHot, limit, opts)
-	resNew, _ := p.fetchFromReddit(urlNew, limit, opts)
-	resTop, _ := p.fetchFromReddit(urlTop, limit, opts)
+	resHot, _ := p.fetchFromReddit(ctx, urlHot, limit, opts)
+	resNew, _ := p.fetchFromReddit(ctx, urlNew, limit, opts)
+	resTop, _ := p.fetchFromReddit(ctx, urlTop, limit, opts)
 
 	// Combinar y desduplicar
 	uniqueMap := make(map[string]models.Wallpaper)
@@ -145,16 +155,18 @@ func (p *RedditProvider) searchMixed(subreddit string, limit int, opts SearchOpt
 	return combined, nil
 }
 
-func (p *RedditProvider) fetchFromReddit(url string, limit int, opts SearchOptions) ([]models.Wallpaper, error) {
-	utils.Log.Debug("Reddit fetching: %s", url)
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", url, nil)
+func (p *RedditProvider) fetchFromReddit(ctx context.Context, url string, limit int, opts SearchOptions) ([]models.Wallpaper, error) {
+	p.log().Debug("Reddit fetching: %s", url)
+	if p.RateLimiter != nil {
+		p.RateLimiter.Wait()
+	}
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "Gower/1.0")
 
-	resp, err := client.Do(req)
+	resp, err := utils.DefaultHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

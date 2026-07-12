@@ -1,33 +1,51 @@
 package providers
 
 import (
+	"context"
 	"fmt"
-	"gower/internal/utils"
-	"gower/pkg/models"
 	"io"
 	"net/http"
 	"strings"
+
+	"gower/internal/utils"
+	"gower/pkg/models"
 
 	"github.com/tidwall/gjson"
 )
 
 // GenericProvider implements a provider based on configuration.
 type GenericProvider struct {
-	Config models.GenericProviderConfig
+	Config      models.GenericProviderConfig
+	RateLimiter *utils.RateLimiter
+	Log         *utils.Logger
+}
+
+func (p *GenericProvider) log() *utils.Logger {
+	if p.Log != nil {
+		return p.Log
+	}
+	return utils.Log
 }
 
 func (p *GenericProvider) GetName() string {
 	return p.Config.Name
 }
 
-func (p *GenericProvider) Search(query string, opts SearchOptions) ([]models.Wallpaper, error) {
+func (p *GenericProvider) Search(ctx context.Context, query string, opts SearchOptions) ([]models.Wallpaper, error) {
 	url := p.Config.APIURL
 	url = strings.ReplaceAll(url, "{query}", query)
 	url = strings.ReplaceAll(url, "{apikey}", p.Config.APIKey)
 
-	utils.Log.Debug("Generic provider %s fetching: %s", p.Config.Name, url)
+	p.log().Debug("Generic provider %s fetching: %s", p.Config.Name, url)
 
-	resp, err := http.Get(url)
+	if p.RateLimiter != nil {
+		p.RateLimiter.Wait()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := utils.DefaultHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

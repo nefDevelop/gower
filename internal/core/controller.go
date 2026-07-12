@@ -3,30 +3,45 @@ package core
 import (
 	crand "crypto/rand"
 	"fmt"
-	"gower/internal/providers"
-	"gower/internal/utils"
-	"gower/pkg/models" // Import models package
-	"io"
-	"math"
 	"math/big"
 	"math/rand"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"gower/internal/providers"
+	"gower/internal/utils"
+	"gower/pkg/models"
 )
 
 // Controller is the main controller of the application.
 type Controller struct {
 	Config          *models.Config
 	ProviderManager *ProviderManager
-	feedManager     *utils.SecureJSONManager // Manager for feed.json
+	feedManager     *utils.SecureJSONManager
 	ColorManager    *ColorManager
+	DownloadService *DownloadService
+	FeedService     *FeedService
+	AnalysisService *AnalysisService
+	Log             *utils.Logger
+}
+
+func (c *Controller) log() *utils.Logger {
+	if c.Log != nil {
+		return c.Log
+	}
+	return utils.Log
+}
+
+func (c *Controller) getWorkers() int {
+	if c.Config != nil && c.Config.Limits.AnalysisWorkers > 0 {
+		return c.Config.Limits.AnalysisWorkers
+	}
+	return 5
 }
 
 type FeedCache struct {
@@ -74,20 +89,36 @@ var NewController = func(config *models.Config) *Controller {
 
 	// Register native providers
 	if config.Providers.Wallhaven.Enabled {
+		rl := config.Providers.Wallhaven.RateLimit
 		providerManager.RegisterProvider(&providers.WallhavenProvider{
-			APIKey: config.Providers.Wallhaven.APIKey,
+			APIKey:      config.Providers.Wallhaven.APIKey,
+			RateLimiter: utils.NewRateLimiter(rl.Requests, rl.PerSeconds),
 		})
 	}
 	if config.Providers.Reddit.Enabled {
-		providerManager.RegisterProvider(providers.NewRedditProvider(config.Providers.Reddit))
+		providerManager.RegisterProvider(&providers.RedditProvider{
+			Config:      config.Providers.Reddit,
+			RateLimiter: utils.NewRateLimiter(30, 60),
+		})
 	}
 	if config.Providers.Nasa.Enabled {
-		providerManager.RegisterProvider(providers.NewNasaProvider(config.Providers.Nasa.APIKey))
+		providerManager.RegisterProvider(&providers.NasaProvider{
+			APIKey:      config.Providers.Nasa.APIKey,
+			RateLimiter: utils.NewRateLimiter(30, 60),
+		})
 	}
 	if config.Providers.Bing.Enabled {
-		providerManager.RegisterProvider(providers.NewBingProvider(config.Providers.Bing.Market))
+		providerManager.RegisterProvider(&providers.BingProvider{
+			Market:      config.Providers.Bing.Market,
+			RateLimiter: utils.NewRateLimiter(10, 60),
+		})
 	}
-	// Unsplash provider was removed as it was not implemented.
+	if config.Providers.Unsplash.Enabled {
+		providerManager.RegisterProvider(&providers.UnsplashProvider{
+			APIKey:      config.Providers.Unsplash.APIKey,
+			RateLimiter: utils.NewRateLimiter(30, 60),
+		})
+	}
 
 	// Register generic providers
 	jsonManager := utils.NewSecureJSONManager()
@@ -110,8 +141,7 @@ var NewController = func(config *models.Config) *Controller {
 					utils.Log.Error("Error creando solicitud HEAD para el proveedor genérico %s (URL: %s): %v", providerConfig.Name, providerConfig.APIURL, err)
 					// Continuar, ya que podría ser un problema temporal o una URL malformada que Search() puede manejar.
 				} else {
-					client := &http.Client{Timeout: 5 * time.Second} // Tiempo de espera corto para la verificación
-					resp, err := client.Do(req)
+					resp, err := utils.ShortHTTPClient.Do(req)
 					if err != nil {
 						utils.Log.Error("Verificación de API del proveedor genérico %s falló (URL: %s): %v", providerConfig.Name, providerConfig.APIURL, err)
 						// Continuar, ya que podría ser un problema de red temporal.
@@ -128,7 +158,10 @@ var NewController = func(config *models.Config) *Controller {
 				}
 			}
 
-			provider := &providers.GenericProvider{Config: providerConfig}
+			provider := &providers.GenericProvider{
+				Config:      providerConfig,
+				RateLimiter: utils.NewRateLimiter(30, 60),
+			}
 			providerManager.RegisterProvider(provider)
 		}
 	}
@@ -138,23 +171,30 @@ var NewController = func(config *models.Config) *Controller {
 		utils.Log.Error("NewColorManager returned nil. This should not happen.")
 	}
 
+	feedManager := utils.NewSecureJSONManager()
+
 	return &Controller{
 		Config:          config,
 		ProviderManager: providerManager,
-		feedManager:     utils.NewSecureJSONManager(),
+		feedManager:     feedManager,
 		ColorManager:    colorManager,
+		DownloadService: NewDownloadService(config, colorManager, feedManager),
+		FeedService:     NewFeedService(config, feedManager),
+		AnalysisService: NewAnalysisService(config, colorManager, feedManager),
 	}
 }
 
 func (c *Controller) getFeedPath() (string, error) {
-	appDir, err := GetAppDir()
-	if err != nil {
-		return "", err
+	if c.FeedService != nil {
+		return c.FeedService.getFeedPath()
 	}
-	return filepath.Join(appDir, "data", "feed.json"), nil
+	return c.getLegacyFeedPath()
 }
 
 func (c *Controller) getFeedCachePath() (string, error) {
+	if c.FeedService != nil {
+		return c.FeedService.getFeedCachePath()
+	}
 	appDir, err := GetAppDir()
 	if err != nil {
 		return "", err
@@ -163,6 +203,9 @@ func (c *Controller) getFeedCachePath() (string, error) {
 }
 
 func (c *Controller) getBlacklistPath() (string, error) {
+	if c.FeedService != nil {
+		return c.FeedService.getBlacklistPath()
+	}
 	appDir, err := GetAppDir()
 	if err != nil {
 		return "", err
@@ -171,17 +214,17 @@ func (c *Controller) getBlacklistPath() (string, error) {
 }
 
 func (c *Controller) loadBlacklist() ([]string, error) {
+	if c.FeedService != nil {
+		return c.FeedService.loadBlacklist()
+	}
 	path, err := c.getBlacklistPath()
 	if err != nil {
 		return nil, err
 	}
 	var blacklist []string
-	// We use a generic manager or just read it. Assuming simple string array for IDs.
-	// If file doesn't exist, return empty.
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return []string{}, nil
 	}
-	// Using feedManager (SecureJSONManager) which is generic enough
 	if err := c.feedManager.ReadJSON(path, &blacklist); err != nil {
 		return nil, err
 	}
@@ -189,17 +232,17 @@ func (c *Controller) loadBlacklist() ([]string, error) {
 }
 
 func (c *Controller) loadFeed() ([]models.Wallpaper, error) {
-	path, err := c.getFeedPath()
+	if c.FeedService != nil {
+		return c.FeedService.loadFeed()
+	}
+	path, err := c.getLegacyFeedPath()
 	if err != nil {
 		return nil, err
 	}
-
 	var feed []models.Wallpaper
-	// If file doesn't exist, return empty list without error
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return []models.Wallpaper{}, nil
 	}
-
 	if err := c.feedManager.ReadJSON(path, &feed); err != nil {
 		return nil, err
 	}
@@ -207,11 +250,22 @@ func (c *Controller) loadFeed() ([]models.Wallpaper, error) {
 }
 
 func (c *Controller) saveFeed(feed []models.Wallpaper) error {
-	path, err := c.getFeedPath()
+	if c.FeedService != nil {
+		return c.FeedService.saveFeed(feed)
+	}
+	path, err := c.getLegacyFeedPath()
 	if err != nil {
 		return err
 	}
 	return c.feedManager.WriteJSON(path, feed)
+}
+
+func (c *Controller) getLegacyFeedPath() (string, error) {
+	appDir, err := GetAppDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(appDir, "data", "feed.json"), nil
 }
 
 // GetFeed retrieves wallpapers from the feed with pagination and optional search/theme filters.
@@ -388,7 +442,9 @@ func (c *Controller) GetFeed(page, limit int, search, theme, color, sortMode str
 					Hour: currentHour,
 					IDs:  ids,
 				}
-				_ = c.feedManager.WriteJSON(cachePath, cache)
+				if err := c.feedManager.WriteJSON(cachePath, cache); err != nil {
+					c.log().Error("Failed to write feed cache: %v", err)
+				}
 			}
 		}
 	}
@@ -432,8 +488,10 @@ func (c *Controller) GetFeed(page, limit int, search, theme, color, sortMode str
 				feed[i].Seen = true
 			}
 		}
-		// Ignoramos error de guardado para no interrumpir la visualización
-		_ = c.saveFeed(feed)
+		// no interrumpir la visualización si falla el guardado
+		if err := c.saveFeed(feed); err != nil {
+			c.log().Error("Failed to save feed seen state: %v", err)
+		}
 	}
 
 	return result, nil
@@ -462,36 +520,23 @@ func (c *Controller) AnalyzeFeed(all bool, force bool, progress func(string)) er
 	if err != nil {
 		return err
 	}
-	utils.Log.Info("Analyzing feed: %d items found", len(feed))
-
-	if c.Config.Paths.IndexWallpapers {
-		utils.Log.Info("Local wallpaper indexing is ENABLED (Path: %s)", c.Config.Paths.Wallpapers)
-		if progress != nil {
-			progress(fmt.Sprintf("Local wallpaper indexing is ENABLED (Path: %s)", c.Config.Paths.Wallpapers))
-		}
-	} else {
-		utils.Log.Info("Local wallpaper indexing is DISABLED")
-		if progress != nil {
-			progress("Local wallpaper indexing is DISABLED")
-		}
-	}
+	c.log().Info("Analyzing feed: %d items found", len(feed))
 
 	changedByIndexing := false
-	// Index local wallpapers if enabled
 	if c.Config.Paths.IndexWallpapers && c.Config.Paths.Wallpapers != "" {
 		added, reconciled, removed, err := c.indexLocalWallpapers(&feed)
 		if err != nil {
-			utils.Log.Error("Error indexing local wallpapers: %v", err)
+			c.log().Error("Error indexing local wallpapers: %v", err)
 			if progress != nil {
 				progress(fmt.Sprintf("Error indexing local wallpapers: %v", err))
 			}
 		} else {
-			utils.Log.Info("Local indexing results: %d added, %d reconciled, %d removed", added, reconciled, removed)
+			c.log().Info("Local indexing results: %d added, %d reconciled, %d removed", added, reconciled, removed)
 			if progress != nil {
 				progress(fmt.Sprintf("Local indexing results: %d added, %d reconciled, %d removed", added, reconciled, removed))
 			}
+			changedByIndexing = added > 0 || reconciled > 0 || removed > 0
 		}
-		changedByIndexing = added > 0 || reconciled > 0 || removed > 0
 	}
 
 	appDir, err := GetAppDir()
@@ -501,40 +546,35 @@ func (c *Controller) AnalyzeFeed(all bool, force bool, progress func(string)) er
 	thumbDir := filepath.Join(appDir, "cache", "thumbs")
 
 	type job struct {
-		Controller *Controller
-		Index      int
-		Wp         models.Wallpaper
-		Delete     bool
+		Index  int
+		Wp     models.Wallpaper
+		Delete bool
 	}
 
 	jobs := make(chan job, len(feed))
 	results := make(chan job, len(feed))
 
-	workers := 5
-	var wg sync.WaitGroup
+	workers := c.getWorkers()
+				var wg sync.WaitGroup
 
-	for i := 0; i < workers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := range jobs {
-				wp := j.Wp
-				ctrl := j.Controller
-
-				newWp, changed, deleteItem := ctrl.processWallpaperItem(wp, force, all, thumbDir, progress)
-
-				if deleteItem {
-					results <- job{Index: j.Index, Delete: true}
-				} else if changed {
-					results <- job{Index: j.Index, Wp: newWp}
+				for i := 0; i < workers; i++ {
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+						for j := range jobs {
+							newWp, changed, deleteItem := c.processWallpaperItem(j.Wp, force, all, thumbDir, progress)
+							if deleteItem {
+								results <- job{Index: j.Index, Delete: true}
+							} else if changed {
+								results <- job{Index: j.Index, Wp: newWp}
+							}
+						}
+					}()
 				}
-			}
-		}()
-	}
 
-	for i, wp := range feed {
-		jobs <- job{Controller: c, Index: i, Wp: wp}
-	}
+				for i, wp := range feed {
+					jobs <- job{Index: i, Wp: wp}
+				}
 	close(jobs)
 	wg.Wait()
 	close(results)
@@ -542,14 +582,13 @@ func (c *Controller) AnalyzeFeed(all bool, force bool, progress func(string)) er
 	updatedCount := 0
 	for res := range results {
 		if res.Delete {
-			feed[res.Index].ID = "" // Mark for deletion
+			feed[res.Index].ID = ""
 		} else {
 			feed[res.Index] = res.Wp
 		}
 		updatedCount++
 	}
 
-	// Filter out deleted items
 	if updatedCount > 0 || changedByIndexing {
 		newFeed := make([]models.Wallpaper, 0, len(feed))
 		for _, wp := range feed {
@@ -566,14 +605,13 @@ func (c *Controller) AnalyzeFeed(all bool, force bool, progress func(string)) er
 		}
 	}
 
-	// Always rebuild index to ensure it matches current feed colors
 	return c.rebuildColorsIndex(feed)
 }
 
 // indexLocalWallpapers scans the configured wallpapers directory and updates the feed.
 func (c *Controller) indexLocalWallpapers(feed *[]models.Wallpaper) (int, int, int, error) {
 	localDir := c.Config.Paths.Wallpapers
-	utils.Log.Debug("Scanning local directory: %s", localDir)
+	c.log().Debug("Scanning local directory: %s", localDir)
 	files, err := os.ReadDir(localDir)
 	if err != nil {
 		return 0, 0, 0, err
@@ -629,7 +667,7 @@ func (c *Controller) indexLocalWallpapers(feed *[]models.Wallpaper) (int, int, i
 			// If the current path is not already pointing to this specific file in the collection, update it.
 			if wp.Path != fullPath {
 				if wp.Path != "" {
-					utils.Log.Info("Wallpaper %s: Found in collection folder. Updating path from '%s' to '%s'", wp.ID, wp.Path, fullPath)
+					c.log().Info("Wallpaper %s: Found in collection folder. Updating path from '%s' to '%s'", wp.ID, wp.Path, fullPath)
 				}
 				wp.Path = fullPath
 				reconciledCount++
@@ -662,7 +700,7 @@ func (c *Controller) indexLocalWallpapers(feed *[]models.Wallpaper) (int, int, i
 		}
 	}
 
-	utils.Log.Info("Local indexing: %d added, %d reconciled, %d removed", addedCount, reconciledCount, removedCount)
+	c.log().Info("Local indexing: %d added, %d reconciled, %d removed", addedCount, reconciledCount, removedCount)
 	return addedCount, reconciledCount, removedCount, nil
 }
 
@@ -683,7 +721,7 @@ func (c *Controller) AnalyzeFavorites(all bool, force bool, progress func(string
 		return err
 	}
 
-	utils.Log.Info("Analyzing favorites: %d items found", len(favorites))
+	c.log().Info("Analyzing favorites: %d items found", len(favorites))
 
 	type job struct {
 		Index  int
@@ -694,7 +732,7 @@ func (c *Controller) AnalyzeFavorites(all bool, force bool, progress func(string
 	jobs := make(chan job, len(favorites))
 	results := make(chan job, len(favorites))
 
-	workers := 5
+	workers := c.getWorkers()
 	var wg sync.WaitGroup
 
 	for i := 0; i < workers; i++ {
@@ -758,7 +796,7 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 
 	// 0. Robust nil checks for Controller and its components
 	if c == nil || c.ColorManager == nil {
-		utils.Log.Error("CRITICAL: Controller or ColorManager is nil in processWallpaperItem for %s.", wp.ID)
+		c.log().Error("CRITICAL: Controller or ColorManager is nil in processWallpaperItem for %s.", wp.ID)
 		if progress != nil {
 			progress(fmt.Sprintf("CRITICAL Error: Controller or ColorManager is nil for %s.", wp.ID))
 		}
@@ -772,14 +810,14 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 	deleteAssociatedFiles := func(wallpaper models.Wallpaper) {
 		// Always delete thumbnail
 		_ = os.Remove(filepath.Join(thumbDir, wallpaper.ID+".jpg"))
-		utils.Log.Info("Deleted thumbnail: %s", filepath.Join(thumbDir, wallpaper.ID+".jpg"))
+		c.log().Info("Deleted thumbnail: %s", filepath.Join(thumbDir, wallpaper.ID+".jpg"))
 
 		// Delete main file ONLY if it's in the cache directory.
 		// We should NEVER delete files from the user's configured wallpaper directory automatically.
 		cacheExpectedPath, _ := c.GetWallpaperLocalPath(wallpaper)
 		if sourceFilePath == cacheExpectedPath { // Only delete if it's the cached version
 			_ = os.Remove(sourceFilePath)
-			utils.Log.Info("Deleted cached wallpaper file: %s", sourceFilePath)
+			c.log().Info("Deleted cached wallpaper file: %s", sourceFilePath)
 		}
 	}
 
@@ -788,9 +826,9 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 	if wp.Path != "" {
 		if _, err := os.Stat(wp.Path); err == nil {
 			sourceFilePath = wp.Path
-			utils.Log.Debug("Wallpaper %s: Using existing wp.Path '%s'.", wp.ID, sourceFilePath)
+			c.log().Debug("Wallpaper %s: Using existing wp.Path '%s'.", wp.ID, sourceFilePath)
 		} else {
-			utils.Log.Debug("Wallpaper %s wp.Path '%s' is invalid or does not exist. Searching for file.", wp.ID, wp.Path)
+			c.log().Debug("Wallpaper %s wp.Path '%s' is invalid or does not exist. Searching for file.", wp.ID, wp.Path)
 		}
 	}
 
@@ -802,7 +840,7 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 				sourceFilePath = path
 				wp.Path = sourceFilePath
 				changed = true
-				utils.Log.Info("Wallpaper %s: Found in collection folder. Using path: %s", wp.ID, sourceFilePath)
+				c.log().Info("Wallpaper %s: Found in collection folder. Using path: %s", wp.ID, sourceFilePath)
 				if progress != nil {
 					progress(fmt.Sprintf("Found %s in collection folder.", wp.ID))
 				}
@@ -818,7 +856,7 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 				sourceFilePath = cachePath
 				wp.Path = sourceFilePath // Update wp.Path to point to the cache
 				changed = true
-				utils.Log.Info("Found wallpaper %s in cache: %s", wp.ID, cachePath)
+				c.log().Info("Found wallpaper %s in cache: %s", wp.ID, cachePath)
 				if progress != nil {
 					progress(fmt.Sprintf("Found %s in cache.", wp.ID))
 				}
@@ -833,7 +871,7 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 		}
 		downloadedPath, err := c.DownloadWallpaper(wp) // This downloads to cache
 		if err != nil {
-			utils.Log.Error("Failed to download %s for analysis: %v", wp.ID, err)
+			c.log().Error("Failed to download %s for analysis: %v", wp.ID, err)
 			if progress != nil {
 				progress(fmt.Sprintf("Error downloading %s for analysis: %v", wp.ID, err))
 			}
@@ -855,12 +893,12 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 	if thumbExists && !force {
 		if _, _, err := c.ColorManager.GetImageDimensions(thumbPath); err != nil {
 			thumbExists = false // Treat as missing to force regeneration
-			utils.Log.Info("Thumbnail for %s is corrupt or invalid. Regenerating...", wp.ID)
+			c.log().Info("Thumbnail for %s is corrupt or invalid. Regenerating...", wp.ID)
 		}
 	}
 
 	if !thumbExists || force { // If thumbnail is missing or we are forcing regeneration
-		utils.Log.Info("Generating thumbnail for %s from %s", wp.ID, sourceFilePath)
+		c.log().Info("Generating thumbnail for %s from %s", wp.ID, sourceFilePath)
 		if progress != nil {
 			progress(fmt.Sprintf("Generating thumbnail for %s", wp.ID))
 		}
@@ -868,7 +906,7 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 		if err == nil {
 			// Check validity immediately after generation
 			if valid, reason := c.isValidImage(w, h, false); !valid { // Solo validar aspect_ratio
-				utils.Log.Info("Removing invalid item %s (resolution %dx%d). Reason: %s", wp.ID, w, h, reason)
+				c.log().Info("Removing invalid item %s (resolution %dx%d). Reason: %s", wp.ID, w, h, reason)
 				if progress != nil {
 					progress(fmt.Sprintf("Removing invalid item %s (resolution %dx%d). Reason: %s", wp.ID, w, h, reason))
 				}
@@ -876,7 +914,7 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 				return wp, false, true
 			}
 
-			utils.Log.Info("Successfully generated thumbnail for %s", wp.ID)
+			c.log().Info("Successfully generated thumbnail for %s", wp.ID)
 			if progress != nil {
 				progress(fmt.Sprintf("Successfully generated thumbnail for %s", wp.ID))
 			}
@@ -890,7 +928,7 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 			}
 			// Color analysis will be done in the next step, or if DownloadWallpaper already did it, it's fine.
 		} else {
-			utils.Log.Error("Failed to generate thumbnail for %s from %s: %v", wp.ID, sourceFilePath, err)
+			c.log().Error("Failed to generate thumbnail for %s from %s: %v", wp.ID, sourceFilePath, err)
 			if progress != nil {
 				progress(fmt.Sprintf("Failed to generate thumbnail for %s: %v", wp.ID, err))
 			}
@@ -921,7 +959,7 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 				changed = true
 			}
 		} else {
-			utils.Log.Error("Failed to analyze color for %s: %v", wp.ID, err)
+			c.log().Error("Failed to analyze color for %s: %v", wp.ID, err)
 			if progress != nil {
 				progress(fmt.Sprintf("Failed to analyze color for %s: %v", wp.ID, err))
 			}
@@ -929,7 +967,7 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 	}
 
 	// 4. Validate image dimensions and aspect ratio
-	utils.Log.Debug("processWallpaperItem: Validating image %s. wp.Dimension='%s'.", wp.ID, wp.Dimension)
+	c.log().Debug("processWallpaperItem: Validating image %s. wp.Dimension='%s'.", wp.ID, wp.Dimension)
 	var validationW, validationH int
 	var validationErr error
 	var validationSource string
@@ -941,7 +979,7 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 			validationW, validationH = w, h
 			validationSource = "original resolution"
 		} else {
-			utils.Log.Error("Failed to parse original dimension '%s' for %s: %v. Attempting to use thumbnail dimensions for aspect ratio check.", wp.Dimension, wp.ID, err)
+			c.log().Error("Failed to parse original dimension '%s' for %s: %v. Attempting to use thumbnail dimensions for aspect ratio check.", wp.Dimension, wp.ID, err)
 			validationW, validationH, validationErr = c.ColorManager.GetImageDimensions(thumbPath)
 			validationSource = "thumbnail resolution (fallback from malformed original dimension)"
 		}
@@ -953,7 +991,7 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 
 	if validationErr == nil {
 		if valid, reason := c.isValidImage(validationW, validationH, false); !valid { // Solo validar aspect_ratio
-			utils.Log.Info("Removing invalid item %s (%s %dx%d). Reason: %s", wp.ID, validationSource, validationW, validationH, reason)
+			c.log().Info("Removing invalid item %s (%s %dx%d). Reason: %s", wp.ID, validationSource, validationW, validationH, reason)
 			if progress != nil {
 				progress(fmt.Sprintf("Removing invalid item %s (%s %dx%d). Reason: %s", wp.ID, validationSource, validationW, validationH, reason))
 			}
@@ -961,7 +999,7 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 			return wp, false, true
 		}
 	} else {
-		utils.Log.Error("Failed to get any dimensions for %s (original or thumbnail): %v. Marking as invalid.", wp.ID, validationErr)
+		c.log().Error("Failed to get any dimensions for %s (original or thumbnail): %v. Marking as invalid.", wp.ID, validationErr)
 		if progress != nil {
 			progress(fmt.Sprintf("Removing invalid item %s (could not determine dimensions for aspect ratio check).", wp.ID))
 		}
@@ -1010,13 +1048,13 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 		newPath := filepath.Join(dir, newFilename)
 		if localPath != newPath {
 			if err := os.Rename(localPath, newPath); err == nil {
-				utils.Log.Info("Renaming local file: %s -> %s", filename, newFilename)
+				c.log().Info("Renaming local file: %s -> %s", filename, newFilename)
 				wp.URL = newPath
 				wp.Path = newPath      // Update wp.Path to the new renamed path
 				wp.Thumbnail = newPath // Update thumbnail path if it was pointing to the old URL
 				changed = true
 			} else {
-				utils.Log.Error("Failed to rename local file %s to %s: %v", localPath, newPath, err)
+				c.log().Error("Failed to rename local file %s to %s: %v", localPath, newPath, err)
 			}
 		}
 	}
@@ -1160,7 +1198,7 @@ func (c *Controller) AddWallpaperToFeed(wallpaper models.Wallpaper) error {
 	if err := c.saveFeed(feed); err != nil {
 		return err
 	}
-	utils.Log.Info("Added wallpaper %s to feed", wallpaper.ID)
+	c.log().Info("Added wallpaper %s to feed", wallpaper.ID)
 	return nil
 }
 
@@ -1227,7 +1265,7 @@ func (c *Controller) AddToBlacklist(id string) error {
 	if err := c.feedManager.WriteJSON(path, blacklist); err != nil {
 		return err
 	}
-	utils.Log.Info("Added wallpaper %s to blacklist", id)
+	c.log().Info("Added wallpaper %s to blacklist", id)
 
 	return c.RebuildColorIndex()
 }
@@ -1260,7 +1298,7 @@ func (c *Controller) RemoveFromBlacklist(id string) error {
 	if err := c.feedManager.WriteJSON(path, newBlacklist); err != nil {
 		return err
 	}
-	utils.Log.Info("Removed wallpaper %s from blacklist", id)
+	c.log().Info("Removed wallpaper %s from blacklist", id)
 
 	return c.RebuildColorIndex()
 }
@@ -1294,7 +1332,7 @@ func (c *Controller) RemoveFromFeed(id string) error {
 	if err := c.saveFeed(newFeed); err != nil {
 		return err
 	}
-	utils.Log.Info("Removed wallpaper %s from feed", id)
+	c.log().Info("Removed wallpaper %s from feed", id)
 	return nil
 }
 
@@ -1310,7 +1348,7 @@ func (c *Controller) DeleteWallpaper(id string, deleteFile bool) error {
 	}
 
 	if err := c.RemoveFromFavorites(id); err != nil {
-		utils.Log.Error("Failed to remove wallpaper %s from favorites: %v", id, err)
+		c.log().Error("Failed to remove wallpaper %s from favorites: %v", id, err)
 	}
 
 	if deleteFile {
@@ -1319,7 +1357,7 @@ func (c *Controller) DeleteWallpaper(id string, deleteFile bool) error {
 			if err := os.Remove(wp.URL); err != nil {
 				return fmt.Errorf("failed to delete local file: %w", err)
 			}
-			utils.Log.Info("Deleted local file: %s", wp.URL)
+			c.log().Info("Deleted local file: %s", wp.URL)
 		} else {
 			// Delete cached file
 			if path, found := c.FindWallpaperCacheFile(*wp); found {
@@ -1365,7 +1403,7 @@ func (c *Controller) RemoveFromFavorites(id string) error {
 		return nil
 	}
 
-	utils.Log.Info("Removed wallpaper %s from favorites", id)
+	c.log().Info("Removed wallpaper %s from favorites", id)
 	return c.feedManager.WriteJSON(favPath, newFavorites)
 }
 
@@ -1412,237 +1450,32 @@ func (c *Controller) getFeedPathString() string {
 
 // GetWallpaperLocalPath returns the expected local path for a wallpaper without downloading it.
 func (c *Controller) GetWallpaperLocalPath(wp models.Wallpaper) (string, error) {
-	appDir, err := GetAppDir()
-	if err != nil {
-		return "", err
-	}
-	cacheDir := filepath.Join(appDir, "cache", "wallpapers")
-
-	// Determine filename
-	// Get extension from URL, ignoring any query parameters
-	urlStr := wp.URL
-	if qIndex := strings.Index(urlStr, "?"); qIndex != -1 {
-		urlStr = urlStr[:qIndex]
-	}
-	ext := filepath.Ext(urlStr)
-
-	if ext == "" {
-		ext = ".jpg" // Default extension
-	}
-
-	safeID := strings.ReplaceAll(wp.ID, "/", "_")
-	filename := fmt.Sprintf("%s%s", safeID, ext)
-	return filepath.Join(cacheDir, filename), nil
+	return c.DownloadService.GetWallpaperLocalPath(wp)
 }
 
 // GetUserWallpaperPath returns the expected path for a wallpaper in the user's configured wallpapers directory.
 func (c *Controller) GetUserWallpaperPath(wp models.Wallpaper) (string, error) {
-	if c.Config.Paths.Wallpapers == "" {
-		return "", fmt.Errorf("user wallpapers directory not configured")
-	}
-
-	// Determine filename logic similar to GetWallpaperLocalPath
-	urlStr := wp.URL
-	if qIndex := strings.Index(urlStr, "?"); qIndex != -1 {
-		urlStr = urlStr[:qIndex]
-	}
-	ext := filepath.Ext(urlStr)
-	if ext == "" {
-		ext = ".jpg" // Default extension
-	}
-
-	safeID := strings.ReplaceAll(wp.ID, "/", "_")
-	filename := fmt.Sprintf("%s%s", safeID, ext)
-	return filepath.Join(c.Config.Paths.Wallpapers, filename), nil
+	return c.DownloadService.GetUserWallpaperPath(wp)
 }
 
 // FindInCollection attempts to find the wallpaper file in the user's configured collection directory.
-// It checks for the standard filename (ID.ext) and tagged versions (ID [d].ext, ID [l].ext).
 func (c *Controller) FindInCollection(wp models.Wallpaper) (string, bool) {
-	if c.Config.Paths.Wallpapers == "" {
-		return "", false
-	}
-
-	// 1. Try exact match with GetUserWallpaperPath (ID.ext)
-	if path, err := c.GetUserWallpaperPath(wp); err == nil {
-		if _, err := os.Stat(path); err == nil {
-			return path, true
-		}
-	}
-
-	// 2. Try with tags [d] or [l]
-	safeID := strings.ReplaceAll(wp.ID, "/", "_")
-
-	// Get extension from URL
-	urlStr := wp.URL
-	if qIndex := strings.Index(urlStr, "?"); qIndex != -1 {
-		urlStr = urlStr[:qIndex]
-	}
-	ext := filepath.Ext(urlStr)
-	if ext == "" {
-		ext = ".jpg"
-	}
-
-	for _, tag := range []string{" [d]", " [l]"} {
-		path := filepath.Join(c.Config.Paths.Wallpapers, safeID+tag+ext)
-		if _, err := os.Stat(path); err == nil {
-			return path, true
-		}
-	}
-
-	return "", false
+	return c.DownloadService.FindInCollection(wp)
 }
 
 // DownloadWallpaper downloads the wallpaper image to the cache directory and returns the local path.
 func (c *Controller) DownloadWallpaper(wp models.Wallpaper) (string, error) {
-	filePath, err := c.GetWallpaperLocalPath(wp)
-	if err != nil {
-		return "", err
-	}
-
-	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
-		return "", err
-	}
-
-	// Check if already exists
-	if _, err := os.Stat(filePath); err == nil {
-		return filePath, nil
-	}
-
-	// Handle local file URL (copy to cache) or HTTP download
-	if !strings.HasPrefix(wp.URL, "http://") && !strings.HasPrefix(wp.URL, "https://") {
-		srcPath := wp.URL
-		if decoded, err := url.QueryUnescape(srcPath); err == nil {
-			srcPath = decoded
-		}
-
-		if _, err := os.Stat(srcPath); err == nil {
-			// Copy file
-			input, err := os.ReadFile(srcPath) //nolint:gosec // Path is constructed internally.
-			if err != nil {
-				return "", err
-			}
-			if err := os.WriteFile(filePath, input, 0644); err != nil {
-				return "", err
-			}
-		} else {
-			return "", fmt.Errorf("unsupported protocol or missing local file: %s", wp.URL)
-		}
-	} else {
-		// Download
-		resp, err := http.Get(wp.URL)
-		if err != nil {
-			return "", err
-		}
-		defer func() { _ = resp.Body.Close() }()
-
-		if resp.StatusCode != http.StatusOK {
-			return "", fmt.Errorf("failed to download wallpaper: status %d", resp.StatusCode)
-		}
-
-		out, err := os.Create(filePath) //nolint:gosec // Path is constructed internally.
-		if err != nil {
-			return "", err
-		}
-		defer func() { _ = out.Close() }()
-
-		_, err = io.Copy(out, resp.Body)
-		if err != nil {
-			return "", err
-		}
-	}
-
-	// Post-download processing
-	// 1. Generate Thumbnail
-	thumbDir := filepath.Join(filepath.Dir(filepath.Dir(filePath)), "thumbs")
-	thumbPath := filepath.Join(thumbDir, wp.ID+".jpg")
-	if _, _, err := c.ColorManager.GenerateThumbnail(filePath, thumbPath); err != nil {
-		utils.Log.Error("Failed to generate thumbnail for %s: %v", wp.ID, err)
-	}
-
-	// 2. Analyze and Index Color
-	_, err = c.ColorManager.AnalyzeColor(filePath)
-	if err != nil {
-		utils.Log.Debug("Color analysis failed/skipped for %s: %v", wp.ID, err)
-	}
-
-	utils.Log.Info("Downloaded wallpaper %s to %s", wp.ID, filePath)
-	return filePath, nil
+	return c.DownloadService.DownloadWallpaper(wp)
 }
 
 // GetCachedWallpapers retrieves wallpapers from feed (and optionally favorites) that are locally cached.
 func (c *Controller) GetCachedWallpapers(includeFavorites bool, theme string) ([]models.Wallpaper, error) {
-	var candidates []models.Wallpaper
-
-	// Load Feed
-	feed, err := c.loadFeed()
-	if err == nil {
-		candidates = append(candidates, feed...)
-	}
-
-	// Load Favorites if requested
-	if includeFavorites {
-		favPath := filepath.Join(filepath.Dir(c.getFeedPathString()), "favorites.json")
-		var favorites []struct {
-			models.Wallpaper
-			Notes string `json:"notes,omitempty"`
-		}
-		if err := c.feedManager.ReadJSON(favPath, &favorites); err == nil {
-			for _, f := range favorites {
-				candidates = append(candidates, f.Wallpaper)
-			}
-		}
-	}
-
-	// Filter
-	var result []models.Wallpaper
-	seen := make(map[string]bool)
-
-	for _, wp := range candidates {
-		if seen[wp.ID] {
-			continue
-		}
-		seen[wp.ID] = true
-
-		// Theme check
-		if theme != "" && theme != "auto" && !strings.EqualFold(wp.Theme, theme) {
-			continue
-		}
-
-		// Cache check
-		path, err := c.GetWallpaperLocalPath(wp)
-		if err != nil {
-			continue
-		}
-		if _, err := os.Stat(path); err == nil {
-			result = append(result, wp)
-		}
-	}
-	return result, nil
+	return c.DownloadService.GetCachedWallpapers(includeFavorites, theme)
 }
 
 // FindWallpaperCacheFile finds the local cache file for a wallpaper, even if it has a bad name.
-// It returns the full path to the file and a boolean indicating if it was found.
 func (c *Controller) FindWallpaperCacheFile(wp models.Wallpaper) (string, bool) {
-	appDir, err := GetAppDir()
-	if err != nil {
-		return "", false
-	}
-	wallpaperCacheDir := filepath.Join(appDir, "cache", "wallpapers")
-	safeID := strings.ReplaceAll(wp.ID, "/", "_")
-
-	// Glob for files starting with the safe ID
-	matches, err := filepath.Glob(filepath.Join(wallpaperCacheDir, safeID+"*"))
-	if err != nil || len(matches) == 0 {
-		// As a fallback, check if the URL is a local file path itself
-		if _, err := os.Stat(wp.URL); err == nil {
-			return wp.URL, true
-		}
-		return "", false
-	}
-
-	// Return the first match. This assumes one wallpaper ID doesn't have multiple cached files.
-	return matches[0], true
+	return c.DownloadService.FindWallpaperCacheFile(wp)
 }
 
 // ParserSearch represents a search session stored in the parser cache.
@@ -1697,7 +1530,7 @@ func (c *Controller) SaveParserSearch(providerName, query string, results []mode
 
 // SyncFeed processes parser cache files and populates the feed.
 func (c *Controller) SyncFeed() (int, int, error) {
-	utils.Log.Info("Starting feed sync...")
+	c.log().Info("Starting feed sync...")
 
 	appDir, err := GetAppDir()
 	if err != nil {
@@ -1724,9 +1557,9 @@ func (c *Controller) SyncFeed() (int, int, error) {
 	var newLocalWallpapers []models.Wallpaper
 
 	if c.Config.Paths.IndexWallpapers {
-		utils.Log.Debug("Local wallpaper indexing is ENABLED (Path: %s)", c.Config.Paths.Wallpapers)
+		c.log().Debug("Local wallpaper indexing is ENABLED (Path: %s)", c.Config.Paths.Wallpapers)
 	} else {
-		utils.Log.Debug("Local wallpaper indexing is DISABLED")
+		c.log().Debug("Local wallpaper indexing is DISABLED")
 	}
 
 	if c.Config.Paths.IndexWallpapers && c.Config.Paths.Wallpapers != "" {
@@ -1734,7 +1567,7 @@ func (c *Controller) SyncFeed() (int, int, error) {
 		var err error
 		addedLocal, _, removedLocal, err = c.indexLocalWallpapers(&feed)
 		if err != nil {
-			utils.Log.Error("Error indexing local wallpapers: %v", err)
+			c.log().Error("Error indexing local wallpapers: %v", err)
 		}
 		if addedLocal > 0 {
 			newLocalWallpapers = feed[prevLen:]
@@ -1822,8 +1655,7 @@ func (c *Controller) SyncFeed() (int, int, error) {
 	}
 
 	// 2. Procesar concurrentemente (Worker Pool)
-	// Limitamos a 5 goroutines para no saturar red/cpu
-	workers := 5
+	workers := c.getWorkers()
 	jobs := make(chan models.Wallpaper, len(candidates))
 	results := make(chan models.Wallpaper, len(candidates))
 	var wg sync.WaitGroup
@@ -1849,7 +1681,7 @@ func (c *Controller) SyncFeed() (int, int, error) {
 					// Validar Ratio antes de continuar
 					// When creating thumbnails, we only validate aspect ratio, not absolute resolution.
 					if valid, reason := c.isValidImage(width, height, false); !valid { // Solo validar aspect_ratio
-						utils.Log.Info("Rejected item %s: dimensions %dx%d do not match aspect ratio criteria. Reason: %s. Removing thumbnail.", wp.ID, width, height, reason)
+						c.log().Info("Rejected item %s: dimensions %dx%d do not match aspect ratio criteria. Reason: %s. Removing thumbnail.", wp.ID, width, height, reason)
 						_ = os.Remove(thumbPath) // Limpiar thumbnail generado
 						continue
 					}
@@ -1887,7 +1719,7 @@ func (c *Controller) SyncFeed() (int, int, error) {
 
 					results <- wp
 				} else {
-					utils.Log.Info("Failed to download/generate thumbnail for %s: %v", wp.ID, err)
+					c.log().Info("Failed to download/generate thumbnail for %s: %v", wp.ID, err)
 				}
 				// Si falla la descarga, no lo agregamos al feed (o podríamos agregarlo sin color)
 			}
@@ -1925,7 +1757,9 @@ func (c *Controller) SyncFeed() (int, int, error) {
 	}
 
 	// Reconstruir colors.json basado en el feed actualizado
-	_ = c.rebuildColorsIndex(feed)
+	if err := c.rebuildColorsIndex(feed); err != nil {
+		c.log().Error("Failed to rebuild color index: %v", err)
+	}
 
 	if addedCount > 0 || repairedCount > 0 || addedLocal > 0 || removedLocal > 0 {
 		// Aplicar Hard Limit (FIFO)
@@ -1935,11 +1769,11 @@ func (c *Controller) SyncFeed() (int, int, error) {
 		}
 		err := c.saveFeed(feed)
 		if err == nil {
-			utils.Log.Info("Feed sync completed. Added: %d (Local: %d), Repaired: %d", addedCount+addedLocal, addedLocal, repairedCount)
+			c.log().Info("Feed sync completed. Added: %d (Local: %d), Repaired: %d", addedCount+addedLocal, addedLocal, repairedCount)
 		}
 		return addedCount + addedLocal, repairedCount, err
 	}
-	utils.Log.Info("Feed sync completed. No changes.")
+	c.log().Info("Feed sync completed. No changes.")
 	return 0, 0, nil
 }
 
@@ -1980,143 +1814,16 @@ func (c *Controller) RebuildColorIndex() error {
 }
 
 func (c *Controller) rebuildColorsIndex(feed []models.Wallpaper) error {
-	appDir, err := GetAppDir()
-	if err != nil {
-		return err
-	}
-	path := filepath.Join(appDir, "data", "colors.json")
-
-	// Collect Feed colors
-	var feedColors []string
-	for _, wp := range feed {
-		if wp.Color != "" {
-			feedColors = append(feedColors, wp.Color)
-		}
-	}
-
-	// Collect Favorites colors
-	favPath := filepath.Join(appDir, "data", "favorites.json")
-	var favorites []struct {
-		models.Wallpaper
-		Notes string `json:"notes,omitempty"`
-	}
-	var favColors []string
-	if err := c.feedManager.ReadJSON(favPath, &favorites); err == nil {
-		for _, fav := range favorites {
-			if fav.Color != "" {
-				favColors = append(favColors, fav.Color)
-			}
-		}
-	}
-
-	// Generate separate palettes
-	feedPalette := c.ColorManager.GenerateDynamicPalette(feedColors, 16)
-	favPalette := c.ColorManager.GenerateDynamicPalette(favColors, 16)
-
-	output := struct {
-		FeedPalette      []string `json:"feed_palette"`
-		FavoritesPalette []string `json:"favorites_palette"`
-	}{
-		FeedPalette:      feedPalette,
-		FavoritesPalette: favPalette,
-	}
-
-	return c.feedManager.WriteJSON(path, output)
+	return c.AnalysisService.rebuildColorsIndex(feed)
 }
 
 // LoadColorPalettes loads the generated palettes from colors.json
 func (c *Controller) LoadColorPalettes() ([]string, []string, error) {
-	appDir, err := GetAppDir()
-	if err != nil {
-		return nil, nil, err
-	}
-	path := filepath.Join(appDir, "data", "colors.json")
-
-	var data struct {
-		FeedPalette      []string `json:"feed_palette"`
-		FavoritesPalette []string `json:"favorites_palette"`
-	}
-
-	if err := c.feedManager.ReadJSON(path, &data); err != nil {
-		return nil, nil, err
-	}
-	return data.FeedPalette, data.FavoritesPalette, nil
+	return c.AnalysisService.LoadColorPalettes()
 }
 
 func (c *Controller) isValidImage(width, height int, checkResolution bool) (bool, string) {
-	utils.Log.Debug("isValidImage: Checking image %dx%d. Parameter checkResolution=%t.", width, height, checkResolution)
-	if c == nil {
-		utils.Log.Debug("isValidImage: Controller is nil, returning true.")
-		return true, ""
-	}
-	if c.Config == nil {
-		utils.Log.Debug("isValidImage: Config is nil, returning true.")
-		return true, ""
-	}
-
-	utils.Log.Debug("isValidImage: Configured min_width=%d, min_height=%d, aspect_ratio='%s', tolerance=%.2f.",
-		c.Config.Search.MinWidth, c.Config.Search.MinHeight, c.Config.Search.AspectRatio, c.Config.Search.Tolerance)
-
-	// Check min_width and min_height only if checkResolution is true
-	if checkResolution && c.Config.Search.MinWidth > 0 && width < c.Config.Search.MinWidth {
-		utils.Log.Debug("isValidImage: Fails min_width check: %d < %d", width, c.Config.Search.MinWidth)
-		return false, fmt.Sprintf("width %d is less than min_width %d", width, c.Config.Search.MinWidth)
-	}
-	if checkResolution && c.Config.Search.MinHeight > 0 && height < c.Config.Search.MinHeight {
-		utils.Log.Debug("isValidImage: Fails min_height check: %d < %d", height, c.Config.Search.MinHeight)
-		return false, fmt.Sprintf("height %d is less than min_height %d", height, c.Config.Search.MinHeight)
-	}
-
-	// If height is 0, we cannot calculate aspect ratio. Treat as invalid.
-	if height == 0 {
-		utils.Log.Debug("isValidImage: Height is 0, cannot calculate aspect ratio.")
-		return false, "height is zero, cannot calculate aspect ratio"
-	}
-
-	if c.Config.Search.AspectRatio == "" {
-		utils.Log.Debug("isValidImage: AspectRatio not configured, skipping aspect ratio check.")
-		return true, ""
-	}
-
-	target := c.Config.Search.AspectRatio
-	var targetRatio float64
-
-	if strings.Contains(target, ":") {
-		parts := strings.Split(target, ":")
-		if len(parts) == 2 {
-			w, err1 := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
-			h, err2 := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
-			if err1 == nil && err2 == nil && h != 0 {
-				utils.Log.Debug("isValidImage: Parsed target aspect ratio '%s' to %.2f (W/H).", target, w/h)
-				targetRatio = w / h
-			} else {
-				utils.Log.Debug("isValidImage: Error parsing target aspect ratio '%s': %v, %v. Returning true.", target, err1, err2)
-				return true, "malformed aspect ratio config" // Malformed aspect ratio config, assume valid
-			}
-		} else {
-			utils.Log.Debug("isValidImage: Malformed target aspect ratio string '%s'. Returning true.", target)
-			return true, "malformed aspect ratio config string" // Malformed aspect ratio config, assume valid
-		}
-	} else {
-		var err error
-		targetRatio, err = strconv.ParseFloat(target, 64)
-		if err != nil {
-			utils.Log.Debug("isValidImage: Error parsing target aspect ratio '%s': %v. Returning true.", target, err)
-			return true, "malformed aspect ratio config" // Malformed aspect ratio config, assume valid
-		}
-		utils.Log.Debug("isValidImage: Parsed target aspect ratio '%s' to %.2f.", target, targetRatio)
-	}
-
-	currentRatio := float64(width) / float64(height) // height is guaranteed > 0 here
-	diff := math.Abs(currentRatio - targetRatio)
-
-	utils.Log.Debug("isValidImage: Checking %dx%d (current ratio %.2f) against target %.2f with tolerance %.2f.", width, height, currentRatio, targetRatio, c.Config.Search.Tolerance)
-	if diff > c.Config.Search.Tolerance {
-		utils.Log.Debug("isValidImage: %dx%d (ratio %.2f) fails aspect ratio check (target %.2f, tolerance %.2f).", width, height, currentRatio, targetRatio, c.Config.Search.Tolerance)
-		return false, fmt.Sprintf("aspect ratio %.2f is not within %.2f tolerance of %s", currentRatio, c.Config.Search.Tolerance, target)
-	}
-	utils.Log.Debug("isValidImage: %dx%d (ratio %.2f) passes aspect ratio check (target %.2f, tolerance %.2f).", width, height, currentRatio, targetRatio, c.Config.Search.Tolerance)
-	return true, ""
+	return c.AnalysisService.isValidImage(width, height, checkResolution)
 }
 
 // GetLastProviderUpdateTime returns the modification time of the most recently updated provider cache file.
@@ -2163,7 +1870,9 @@ func (c *Controller) UpdateWallpaperPath(id, path string) error {
 			}
 		}
 		if changed {
-			_ = c.saveFeed(feed)
+			if err := c.saveFeed(feed); err != nil {
+				c.log().Error("Failed to save feed after updating wallpaper path: %v", err)
+			}
 		}
 	}
 

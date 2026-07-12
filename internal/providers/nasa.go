@@ -1,18 +1,29 @@
 package providers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"gower/internal/utils"
-	"gower/pkg/models"
 	"net/http"
 	"net/url"
 	"strings"
+
+	"gower/internal/utils"
+	"gower/pkg/models"
 )
 
 // NasaProvider implements the Provider interface for NASA APIs.
 type NasaProvider struct {
-	APIKey string
+	APIKey      string
+	RateLimiter *utils.RateLimiter
+	Log         *utils.Logger
+}
+
+func (p *NasaProvider) log() *utils.Logger {
+	if p.Log != nil {
+		return p.Log
+	}
+	return utils.Log
 }
 
 // NewNasaProvider creates a new NasaProvider.
@@ -24,14 +35,14 @@ func (p *NasaProvider) GetName() string {
 	return "nasa"
 }
 
-func (p *NasaProvider) Search(query string, opts SearchOptions) ([]models.Wallpaper, error) {
+func (p *NasaProvider) Search(ctx context.Context, query string, opts SearchOptions) ([]models.Wallpaper, error) {
 	if query == "" {
-		return p.fetchAPOD(opts.Limit, opts.ExcludeIDs)
+		return p.fetchAPOD(ctx, opts.Limit, opts.ExcludeIDs)
 	}
-	return p.searchImageLibrary(query, opts.Limit, opts.ExcludeIDs)
+	return p.searchImageLibrary(ctx, query, opts.Limit, opts.ExcludeIDs)
 }
 
-func (p *NasaProvider) fetchAPOD(limit int, excludeIDs map[string]bool) ([]models.Wallpaper, error) {
+func (p *NasaProvider) fetchAPOD(ctx context.Context, limit int, excludeIDs map[string]bool) ([]models.Wallpaper, error) {
 	if limit <= 0 {
 		limit = 10
 	}
@@ -47,9 +58,16 @@ func (p *NasaProvider) fetchAPOD(limit int, excludeIDs map[string]bool) ([]model
 	}
 	apiURL := fmt.Sprintf("https://api.nasa.gov/planetary/apod?api_key=%s&count=%d", apiKey, count)
 
-	utils.Log.Debug("NASA APOD fetching: %s", apiURL)
+	p.log().Debug("NASA APOD fetching: %s", apiURL)
 
-	resp, err := http.Get(apiURL)
+	if p.RateLimiter != nil {
+		p.RateLimiter.Wait()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := utils.DefaultHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +119,7 @@ func (p *NasaProvider) fetchAPOD(limit int, excludeIDs map[string]bool) ([]model
 	return wallpapers, nil
 }
 
-func (p *NasaProvider) searchImageLibrary(query string, limit int, excludeIDs map[string]bool) ([]models.Wallpaper, error) {
+func (p *NasaProvider) searchImageLibrary(ctx context.Context, query string, limit int, excludeIDs map[string]bool) ([]models.Wallpaper, error) {
 	baseURL := "https://images-api.nasa.gov/search"
 	u, err := url.Parse(baseURL)
 	if err != nil {
@@ -113,9 +131,16 @@ func (p *NasaProvider) searchImageLibrary(query string, limit int, excludeIDs ma
 	q.Set("media_type", "image")
 	u.RawQuery = q.Encode()
 
-	utils.Log.Debug("NASA Image Library fetching: %s", u.String())
+	p.log().Debug("NASA Image Library fetching: %s", u.String())
 
-	resp, err := http.Get(u.String())
+	if p.RateLimiter != nil {
+		p.RateLimiter.Wait()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := utils.DefaultHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
