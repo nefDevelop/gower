@@ -125,6 +125,19 @@ golangci-lint run   # Full lint (requires golangci-lint v2)
 go generate ./...   # Regenerate config code (after model changes)
 ```
 
+## 🔍 Solución de Problemas
+
+### Parpadeo o el fondo no cambia (Wayland/Niri)
+En entornos Wayland como Niri, tener múltiples demonios de fondo (ej. `swww` y `awww`) ejecutándose simultáneamente puede causar conflictos, haciendo que el fondo parpadee o vuelva al anterior inmediatamente.
+
+Gower prioriza los gestores en este orden para Niri:
+1. **Demonio ya activo**: si `awww-daemon` está corriendo, usa `awww`. Si `swww-daemon` está corriendo, usa `swww`.
+2. **Herramientas instaladas**: si ninguno está activo, intenta iniciar `awww` (si está instalado) y luego `swww`.
+
+**Solución**: asegúrate de que solo un demonio de fondo esté activo. Puedes verificarlo con `gower status`, que mostrará una advertencia si detecta múltiples demonios.
+
+---
+
 ## 📄 License / Licencia
 
 MIT

@@ -171,6 +171,12 @@ func runStatus(cmd *cobra.Command, args []string) {
 		w := newTabWriter()
 		_, _ = fmt.Fprintf(w, "Status:\t%s\n", state) // Error check is not critical for CLI output
 		_ = w.Flush()
+
+		// Aviso si hay mas de un demonio de fondo activo: en Wayland/Niri causa
+		// parpadeo o que el fondo vuelva al anterior.
+		if core.IsProcessRunning("swww-daemon") && core.IsProcessRunning("awww-daemon") {
+			cmd.Println(colorize("\nWarning: Both swww-daemon and awww-daemon are running. This may cause wallpaper flickering or conflicts.", colorYellow))
+		}
 		cmd.Println()
 	}
 
@@ -266,6 +272,7 @@ func getSystemStatus() *SystemStatus {
 	deps["niri"] = checkCommand("niri")
 	deps["matugen"] = checkCommand("matugen")
 	deps["swww"] = checkCommand("swww")
+	deps["awww"] = checkCommand("awww")
 
 	return &SystemStatus{
 		OS:           runtime.GOOS,

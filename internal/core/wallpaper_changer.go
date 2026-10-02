@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"gower/internal/utils"
 )
@@ -212,10 +213,26 @@ func (wc *WallpaperChanger) buildCommand(monitor Monitor, path string, index int
 		}
 
 	case "niri":
-		if commandExists("swww") {
+		// Prioriza el demonio ya activo: tener swww y awww a la vez causa parpadeo.
+		if IsProcessRunning("awww-daemon") && commandExists("awww") {
+			return exec.Command("awww", "img", "-o", monitor.Name, path), nil
+		}
+		if IsProcessRunning("swww-daemon") && commandExists("swww") {
 			return exec.Command("swww", "img", "-o", monitor.Name, path), nil
 		}
-		return nil, fmt.Errorf("wallpaper setting for Niri requires 'swww'. Please install it")
+		// Ninguno activo: intenta iniciar uno de los instalados.
+		if commandExists("awww") {
+			startDaemon("awww-daemon")
+			return exec.Command("awww", "img", "-o", monitor.Name, path), nil
+		}
+		if commandExists("swww") {
+			startDaemon("swww-daemon")
+			return exec.Command("swww", "img", "-o", monitor.Name, path), nil
+		}
+		if commandExists("swaybg") {
+			return exec.Command("swaybg", "-o", monitor.Name, "-i", path, "-m", "fill"), nil
+		}
+		return nil, fmt.Errorf("wallpaper setting for Niri requires 'swww', 'awww' or 'swaybg'. Please install one of them")
 
 	case "sway":
 		if monitor.Name != "" && monitor.Name != "default" {
@@ -246,12 +263,31 @@ func commandExists(cmd string) bool {
 	return err == nil
 }
 
-var isProcessRunning = func(processName string) bool {
+// IsProcessRunning checks if a process with the exact given name is running.
+// Exported so other packages (p. ej. cmd/status) can detect daemon conflicts.
+var IsProcessRunning = func(processName string) bool {
 	cmd := exec.Command("pgrep", "-x", processName)
 	if err := cmd.Run(); err == nil {
 		return true
 	}
 	return false
+}
+
+// isProcessRunning mantiene el alias interno para no romper los tests que
+// sustituyen esta variable.
+var isProcessRunning = IsProcessRunning
+
+// startDaemon lanza un demonio de fondo y espera brevemente a que levante, para
+// que la primera invocacion no falle contra un daemon aun sin socket.
+func startDaemon(name string) {
+	if isProcessRunning(name) {
+		return
+	}
+	if err := exec.Command(name).Start(); err != nil {
+		utils.Log.Error("Failed to start %s: %v", name, err)
+		return
+	}
+	time.Sleep(500 * time.Millisecond)
 }
 
 func DetectDesktopEnv() string {
