@@ -158,12 +158,27 @@ func TestExploreAllProviders(t *testing.T) {
 		saveConfig = originalSaveConfig
 	})
 
-	// 1. Mock server para el genérico
+	// 1. Mock server para el genérico, Wallhaven y Bing. La carga es válida
+	// para los tres esquemas a la vez: "data" para Wallhaven e "images" para
+	// Bing y para el proveedor genérico (results-path "images").
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprintln(w, `{"images":[]}`) // No necesitamos resultados, solo que se llame
+		_, _ = fmt.Fprint(w, `{"data":[{"id":"w1","path":"http://example.com/w1.jpg","resolution":"1920x1080","thumbs":{"large":"http://example.com/w1_thumb.jpg"}}],`+
+			`"images":[{"id":"b1","hsh":"b1","url":"/th?id=OHR1_1920x1080.jpg","urlbase":"http://example.com/b1.jpg","copyright":"c","drk":0}]}`)
 	}))
 	defer server.Close()
+
+	// Wallhaven y Bing exponen su URL base, así que se redirigen al mock. Sin
+	// esto el test sale a wallhaven.cc y bing.com de verdad, y falla en CI,
+	// donde ambas bloquean o limitan el tráfico desde IPs de datacenter.
+	originalWallhaven := providers.WallhavenBaseURL
+	originalBing := providers.BingBaseURL
+	t.Cleanup(func() {
+		providers.WallhavenBaseURL = originalWallhaven
+		providers.BingBaseURL = originalBing
+	})
+	providers.WallhavenBaseURL = server.URL
+	providers.BingBaseURL = server.URL
 
 	testRootCmd, _, _ := newTestRootCmd()
 	// 2. Initialize config and add the generic provider via commands
@@ -177,6 +192,10 @@ func TestExploreAllProviders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error loading config from file after adding provider: %v", err)
 	}
+	// Reddit construye sus URLs en línea, sin variable de URL base, así que no
+	// se puede redirigir al mock. Reddit viene habilitado por defecto, de modo
+	// que se desactiva aquí para que el test no dependa de reddit.com.
+	cfgFromFile.Providers.Reddit.Enabled = false
 	loadConfig = func() (*models.Config, error) { return cfgFromFile, nil }
 	saveConfig = func(cfg *models.Config) error { *cfgFromFile = *cfg; return nil } // Ensure saveConfig updates the loaded config
 	mockController := originalNewController(cfgFromFile)                            // Use original NewController to create a real controller
