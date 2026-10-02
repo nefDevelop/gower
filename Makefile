@@ -108,8 +108,8 @@ release:
 	@echo "==> Creando el tag $(RELEASE_VERSION) sobre $(shell git rev-parse --short HEAD)..."
 	git tag -a "$(RELEASE_VERSION)" -m "$(RELEASE_VERSION)"
 	@for remote in $$(git remote); do \
-		echo "==> Publicando $(RELEASE_VERSION) en $(remote)..."; \
-		git push "$(remote)" "$(RELEASE_VERSION)" || exit 1; \
+		echo "==> Publicando $(RELEASE_VERSION) en $$remote..."; \
+		git push "$$remote" "$(RELEASE_VERSION)" || exit 1; \
 	done
 	@echo "==> Listo. La release se publica sola en cuanto el workflow se ejecuta."
 
