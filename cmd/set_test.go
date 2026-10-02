@@ -57,13 +57,16 @@ func TestController_GetWallpaperAndDownload(t *testing.T) {
 }
 
 func TestSetUndoCommand(t *testing.T) {
+	requireRealFactories(t)
+
 	t.Setenv("XDG_CURRENT_DESKTOP", "test")
 	resetSetFlags()
 
 	// Sustituye NewWallpaperChanger para no invocar ajustadores reales:
-	// en un entorno sin Niri/swww/awww el set fallaria.
-	originalNewChanger := core.NewWallpaperChanger
-	defer func() { core.NewWallpaperChanger = originalNewChanger }()
+	// en un entorno sin Niri/swww/awww el set fallaria. Se restaura desde
+	// el snapshot canónico, no desde el valor actual, para no propagar un
+	// stub filtrado por otro test.
+	defer func() { core.NewWallpaperChanger = realNewWallpaperChanger }()
 	core.NewWallpaperChanger = func(desktopEnv string, respectDarkMode ...bool) *core.WallpaperChanger {
 		wc := &core.WallpaperChanger{Env: desktopEnv}
 		wc.SetWallpapersFunc = func(_ []string, _ []core.Monitor, _ string) error { return nil }

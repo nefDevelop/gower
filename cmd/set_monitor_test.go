@@ -64,9 +64,10 @@ func (m *MockSetWallpaperChanger) SetWallpapers(paths []string, monitors []core.
 	return m.MockSetWallpapersError
 }
 
-// Override NewController to return our mock
-var originalSetNewController = core.NewController
-var originalSetNewWallpaperChanger = core.NewWallpaperChanger
+// Override NewController to return our mock. Se apoyan en el snapshot
+// canónico de main_test.go para que restaurar sea independiente del orden.
+var originalSetNewController = realNewController
+var originalSetNewWallpaperChanger = realNewWallpaperChanger
 
 func setupMocks(t *testing.T) (*MockSetController, *MockSetWallpaperChanger) {
 	// Setup temp home for config

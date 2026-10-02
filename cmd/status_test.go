@@ -36,9 +36,11 @@ func (m *MockStatusController) GetWallpaper(id string) (*models.Wallpaper, error
 }
 
 // Override NewController to return our mock
-var originalStatusNewController = core.NewController
+var originalStatusNewController = realNewController
 
 func setupStatusMocks(t *testing.T) (*MockStatusController, func()) {
+	requireRealFactories(t)
+
 	// Setup temp home for config
 	tmpDir, err := os.MkdirTemp("", "gower-test-status")
 	if err != nil {

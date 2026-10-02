@@ -8,7 +8,9 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Fijado a 24.04 en lugar de ubuntu-latest: la etiqueta migrará a Ubuntu 26
+    # el 19-10-2026 (actions/runner-images#14748) y ese cambio no está probado.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
