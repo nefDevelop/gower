@@ -8,6 +8,8 @@ import (
 )
 
 func setupStorageTest(t *testing.T) (string, func()) {
+	resetAllFlags(t)
+
 	tmpDir, err := os.MkdirTemp("", "gower-storage-test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)

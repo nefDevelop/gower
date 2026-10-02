@@ -50,7 +50,7 @@ func TestExploreNativeProvider(t *testing.T) {
 		saveConfig = originalSaveConfig
 	})
 
-	testRootCmd, _, _ := newTestRootCmd()
+	testRootCmd, _, _ := newTestRootCmd(t)
 
 	// Usamos la configuración por defecto que incluye wallhaven
 	executeCommand(testRootCmd, "config", "init")
@@ -104,7 +104,7 @@ func TestExploreGenericProvider(t *testing.T) {
 	}))
 	defer server.Close()
 
-	testRootCmd, _, _ := newTestRootCmd()
+	testRootCmd, _, _ := newTestRootCmd(t)
 	// 2. Initialize config and add the generic provider via commands
 	executeCommand(testRootCmd, "config", "init")
 	_, err := executeCommand(testRootCmd, "config", "provider", "add", "generic_test", server.URL,
@@ -180,7 +180,7 @@ func TestExploreAllProviders(t *testing.T) {
 	providers.WallhavenBaseURL = server.URL
 	providers.BingBaseURL = server.URL
 
-	testRootCmd, _, _ := newTestRootCmd()
+	testRootCmd, _, _ := newTestRootCmd(t)
 	// 2. Initialize config and add the generic provider via commands
 	executeCommand(testRootCmd, "config", "init")
 	_, err := executeCommand(testRootCmd, "config", "provider", "add", "generic_test", server.URL, "--results-path", "images", "--id-path", "id", "--url-path", "url")
@@ -237,7 +237,7 @@ func TestExploreGenericProvider_404(t *testing.T) {
 	}))
 	defer server.Close()
 
-	testRootCmd, _, _ := newTestRootCmd()
+	testRootCmd, _, _ := newTestRootCmd(t)
 
 	// 2. Initialize config and add the generic provider via commands
 	executeCommand(testRootCmd, "config", "init")

@@ -6,6 +6,8 @@ import (
 )
 
 func TestGlobalFlags(t *testing.T) {
+	resetAllFlags(t)
+
 	// Test --version
 	output, err := executeCommand(rootCmd, "--version")
 	if err != nil {

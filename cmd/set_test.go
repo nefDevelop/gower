@@ -112,7 +112,7 @@ func TestSetUndoCommand(t *testing.T) {
 
 	// Execute the undo command and capture output
 	// We need to re-initialize the root command for each test run to avoid state leakage
-	testRootCmd, _, _ := newTestRootCmd()
+	testRootCmd, _, _ := newTestRootCmd(t)
 	output, err := executeCommand(testRootCmd, "set", "undo")
 
 	assert.NoError(t, err)
@@ -123,6 +123,8 @@ func TestSetUndoCommand(t *testing.T) {
 
 // setupTestHomeWithState is a helper for tests that need a pre-configured state.json
 func setupTestHomeWithState(t *testing.T, state *State) (string, func()) {
+	resetAllFlags(t)
+
 	tempDir, err := os.MkdirTemp("", "gower-test-home-")
 	assert.NoError(t, err)
 
@@ -156,29 +158,44 @@ func setupTestHomeWithState(t *testing.T, state *State) (string, func()) {
 	return tempDir, cleanup
 }
 
-// newTestRootCmd creates a fresh instance of the root command for isolated testing.
-func newTestRootCmd() (*cobra.Command, *CLIConfig, *bytes.Buffer) {
-	rootCmd := &cobra.Command{Use: "gower"}
+// newTestRootCmd construye un root temporal sin PersistentPreRun, para que los
+// tests no inicialicen el logger real.
+//
+// Reutiliza los mismos *cobra.Command que rootCmd, y AddCommand les reasigna
+// el campo parent, que es estado global. Si no se restaura, los subcomandos
+// quedan colgando de este root huérfano: un test posterior que ejecute rootCmd
+// los sigue alcanzar, pero al imprimir, cmd.Println sube por la cadena de
+// padres hasta este root, cuyo writer es nil, y escribe a os.Stdout en lugar
+// del buffer del test. El síntoma es una salida vacía sin ningún error.
+func newTestRootCmd(t *testing.T) (*cobra.Command, *CLIConfig, *bytes.Buffer) {
+	tempRoot := &cobra.Command{Use: "gower"}
 	var cfg CLIConfig
 	var out bytes.Buffer
-	rootCmd.SetOut(&out)
-	rootCmd.SetErr(&out)
+	tempRoot.SetOut(&out)
+	tempRoot.SetErr(&out)
 
-	// Add all commands to the new root
-	rootCmd.AddCommand(setCmd)
-	rootCmd.AddCommand(exploreCmd)
-	rootCmd.AddCommand(configCmd)
+	adopted := []*cobra.Command{setCmd, exploreCmd, configCmd}
+	for _, c := range adopted {
+		// Reset output of subcommands to ensure they inherit from tempRoot
+		c.SetOut(nil)
+		c.SetErr(nil)
+		tempRoot.AddCommand(c)
+	}
 
-	// Reset output of subcommands to ensure they inherit from rootCmd
-	setCmd.SetOut(nil)
-	setCmd.SetErr(nil)
-	exploreCmd.SetOut(nil)
-	exploreCmd.SetErr(nil)
-	configCmd.SetOut(nil)
-	configCmd.SetErr(nil)
+	t.Cleanup(func() {
+		for _, c := range adopted {
+			// RemoveCommand quita la entrada de rootCmd y pone parent=nil, así
+			// el AddCommand posterior deja exactamente una copia con el
+			// parent original.
+			rootCmd.RemoveCommand(c)
+			c.SetOut(nil)
+			c.SetErr(nil)
+			rootCmd.AddCommand(c)
+		}
+	})
 
 	// Re-initialize flags for subcommands if necessary
 	// This is a simplified setup. A full setup would re-run all init() functions
 	// or use a factory pattern for commands.
-	return rootCmd, &cfg, &out
+	return tempRoot, &cfg, &out
 }

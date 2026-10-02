@@ -70,6 +70,9 @@ var originalSetNewController = realNewController
 var originalSetNewWallpaperChanger = realNewWallpaperChanger
 
 func setupMocks(t *testing.T) (*MockSetController, *MockSetWallpaperChanger) {
+	requireRealFactories(t)
+	resetAllFlags(t)
+
 	// Setup temp home for config
 	tmpDir, err := os.MkdirTemp("", "gower-test-set-monitor")
 	if err != nil {

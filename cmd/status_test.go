@@ -40,6 +40,7 @@ var originalStatusNewController = realNewController
 
 func setupStatusMocks(t *testing.T) (*MockStatusController, func()) {
 	requireRealFactories(t)
+	resetAllFlags(t)
 
 	// Setup temp home for config
 	tmpDir, err := os.MkdirTemp("", "gower-test-status")

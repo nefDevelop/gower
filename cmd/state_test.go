@@ -11,6 +11,8 @@ import (
 
 // setupStateTest creates a temporary directory for testing.
 func setupStateTest(t *testing.T) (string, func()) {
+	resetAllFlags(t)
+
 	tempDir, err := os.MkdirTemp("", "gower-state-test")
 	assert.NoError(t, err)
 

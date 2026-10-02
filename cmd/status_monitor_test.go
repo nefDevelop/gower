@@ -21,6 +21,8 @@ func (m *MockWallpaperChanger) DetectMonitors() ([]core.Monitor, error) {
 }
 
 func TestStatusMonitors(t *testing.T) {
+	resetAllFlags(t)
+
 	// Save original os.Stdout and restore it after test
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
@@ -32,6 +34,16 @@ func TestStatusMonitors(t *testing.T) {
 	rootCmd.SetOut(w)
 	rootCmd.SetErr(w)
 
+	// Restaurar en t.Cleanup y no con sentencias sueltas mas abajo: si el
+	// test aborta en el t.Fatalf, os.Stdout se quedaba apuntando a un pipe
+	// ya cerrado y todo lo que escribiese a stdout a partir de ahi fallaba.
+	t.Cleanup(func() {
+		os.Stdout = oldStdout
+		rootCmd.SetOut(originalOut)
+		rootCmd.SetErr(originalErr)
+		_ = r.Close()
+	})
+
 	// Create a mock changer
 	mockChanger := &MockWallpaperChanger{
 		MockMonitors: []core.Monitor{
@@ -41,8 +53,10 @@ func TestStatusMonitors(t *testing.T) {
 		MockError: nil,
 	}
 
-	// Temporarily replace core.NewWallpaperChanger to return our mock
-	originalNewWallpaperChanger := core.NewWallpaperChanger
+	// Temporarily replace core.NewWallpaperChanger to return our mock.
+	// Se restaura desde el snapshot canonico: capturar el valor vivo
+	// propagaria un stub filtrado por otro test.
+	originalNewWallpaperChanger := realNewWallpaperChanger
 	core.NewWallpaperChanger = func(desktopEnv string, respectDarkMode ...bool) *core.WallpaperChanger {
 		wc := &core.WallpaperChanger{Env: desktopEnv}
 		wc.DetectMonitorsFunc = func() ([]core.Monitor, error) {
@@ -67,9 +81,6 @@ func TestStatusMonitors(t *testing.T) {
 	_ = w.Close()
 	// Read all output from the read end
 	out, _ := io.ReadAll(r)
-	os.Stdout = oldStdout // Restore original Stdout
-	rootCmd.SetOut(originalOut)
-	rootCmd.SetErr(originalErr)
 
 	output := string(out)
 
@@ -88,6 +99,8 @@ func TestStatusMonitors(t *testing.T) {
 }
 
 func TestStatusMonitorsJSON(t *testing.T) {
+	resetAllFlags(t)
+
 	// Save original os.Stdout and restore it after test
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
@@ -99,6 +112,16 @@ func TestStatusMonitorsJSON(t *testing.T) {
 	rootCmd.SetOut(w)
 	rootCmd.SetErr(w)
 
+	// Restaurar en t.Cleanup y no con sentencias sueltas mas abajo: si el
+	// test aborta en el t.Fatalf, os.Stdout se quedaba apuntando a un pipe
+	// ya cerrado y todo lo que escribiese a stdout a partir de ahi fallaba.
+	t.Cleanup(func() {
+		os.Stdout = oldStdout
+		rootCmd.SetOut(originalOut)
+		rootCmd.SetErr(originalErr)
+		_ = r.Close()
+	})
+
 	// Create a mock changer
 	mockChanger := &MockWallpaperChanger{
 		MockMonitors: []core.Monitor{
@@ -107,8 +130,10 @@ func TestStatusMonitorsJSON(t *testing.T) {
 		MockError: nil,
 	}
 
-	// Temporarily replace core.NewWallpaperChanger to return our mock
-	originalNewWallpaperChanger := core.NewWallpaperChanger
+	// Temporarily replace core.NewWallpaperChanger to return our mock.
+	// Se restaura desde el snapshot canonico: capturar el valor vivo
+	// propagaria un stub filtrado por otro test.
+	originalNewWallpaperChanger := realNewWallpaperChanger
 	core.NewWallpaperChanger = func(desktopEnv string, respectDarkMode ...bool) *core.WallpaperChanger {
 		wc := &core.WallpaperChanger{Env: desktopEnv}
 		wc.DetectMonitorsFunc = func() ([]core.Monitor, error) {
@@ -133,9 +158,6 @@ func TestStatusMonitorsJSON(t *testing.T) {
 	_ = w.Close()
 	// Read all output from the read end
 	out, _ := io.ReadAll(r)
-	os.Stdout = oldStdout // Restore original Stdout
-	rootCmd.SetOut(originalOut)
-	rootCmd.SetErr(originalErr)
 
 	output := string(out)
 

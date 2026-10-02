@@ -26,7 +26,11 @@ jobs:
         run: go vet ./...
 
       - name: Test
-        run: go test ./... -count=1
+        # -shuffle=on baraja la ejecucion para detectar acoplamiento de orden.
+        # Los tests de cmd comparten globals (flags, config, y los *cobra.Command
+        # que newTestRootCmd reparenta), y un test que aborte antes de restaurarlos
+        # rompia al siguiente en silencio. Con el barajado, esa fuga se ve.
+        run: go test ./... -count=1 -shuffle=on
 
       - name: Lint
         uses: golangci/golangci-lint-action@v9
