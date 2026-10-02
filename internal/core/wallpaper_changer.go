@@ -113,13 +113,13 @@ func (wc *WallpaperChanger) applyToMonitors(monitors []Monitor, path string, _ s
 
 		if wc.Env == "dms" {
 			ipcCmd := exec.Command("dms", "ipc", "call", "wallpaper", "setFor", monitor.Name, path)
-			err := ipcCmd.Run()
+			err := runCommand(ipcCmd)
 			if err == nil {
 				continue
 			}
 			wc.log().Info("Warning: DMS IPC call failed (error: %v). Falling back to quickshell.", err)
 			cmd := exec.Command("quickshell", "-w", path)
-			if err := cmd.Run(); err != nil {
+			if err := runCommand(cmd); err != nil {
 				allErrs = append(allErrs, fmt.Errorf("failed to set wallpaper for monitor %s: %w", monitor.Name, err))
 			}
 			continue
@@ -154,7 +154,7 @@ func (wc *WallpaperChanger) applyToMonitor(monitor Monitor, path string, index i
 
 	if wc.Env == "dms" {
 		ipcCmd := exec.Command("dms", "ipc", "call", "wallpaper", "setFor", monitor.Name, path)
-		err := ipcCmd.Run()
+		err := runCommand(ipcCmd)
 		if err == nil {
 			wc.log().Debug("DMS: IPC call successful for monitor %s", monitor.Name)
 			return nil
@@ -174,11 +174,20 @@ func (wc *WallpaperChanger) execCommand(monitor Monitor, path string, index int)
 	if cmd == nil {
 		return nil
 	}
-	if err := cmd.Run(); err != nil {
+	if err := runCommand(cmd); err != nil {
 		return fmt.Errorf("failed to set wallpaper for monitor %s: %w", monitor.Name, err)
 	}
 	return nil
 }
+
+// runCommand ejecuta el comando que fija el wallpaper. Es una costura para que
+// los tests puedan comprobar la construcción del comando y el manejo de errores
+// sin invocarlo: gsettings y dbus-send modificarían el escritorio real del
+// usuario y swaymsg, swaybg, awww o swww llegarían a arrancar procesos.
+var runCommand = func(cmd *exec.Cmd) error { return cmd.Run() }
+
+// startBackgroundProcess lanza un demonio de wallpaper en segundo plano.
+var startBackgroundProcess = func(name string) error { return exec.Command(name).Start() }
 
 func (wc *WallpaperChanger) buildCommand(monitor Monitor, path string, index int) (*exec.Cmd, error) {
 	switch wc.Env {
@@ -208,7 +217,7 @@ func (wc *WallpaperChanger) buildCommand(monitor Monitor, path string, index int
 				return exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri), nil
 			}
 		} else {
-			_ = exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri).Run()
+			_ = runCommand(exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri))
 			return exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri-dark", uri), nil
 		}
 
@@ -258,7 +267,10 @@ func (wc *WallpaperChanger) buildCommand(monitor Monitor, path string, index int
 	}
 }
 
-func commandExists(cmd string) bool {
+// commandExists indica si hay un ejecutable en el PATH. Es una costura porque
+// DetectDesktopEnv decide con ella, y los tests necesitan fijar que ajustadores
+// hay disponibles sin depender de los instalados en la máquina.
+var commandExists = func(cmd string) bool {
 	_, err := exec.LookPath(cmd)
 	return err == nil
 }
@@ -283,7 +295,7 @@ func startDaemon(name string) {
 	if isProcessRunning(name) {
 		return
 	}
-	if err := exec.Command(name).Start(); err != nil {
+	if err := startBackgroundProcess(name); err != nil {
 		utils.Log.Error("Failed to start %s: %v", name, err)
 		return
 	}

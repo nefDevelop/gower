@@ -1,10 +1,55 @@
 package core
 
 import (
+	"errors"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// stubWallpaperExecution sustituye las costuras que acaban tocando el sistema
+// y registra lo que se ejecutaria en su lugar. Sin esto los tests invocan de
+// verdad gsettings, dbus-send, swaymsg, swaybg, nitrogen, dms y quickshell: en
+// un escritorio real eso cambia el wallpaper del usuario, abre nitrogen y deja
+// demonios de awww/swww en segundo plano.
+type stubWallpaperExecution struct {
+	commands []string
+	daemons  []string
+	runErr   error
+}
+
+func (s *stubWallpaperExecution) install(t *testing.T) {
+	t.Helper()
+	origRun, origStart := runCommand, startBackgroundProcess
+	origExists, origIsProc, origIsRunning := commandExists, isProcessRunning, IsProcessRunning
+
+	t.Cleanup(func() {
+		runCommand, startBackgroundProcess = origRun, origStart
+		commandExists, isProcessRunning, IsProcessRunning = origExists, origIsProc, origIsRunning
+	})
+
+	runCommand = func(cmd *exec.Cmd) error {
+		s.commands = append(s.commands, cmd.Path+" "+strings.Join(cmd.Args[1:], " "))
+		return s.runErr
+	}
+	startBackgroundProcess = func(name string) error {
+		s.daemons = append(s.daemons, name)
+		return nil
+	}
+	commandExists = func(string) bool { return true }
+	isProcessRunning = func(string) bool { return false }
+	IsProcessRunning = func(string) bool { return false }
+}
+
+func (s *stubWallpaperExecution) binaries() []string {
+	out := make([]string, 0, len(s.commands))
+	for _, c := range s.commands {
+		out = append(out, filepath.Base(strings.Fields(c)[0]))
+	}
+	return out
+}
 
 func TestNewWallpaperChanger_Manual(t *testing.T) {
 	wc := NewWallpaperChanger("kde")
@@ -50,41 +95,122 @@ func TestDetectDesktopEnv(t *testing.T) {
 }
 
 // This test is limited because it can't actually execute the commands.
-// It mainly checks that the function doesn't panic and returns an error
-// when the respective command is not found.
+// Comprueba que cada entorno construye el comando correcto y que SetWallpapers
+// propaga el error del ejecutor, sin lanzar nada real.
 func TestSetWallpaper(t *testing.T) {
-	// Create a dummy file to act as the wallpaper
-	tmpfile, err := os.CreateTemp("", "wallpaper.*.jpg")
-	if err != nil {
-		t.Fatalf("Failed to create temp file: %v", err)
+	wallpaper := filepath.Join(t.TempDir(), "wallpaper.jpg")
+	if err := os.WriteFile(wallpaper, []byte("dummy"), 0644); err != nil {
+		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name())
-	_ = tmpfile.Close()
 
-	testCases := []string{"kde", "gnome", "feh", "nitrogen", "sway", "niri", "dms", "swww", "awww", "unsupported"}
+	// Entorno -> binario que se espera ejecutar. Con DetectMonitorsFunc fija a
+	// un unico monitor llamado, el resultado no depende de los monitores que la
+	// maquina tenga realmente (hyprctl, swaymsg o xrandr).
+	monitors := []Monitor{{ID: "eDP-1", Name: "eDP-1", Width: 1920, Height: 1080, Primary: true}}
+
+	testCases := []struct {
+		env     string
+		wantBin string
+	}{
+		{env: "kde", wantBin: "dbus-send"},
+		{env: "gnome", wantBin: "gsettings"},
+		{env: "feh", wantBin: "feh"},
+		{env: "nitrogen", wantBin: "nitrogen"},
+		{env: "sway", wantBin: "swaymsg"},
+		{env: "niri", wantBin: "awww"},
+		{env: "dms", wantBin: "dms"},
+		{env: "swww", wantBin: "swww"},
+		{env: "awww", wantBin: "awww"},
+	}
 
 	for _, tc := range testCases {
-		t.Run(tc, func(t *testing.T) {
-			wc := NewWallpaperChanger(tc)
-			err := wc.SetWallpapers([]string{tmpfile.Name()}, []Monitor{}, "clone")
+		t.Run(tc.env, func(t *testing.T) {
+			stub := &stubWallpaperExecution{}
+			stub.install(t)
 
-			if tc == "unsupported" {
-				if err == nil {
-					t.Errorf("Expected an error for unsupported environment, but got nil")
-				}
-				if !strings.Contains(err.Error(), "unsupported") {
-					t.Errorf("Expected error message to contain 'unsupported', got '%s'", err.Error())
-				}
-			} else {
-				// In a CI environment, we expect these commands to fail.
-				// A nil error would only happen if the command exists and runs successfully.
-				// So, we are checking that it at least tries to run a command.
-				if err == nil {
-					t.Logf("Warning: SetWallpaper for '%s' succeeded. This might be unexpected in a test environment.", tc)
-				}
+			wc := NewWallpaperChanger(tc.env)
+			wc.DetectMonitorsFunc = func() ([]Monitor, error) { return monitors, nil }
+			if err := wc.SetWallpapers([]string{wallpaper}, monitors, "clone"); err != nil {
+				t.Fatalf("SetWallpapers devolvio error inesperado: %v", err)
+			}
+			if len(stub.commands) == 0 {
+				t.Fatalf("Se esperaba algun comando para '%s', no se ejecuto ninguno", tc.env)
+			}
+			if got := stub.binaries(); !contains(got, tc.wantBin) {
+				t.Errorf("Se esperaba ejecutar '%s', se ejecutaron %v", tc.wantBin, got)
 			}
 		})
 	}
+
+	t.Run("unsupported", func(t *testing.T) {
+		stub := &stubWallpaperExecution{}
+		stub.install(t)
+
+		wc := NewWallpaperChanger("unsupported")
+		err := wc.SetWallpapers([]string{wallpaper}, []Monitor{{Name: "eDP-1"}}, "clone")
+		if err == nil {
+			t.Fatal("Se esperaba un error para un entorno no soportado")
+		}
+		if !strings.Contains(err.Error(), "unsupported") {
+			t.Errorf("Se esperaba 'unsupported' en el error, se obtuvo '%s'", err)
+		}
+		if len(stub.commands) != 0 {
+			t.Errorf("No deberia ejecutar nada, ejecuto %v", stub.commands)
+		}
+	})
+
+	t.Run("propaga error del ejecutor", func(t *testing.T) {
+		stub := &stubWallpaperExecution{runErr: os.ErrPermission}
+		stub.install(t)
+
+		wc := NewWallpaperChanger("swww")
+		wc.DetectMonitorsFunc = func() ([]Monitor, error) {
+			return []Monitor{{Name: "eDP-1"}}, nil
+		}
+		err := wc.SetWallpapers([]string{wallpaper}, []Monitor{{Name: "eDP-1"}}, "clone")
+		if err == nil {
+			t.Fatal("Se esperaba propagar el error del ejecutor")
+		}
+		// applyToMonitors agrega con %v, no con %w, asi que el error no queda
+		// envuelto para errors.Is: solo se puede comprobar el mensaje.
+		if !strings.Contains(err.Error(), os.ErrPermission.Error()) {
+			t.Errorf("Se esperaba mencionar '%s', se obtuvo %v", os.ErrPermission, err)
+		}
+	})
+}
+
+// El entorno niri arranca un demonio si no hay ninguno activo. Con las costuras
+// puesta debe registrarlos, no lanzarlos.
+func TestSetWallpaper_NiriStartsDaemon(t *testing.T) {
+	stub := &stubWallpaperExecution{}
+	stub.install(t)
+
+	wallpaper := filepath.Join(t.TempDir(), "wallpaper.jpg")
+	if err := os.WriteFile(wallpaper, []byte("dummy"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	monitors := []Monitor{{ID: "eDP-1", Name: "eDP-1"}}
+	wc := NewWallpaperChanger("niri")
+	wc.DetectMonitorsFunc = func() ([]Monitor, error) { return monitors, nil }
+	if err := wc.SetWallpapers([]string{wallpaper}, monitors, "clone"); err != nil {
+		t.Fatalf("SetWallpapers devolvio error inesperado: %v", err)
+	}
+	if len(stub.daemons) != 1 || stub.daemons[0] != "awww-daemon" {
+		t.Errorf("Se esperaba arrancar 'awww-daemon', se arranco %v", stub.daemons)
+	}
+	if !contains(stub.binaries(), "awww") {
+		t.Errorf("Se esperaba ejecutar 'awww', se ejecutaron %v", stub.binaries())
+	}
+}
+
+func contains(haystack []string, needle string) bool {
+	for _, s := range haystack {
+		if s == needle {
+			return true
+		}
+	}
+	return false
 }
 
 func TestBuildCommand(t *testing.T) {
@@ -187,15 +313,19 @@ func TestBuildCommand_SwayDefaultMonitor(t *testing.T) {
 	}
 }
 
+// applyToMonitor no delega en SetWallpapersFunc: lanza la IPC de dms y, si esta
+// falla, cae a quickshell. Con runCommand sustituido se comprueba que se intenta
+// la IPC y que su fallo no se propaga, sin tocar el compositor real.
 func TestApplyToMonitor_DMS_Fallback(t *testing.T) {
-	wc := NewWallpaperChanger("dms")
+	stub := &stubWallpaperExecution{runErr: errors.New("dms no disponible")}
+	stub.install(t)
 
-	// applyToMonitor no delega en SetWallpapersFunc: lanza la IPC de dms y, si
-	// esta falla porque dms no está instalado, cae a quickshell y devuelve nil.
-	// Por eso aquí solo se verifica que no se propaga el fallo.
-	err := wc.applyToMonitor(Monitor{Name: "eDP-1"}, "/tmp/wp.jpg", 0)
-	if err != nil {
-		t.Logf("Expected possible error (DMS not installed): %v", err)
+	wc := NewWallpaperChanger("dms")
+	if err := wc.applyToMonitor(Monitor{Name: "eDP-1"}, "/tmp/wp.jpg", 0); err != nil {
+		t.Errorf("applyToMonitor no deberia propagar el fallo de la IPC: %v", err)
+	}
+	if !contains(stub.binaries(), "dms") {
+		t.Errorf("Se esperaba la IPC de dms, se ejecutaron %v", stub.binaries())
 	}
 }
 
