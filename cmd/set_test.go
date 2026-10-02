@@ -59,6 +59,20 @@ func TestController_GetWallpaperAndDownload(t *testing.T) {
 func TestSetUndoCommand(t *testing.T) {
 	t.Setenv("XDG_CURRENT_DESKTOP", "test")
 	resetSetFlags()
+
+	// Sustituye NewWallpaperChanger para no invocar ajustadores reales:
+	// en un entorno sin Niri/swww/awww el set fallaria.
+	originalNewChanger := core.NewWallpaperChanger
+	defer func() { core.NewWallpaperChanger = originalNewChanger }()
+	core.NewWallpaperChanger = func(desktopEnv string, respectDarkMode ...bool) *core.WallpaperChanger {
+		wc := &core.WallpaperChanger{Env: desktopEnv}
+		wc.SetWallpapersFunc = func(_ []string, _ []core.Monitor, _ string) error { return nil }
+		wc.DetectMonitorsFunc = func() ([]core.Monitor, error) {
+			return []core.Monitor{{Name: "test-monitor"}}, nil
+		}
+		return wc
+	}
+
 	_, cleanup := setupTestHomeWithState(t, &State{
 		CurrentWallpaperID:  "current-wp",
 		PreviousWallpaperID: "previous-wp",
