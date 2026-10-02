@@ -42,7 +42,7 @@ endif
 
 # --- Objetivos ---
 
-.PHONY: all build build-linux build-windows build-all test test-integration lint generate clean help
+.PHONY: all build build-linux build-windows build-all test test-integration lint generate release clean help
 
 all: build
 
@@ -86,6 +86,33 @@ generate:
 	@echo "==> Regenerando código generado..."
 	go generate ./...
 
+## release: Crea el tag de versión y lo publica en todos los remotos
+# El workflow .github/workflows/release.yml se dispara al pushear un tag v*,
+# compila los binarios y publica la release. Uso: make release RELEASE_VERSION=v0.2.0
+release:
+	@if [ -z "$(strip $(RELEASE_VERSION))" ]; then \
+		echo "==> ERROR: falta la versión. Uso: make release RELEASE_VERSION=v0.2.0"; \
+		exit 1; \
+	fi
+	@case "$(RELEASE_VERSION)" in v*) ;; \
+		*) echo "==> ERROR: la versión debe empezar por 'v' (ej. v0.2.0)"; exit 1 ;; \
+	esac
+	@if [ -n "$$(git status --porcelain)" ]; then \
+		echo "==> ERROR: el árbol de trabajo tiene cambios sin commitear:"; \
+		git status --short; \
+		exit 1; \
+	fi
+	@if git rev-parse -q --verify "refs/tags/$(RELEASE_VERSION)" >/dev/null; then \
+		echo "==> ERROR: el tag $(RELEASE_VERSION) ya existe"; exit 1; \
+	fi
+	@echo "==> Creando el tag $(RELEASE_VERSION) sobre $(shell git rev-parse --short HEAD)..."
+	git tag -a "$(RELEASE_VERSION)" -m "$(RELEASE_VERSION)"
+	@for remote in $$(git remote); do \
+		echo "==> Publicando $(RELEASE_VERSION) en $(remote)..."; \
+		git push "$(remote)" "$(RELEASE_VERSION)" || exit 1; \
+	done
+	@echo "==> Listo. La release se publica sola en cuanto el workflow se ejecuta."
+
 ## clean: Elimina los binarios y el directorio de distribución
 clean:
 	@echo "==> Limpiando artefactos..."
@@ -93,12 +120,12 @@ clean:
 	@$(RM_DIST) $(NULL_OUTPUT) || true
 
 ## help: Muestra esta ayuda
+# Los comentarios van en la linea anterior al target, asi que se listan las
+# lineas "## " y no los targets. Antes se buscaban los targets con un "## " en
+# la misma linea, patron que no existe en este Makefile: el grep no encontraba
+# nada y, como awk terminaba bien, la lista de respaldo nunca se imprimia.
 help:
 	@echo "Objetivos disponibles:"
 	@echo ""
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' || \
-	(echo "  build           - Compila para el OS actual" && \
-	 echo "  build-linux     - Compila para Linux" && \
-	 echo "  build-windows   - Compila para Windows" && \
-	 echo "  test            - Ejecuta tests" && \
-	 echo "  clean           - Limpia binarios")
+	@grep -E '^## [a-zA-Z_-]+:' $(MAKEFILE_LIST) | sed -e 's/^## //' | sort | \
+		awk 'BEGIN {FS = ":"}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, substr($$0, index($$0, ":") + 1)}' 

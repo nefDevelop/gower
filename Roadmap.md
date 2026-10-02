@@ -20,7 +20,7 @@ Cada fase puede entregarse de forma independiente.
 
 | # | Tarea | Archivos afectados | Esfuerzo |
 |---|-------|--------------------|----------|
-| 2.1 | Dividir `controller.go` (2189 líneas) en servicios | `internal/core/` | 8-12h |
+| ~~2.1~~ | ~~Dividir `controller.go` (2189 líneas) en servicios~~ **Hecho** en `1a63e38` | `internal/core/` | 8-12h |
 | | - Extraer `FeedService` (feed CRUD, cache, sync) | | |
 | | - Extraer `DownloadService` (download, validación) | | |
 | | - Extraer `AnalysisService` (análisis de color, thumbnails) | | |
@@ -37,7 +37,7 @@ Cada fase puede entregarse de forma independiente.
 |---|-------|--------------------|----------|
 | 3.1 | Migrar de `utils.Log` global a dependency injection | `internal/utils/logger.go`, `internal/core/`, `cmd/`, `internal/providers/` | 3-4h |
 | 3.2 | Tests para controller (cubrir sync, analyze, indexación) | `internal/core/controller_test.go` | 6-8h |
-| 3.3 | Tests para wallpaper_changer (mock DE commands) | `internal/core/wallpaper_changer_test.go` | 3-4h |
+| ~~3.3~~ | ~~Tests para wallpaper_changer (mock DE commands)~~ **Hecho** en `e4d48e7` | `internal/core/wallpaper_changer_test.go` | 3-4h |
 | 3.4 | CI/CD: GitHub Actions con lint + test | `.github/workflows/ci.yml` | 2h |
 | 3.5 | Configurar `golangci-lint` formalmente | `.golangci.yml` | 1h |
 
