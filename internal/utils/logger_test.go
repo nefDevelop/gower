@@ -48,9 +48,10 @@ func TestInitLogger_FileCreation(t *testing.T) {
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Temporarily override user home directory
-	originalHome := os.Getenv("HOME")
-	_ = os.Setenv("HOME", tmpDir)
-	defer func() { _ = os.Setenv("HOME", originalHome) }()
+	t.Setenv("HOME", tmpDir)
+	// os.UserConfigDir() da prioridad a XDG_CONFIG_HOME sobre HOME: sin
+	// neutralizarlo el test opera sobre el config dir real.
+	t.Setenv("XDG_CONFIG_HOME", "")
 
 	// Reset global logger after test
 	defer func() { Log = nil }()

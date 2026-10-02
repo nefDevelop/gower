@@ -28,6 +28,9 @@ func setupTestHome(t *testing.T) string {
 	t.Setenv("HOME", tmpDir)
 	// For Windows compatibility
 	t.Setenv("USERPROFILE", tmpDir)
+	// os.UserConfigDir() da prioridad a XDG_CONFIG_HOME sobre HOME, así que
+	// hay que neutralizarlo o el test opera sobre el config dir real.
+	t.Setenv("XDG_CONFIG_HOME", "")
 	return tmpDir
 }
 
@@ -40,6 +43,7 @@ func setupTestEnv(t *testing.T) string {
 		t.Setenv("APPDATA", tmpDir)
 	} else {
 		t.Setenv("HOME", tmpDir)
+		t.Setenv("USERPROFILE", tmpDir)
 	}
 	// Asegurarse de que XDG_CONFIG_HOME no esté establecido, para que se use el fallback a HOME/.config.
 	t.Setenv("XDG_CONFIG_HOME", "")

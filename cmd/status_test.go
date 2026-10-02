@@ -45,7 +45,10 @@ func setupStatusMocks(t *testing.T) (*MockStatusController, func()) {
 		t.Fatal(err)
 	}
 	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
+	t.Setenv("HOME", tmpDir)
+	// os.UserConfigDir() da prioridad a XDG_CONFIG_HOME sobre HOME: sin
+	// neutralizarlo el test leería y escribiría en el config dir real.
+	t.Setenv("XDG_CONFIG_HOME", "")
 
 	// Create config file
 	configDir := filepath.Join(tmpDir, ".gower")
@@ -62,6 +65,12 @@ func setupStatusMocks(t *testing.T) (*MockStatusController, func()) {
 		mockController.Controller = *realCtrl
 		return &mockController.Controller
 	}
+
+	// Inicializa el Controller embebido de inmediato. Si se deja para el
+	// closure de arriba, cualquier llamada a un método suyo anterior a la
+	// primera invocación de core.NewController opera sobre el valor cero y
+	// revienta con un nil de feedManager.
+	mockController.Controller = *originalStatusNewController(&models.Config{})
 
 	// We don't mock loadConfig/loadState because the tests need to write/read them
 	// from the temp directory. We only mock saveState to prevent test pollution.

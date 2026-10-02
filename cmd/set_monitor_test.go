@@ -75,7 +75,10 @@ func setupMocks(t *testing.T) (*MockSetController, *MockSetWallpaperChanger) {
 		t.Fatal(err)
 	}
 	originalHome := os.Getenv("HOME")
-	_ = os.Setenv("HOME", tmpDir)
+	t.Setenv("HOME", tmpDir)
+	// os.UserConfigDir() da prioridad a XDG_CONFIG_HOME sobre HOME: sin
+	// neutralizarlo el test leería y escribiría en el config dir real.
+	t.Setenv("XDG_CONFIG_HOME", "")
 
 	// Create config file
 	configDir := filepath.Join(tmpDir, ".gower")

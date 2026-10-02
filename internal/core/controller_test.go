@@ -21,6 +21,9 @@ func setupTestHome(t *testing.T) string {
 	}
 	t.Setenv("HOME", tmpDir)
 	t.Setenv("USERPROFILE", tmpDir) // Windows
+	// os.UserConfigDir() da prioridad a XDG_CONFIG_HOME sobre HOME: sin
+	// neutralizarlo el test opera sobre el config dir real.
+	t.Setenv("XDG_CONFIG_HOME", "")
 
 	// Create data directory
 	if err := os.MkdirAll(filepath.Join(tmpDir, ".config", "gower", "data"), 0755); err != nil {

@@ -13,7 +13,10 @@ func setupStorageTest(t *testing.T) (string, func()) {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 
-	os.Setenv("HOME", tmpDir)
+	t.Setenv("HOME", tmpDir)
+	// os.UserConfigDir() da prioridad a XDG_CONFIG_HOME sobre HOME: si no se
+	// neutraliza, el test lee y escribe en el config dir real del usuario.
+	t.Setenv("XDG_CONFIG_HOME", "")
 	baseDir := filepath.Join(tmpDir, ".config", "gower") // Use standard path
 	_ = os.MkdirAll(filepath.Join(baseDir, "data"), 0755)
 

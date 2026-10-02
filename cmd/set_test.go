@@ -125,6 +125,9 @@ func setupTestHomeWithState(t *testing.T, state *State) (string, func()) {
 
 	originalHome := os.Getenv("HOME")
 	t.Setenv("HOME", tempDir)
+	// os.UserConfigDir() da prioridad a XDG_CONFIG_HOME sobre HOME: sin
+	// neutralizarlo el test leería y escribiría en el config dir real.
+	t.Setenv("XDG_CONFIG_HOME", "")
 
 	// Create .gower dir and write state
 	gowerDir := filepath.Join(tempDir, ".gower")

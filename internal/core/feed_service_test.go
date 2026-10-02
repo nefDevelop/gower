@@ -14,6 +14,9 @@ func setupFeedService(t *testing.T) (*FeedService, string) {
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpDir)
 	t.Setenv("USERPROFILE", tmpDir)
+	// os.UserConfigDir() da prioridad a XDG_CONFIG_HOME sobre HOME: sin
+	// neutralizarlo el test opera sobre el config dir real.
+	t.Setenv("XDG_CONFIG_HOME", "")
 
 	dataDir := filepath.Join(tmpDir, ".config", "gower", "data")
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
