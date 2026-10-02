@@ -5,7 +5,6 @@ type Config struct {
 	GenericProviders []GenericProviderConfig `json:"generic_providers"`
 	Search           SearchConfig            `json:"search"`
 	Behavior         BehaviorConfig          `json:"behavior"`
-	Power            PowerConfig             `json:"power"`
 	Paths            PathsConfig             `json:"paths"`
 	UI               UIConfig                `json:"ui"`
 	Limits           LimitsConfig            `json:"limits"`
@@ -86,22 +85,14 @@ type BehaviorConfig struct {
 	FromFavorites         bool   `json:"from_favorites"`
 }
 
-type PowerConfig struct {
-	BatteryMultiplier   int  `json:"battery_multiplier"`
-	PauseOnLowBattery   bool `json:"pause_on_low_battery"`
-	LowBatteryThreshold int  `json:"low_battery_threshold"`
-}
-
 type PathsConfig struct {
 	Wallpapers      string `json:"wallpapers"`
-	UseSystemDir    bool   `json:"use_system_dir"`
 	IndexWallpapers bool   `json:"index_wallpapers"`
 }
 
 type UIConfig struct {
 	ShowColors   bool `json:"show_colors"`
 	ItemsPerPage int  `json:"items_per_page"`
-	ImagePreview bool `json:"image_preview"`
 }
 
 type LimitsConfig struct {

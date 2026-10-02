@@ -84,6 +84,11 @@ var favoritesListCmd = &cobra.Command{
 		}
 
 		// Pagination
+		// ui.items_per_page actúa como default de --limit, salvo que el usuario
+		// lo fije explícitamente en la línea de comandos.
+		if !cmd.Flags().Changed("limit") && cfg.UI.ItemsPerPage > 0 {
+			favLimit = cfg.UI.ItemsPerPage
+		}
 		start := (favPage - 1) * favLimit
 		if start >= len(favorites) {
 			start = len(favorites)
@@ -100,7 +105,14 @@ var favoritesListCmd = &cobra.Command{
 			cmd.Println(string(data))
 		} else {
 			for _, fav := range pageItems {
-				cmd.Printf("ID: %s, URL: %s, Source: %s, Notes: %s\n", fav.ID, fav.URL, fav.Source, fav.Notes)
+				// El color solo se muestra si hay datos y la configuracion lo pide:
+				// el analisis de colores lo rellena, pero los favoritos anadidos
+				// a mano pueden no tenerlo.
+				color := ""
+				if cfg.UI.ShowColors && fav.Color != "" {
+					color = fmt.Sprintf(", Color: %s", fav.Color)
+				}
+				cmd.Printf("ID: %s, URL: %s, Source: %s, Notes: %s%s\n", fav.ID, fav.URL, fav.Source, fav.Notes, color)
 			}
 		}
 	},

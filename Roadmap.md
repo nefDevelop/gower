@@ -51,6 +51,32 @@ Cada fase puede entregarse de forma independiente.
 | 4.4 | Estandarizar idioma a inglés (comentarios, errores) | Todo el código | 3-4h |
 | 4.5 | README bilingüe (español + inglés) | `README.md` | 2h |
 
+## Fase 4.5: Claves de config retiradas (Nuevas)
+
+Estas claves existen en el modelo y se pueden fijar con `config set`, pero no las
+consumía ningún código: aceptar una preferencia y no hacer nada es peor que
+rechazarla. Se han retirado del modelo; si alguien las tenía guardadas,
+`config get`/`config set` ahora las rechaza en vez de fingir.
+
+| # | Tarea | Descripción | Esfuerzo |
+|---|-------|-------------|----------|
+| R.1 | `power.*` → pausa y ralentiza con batería baja | Detección de batería por plataforma (`/sys/class/power_supply` en Linux, WMI/`powercfg` en Windows) y multiplicador sobre `controlTicker` en el bucle del daemon | 6-8h |
+| R.2 | `ui.image_preview` → vista previa en la terminal | Protocolo de imagen en terminal (Sixel / Kitty / iTerm), con detección de terminal y fallback a no previsualizar | 8-12h |
+| R.3 | `paths.use_system_dir` → indexar fondos del sistema | Ver notas abajo: requiere recursión, IDs por ruta, y filtrar los ficheros que no son wallpapers | 6-10h |
+
+**Notas de R.3**, por si se retoma:
+
+- `indexLocalWallpapers` usa `os.ReadDir` sin recursión y salta los
+  directorios, así que en `/usr/share/backgrounds` (que solo contiene
+  subdirectorios) no encontraría nada sin recursión.
+- El ID se deriva del basename, así que al recursionar habría colisiones entre
+  directorios.
+- La lógica marca para eliminar todo `Source == "local"` que no encuentre, de
+  modo que desactivar la opción borraría del feed lo indexado del sistema.
+- Muchos ficheros de `/usr/share/backgrounds` no son wallpapers: en Fedora,
+  `gnome/vnc-d.png` y `vnc-l.png` son iconos de conectividad de VNC. Hace
+  falta un criterio para distinguirlos, y eso es decisión de producto.
+
 ## Fase 5: Visión (Futuro)
 
 | # | Tarea | Descripción | Esfuerzo |

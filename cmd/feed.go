@@ -79,6 +79,12 @@ var feedShowCmd = &cobra.Command{
 			cmd.Println("Refreshing feed view...")
 		}
 
+		// ui.items_per_page actúa como default de --limit, salvo que el usuario
+		// lo fije explícitamente en la línea de comandos.
+		if !cmd.Flags().Changed("limit") && cfg.UI.ItemsPerPage > 0 {
+			feedLimit = cfg.UI.ItemsPerPage
+		}
+
 		// Mostrar feed normal
 		wallpapers, err := controller.GetFeed(feedPage, feedLimit, "", feedTheme, feedColor, feedSort, feedRefresh)
 		if err != nil {

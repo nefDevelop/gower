@@ -40,15 +40,10 @@ func ListConfigPaths() []ConfigPathEntry {
 		{Path: "behavior.respect_dark_mode", Type: "bool"},
 		{Path: "behavior.save_favorites_to_folder", Type: "bool"},
 		{Path: "behavior.from_favorites", Type: "bool"},
-		{Path: "power.battery_multiplier", Type: "int"},
-		{Path: "power.pause_on_low_battery", Type: "bool"},
-		{Path: "power.low_battery_threshold", Type: "int"},
 		{Path: "paths.wallpapers", Type: "string"},
-		{Path: "paths.use_system_dir", Type: "bool"},
 		{Path: "paths.index_wallpapers", Type: "bool"},
 		{Path: "ui.show_colors", Type: "bool"},
 		{Path: "ui.items_per_page", Type: "int"},
-		{Path: "ui.image_preview", Type: "bool"},
 		{Path: "limits.feed_soft_limit", Type: "int"},
 		{Path: "limits.feed_hard_limit", Type: "int"},
 		{Path: "limits.rate_limit_requests", Type: "int"},
@@ -201,36 +196,8 @@ func SetConfigValue(cfg *Config, path string, value string) error {
 		}
 		cfg.Behavior.FromFavorites = v
 		return nil
-	case "power.battery_multiplier":
-		v, err := strconv.Atoi(value)
-		if err != nil {
-			return fmt.Errorf("invalid value for %s: %v", path, err)
-		}
-		cfg.Power.BatteryMultiplier = v
-		return nil
-	case "power.pause_on_low_battery":
-		v, err := strconv.ParseBool(value)
-		if err != nil {
-			return fmt.Errorf("invalid value for %s: %v", path, err)
-		}
-		cfg.Power.PauseOnLowBattery = v
-		return nil
-	case "power.low_battery_threshold":
-		v, err := strconv.Atoi(value)
-		if err != nil {
-			return fmt.Errorf("invalid value for %s: %v", path, err)
-		}
-		cfg.Power.LowBatteryThreshold = v
-		return nil
 	case "paths.wallpapers":
 		cfg.Paths.Wallpapers = value
-		return nil
-	case "paths.use_system_dir":
-		v, err := strconv.ParseBool(value)
-		if err != nil {
-			return fmt.Errorf("invalid value for %s: %v", path, err)
-		}
-		cfg.Paths.UseSystemDir = v
 		return nil
 	case "paths.index_wallpapers":
 		v, err := strconv.ParseBool(value)
@@ -252,13 +219,6 @@ func SetConfigValue(cfg *Config, path string, value string) error {
 			return fmt.Errorf("invalid value for %s: %v", path, err)
 		}
 		cfg.UI.ItemsPerPage = v
-		return nil
-	case "ui.image_preview":
-		v, err := strconv.ParseBool(value)
-		if err != nil {
-			return fmt.Errorf("invalid value for %s: %v", path, err)
-		}
-		cfg.UI.ImagePreview = v
 		return nil
 	case "limits.feed_soft_limit":
 		v, err := strconv.Atoi(value)
@@ -367,24 +327,14 @@ func GetConfigValue(cfg *Config, path string) (string, error) {
 		return strconv.FormatBool(cfg.Behavior.SaveFavoritesToFolder), nil
 	case "behavior.from_favorites":
 		return strconv.FormatBool(cfg.Behavior.FromFavorites), nil
-	case "power.battery_multiplier":
-		return strconv.Itoa(cfg.Power.BatteryMultiplier), nil
-	case "power.pause_on_low_battery":
-		return strconv.FormatBool(cfg.Power.PauseOnLowBattery), nil
-	case "power.low_battery_threshold":
-		return strconv.Itoa(cfg.Power.LowBatteryThreshold), nil
 	case "paths.wallpapers":
 		return cfg.Paths.Wallpapers, nil
-	case "paths.use_system_dir":
-		return strconv.FormatBool(cfg.Paths.UseSystemDir), nil
 	case "paths.index_wallpapers":
 		return strconv.FormatBool(cfg.Paths.IndexWallpapers), nil
 	case "ui.show_colors":
 		return strconv.FormatBool(cfg.UI.ShowColors), nil
 	case "ui.items_per_page":
 		return strconv.Itoa(cfg.UI.ItemsPerPage), nil
-	case "ui.image_preview":
-		return strconv.FormatBool(cfg.UI.ImagePreview), nil
 	case "limits.feed_soft_limit":
 		return strconv.Itoa(cfg.Limits.FeedSoftLimit), nil
 	case "limits.feed_hard_limit":

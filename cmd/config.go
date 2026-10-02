@@ -267,14 +267,11 @@ func getDefaultConfig() models.Config {
 			Theme: "", ChangeInterval: 30, MultiMonitor: "clone",
 			AutoDownload: true, RespectDarkMode: true, SaveFavoritesToFolder: false, FromFavorites: false,
 		},
-		Power: models.PowerConfig{
-			BatteryMultiplier: 4, PauseOnLowBattery: true, LowBatteryThreshold: 20,
-		},
 		Paths: models.PathsConfig{
-			Wallpapers: "", UseSystemDir: true, IndexWallpapers: false,
+			Wallpapers: "", IndexWallpapers: false,
 		},
 		UI: models.UIConfig{
-			ShowColors: true, ItemsPerPage: 10, ImagePreview: true,
+			ShowColors: true, ItemsPerPage: 10,
 		},
 		Limits: models.LimitsConfig{
 			FeedSoftLimit: 400, FeedHardLimit: 2000, RateLimitRequests: 45, RateLimitPeriod: 60, LogRetentionDays: 7, AnalysisWorkers: 5,
