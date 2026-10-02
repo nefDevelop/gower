@@ -31,7 +31,10 @@ var exportAllCmd = &cobra.Command{
 	Long:  `Export all data. Use --file to export to a ZIP archive, or provide a directory argument for folder export.`,
 	Args:  cobra.MaximumNArgs(1), // Keep arg for directory mode backward compatibility
 	Run: func(cmd *cobra.Command, args []string) {
-		ensureConfig()
+		if err := ensureConfig(); err != nil {
+			cmd.Println(err)
+			return
+		}
 
 		// ZIP MODE
 		if exportFile != "" {
@@ -113,7 +116,10 @@ var exportConfigCmd = &cobra.Command{
 	Short: "Export configuration",
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		ensureConfig()
+		if err := ensureConfig(); err != nil {
+			cmd.Println(err)
+			return
+		}
 		configPath, _ := getConfigPath()
 		data, err := os.ReadFile(configPath)
 		if err != nil {
@@ -138,7 +144,10 @@ var exportFeedCmd = &cobra.Command{
 	Short: "Export wallpaper feed/history",
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		ensureConfig()
+		if err := ensureConfig(); err != nil {
+			cmd.Println(err)
+			return
+		}
 		cfg, err := loadConfig()
 		if err != nil {
 			cmd.Printf("Error loading config for feed export: %v\n", err)
@@ -174,7 +183,10 @@ var exportFavoritesCmd = &cobra.Command{
 	Short: "Export favorite wallpapers",
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		ensureConfig()
+		if err := ensureConfig(); err != nil {
+			cmd.Println(err)
+			return
+		}
 		favorites, err := loadFavorites()
 		if err != nil {
 			cmd.Printf("Error loading favorites: %v\n", err)

@@ -52,7 +52,9 @@ var wallpaperCmd = &cobra.Command{
 				cmd.Print("Are you sure? (y/N): ")
 				var confirm string
 				if _, err := fmt.Scanln(&confirm); err != nil && err.Error() != "unexpected newline" {
-					// Ignore "unexpected newline" which happens if user just presses Enter.
+					// "unexpected newline" aparece si el usuario solo pulsa Enter,
+					// lo que equivale a una confirmación vacía.
+					cmd.Printf("Error reading input: %v\n", err)
 				}
 				if confirm != "y" && confirm != "Y" {
 					cmd.Println("Operation cancelled.")

@@ -11,11 +11,11 @@ import (
 )
 
 type FieldPath struct {
-	Path      string // dotted json path, e.g. "providers.wallhaven.enabled"
-	GoType    string // bool, string, int, float64
-	GoField   string // full Go field expression, e.g. "cfg.Providers.Wallhaven.Enabled"
-	IsStruct  bool
-	Children  []FieldPath
+	Path     string // dotted json path, e.g. "providers.wallhaven.enabled"
+	GoType   string // bool, string, int, float64
+	GoField  string // full Go field expression, e.g. "cfg.Providers.Wallhaven.Enabled"
+	IsStruct bool
+	Children []FieldPath
 }
 
 func main() {
@@ -209,21 +209,21 @@ func generate(paths []FieldPath, root string, fset *token.FileSet) {
 			sb.WriteString(fmt.Sprintf("\t\tcfg.%s = value\n", fieldExpr))
 			sb.WriteString("\t\treturn nil\n")
 		case "bool":
-			sb.WriteString(fmt.Sprintf("\t\tv, err := strconv.ParseBool(value)\n"))
+			sb.WriteString("\t\tv, err := strconv.ParseBool(value)\n")
 			sb.WriteString("\t\tif err != nil {\n")
 			sb.WriteString("\t\t\treturn fmt.Errorf(\"invalid value for %s: %v\", path, err)\n")
 			sb.WriteString("\t\t}\n")
 			sb.WriteString(fmt.Sprintf("\t\tcfg.%s = v\n", fieldExpr))
 			sb.WriteString("\t\treturn nil\n")
 		case "int":
-			sb.WriteString(fmt.Sprintf("\t\tv, err := strconv.Atoi(value)\n"))
+			sb.WriteString("\t\tv, err := strconv.Atoi(value)\n")
 			sb.WriteString("\t\tif err != nil {\n")
 			sb.WriteString("\t\t\treturn fmt.Errorf(\"invalid value for %s: %v\", path, err)\n")
 			sb.WriteString("\t\t}\n")
 			sb.WriteString(fmt.Sprintf("\t\tcfg.%s = v\n", fieldExpr))
 			sb.WriteString("\t\treturn nil\n")
 		case "float64":
-			sb.WriteString(fmt.Sprintf("\t\tv, err := strconv.ParseFloat(value, 64)\n"))
+			sb.WriteString("\t\tv, err := strconv.ParseFloat(value, 64)\n")
 			sb.WriteString("\t\tif err != nil {\n")
 			sb.WriteString("\t\t\treturn fmt.Errorf(\"invalid value for %s: %v\", path, err)\n")
 			sb.WriteString("\t\t}\n")

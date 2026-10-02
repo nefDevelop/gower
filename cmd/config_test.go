@@ -14,7 +14,7 @@ func TestConfigInit(t *testing.T) {
 
 	output, err := executeCommand(rootCmd, "config", "init")
 	if err != nil {
-		 t.Fatalf("Error ejecutando init: %v", err)
+		t.Fatalf("Error ejecutando init: %v", err)
 	}
 
 	if !strings.Contains(output, "Estructura de configuración creada en:") {
@@ -42,7 +42,7 @@ func TestConfigShow(t *testing.T) {
 
 	output, err := executeCommand(rootCmd, "config", "show")
 	if err != nil {
-		 t.Fatalf("Error ejecutando show: %v", err)
+		t.Fatalf("Error ejecutando show: %v", err)
 	}
 
 	if !strings.Contains(output, "providers") || !strings.Contains(output, "behavior") {
@@ -58,7 +58,7 @@ func TestConfigSetAndGet(t *testing.T) {
 	// Test Set
 	setOutput, err := executeCommand(rootCmd, "config", "set", "behavior.theme=light")
 	if err != nil {
-		 t.Fatalf("Error ejecutando set: %v", err)
+		t.Fatalf("Error ejecutando set: %v", err)
 	}
 	if !strings.Contains(setOutput, "Configuration updated: behavior.theme = light") {
 		t.Errorf("Unexpected set output: %s", setOutput)
@@ -67,24 +67,24 @@ func TestConfigSetAndGet(t *testing.T) {
 	// Test Get
 	output, err := executeCommand(rootCmd, "config", "get", "behavior.theme")
 	if err != nil {
-		 t.Fatalf("Error ejecutando get: %v", err)
+		t.Fatalf("Error ejecutando get: %v", err)
 	}
 
 	if strings.TrimSpace(output) != "light" {
-		 t.Errorf("Expected 'light', se  got '%s'", output)
+		t.Errorf("Expected 'light', se  got '%s'", output)
 	}
 
 	// Test new fields
 	executeCommand(rootCmd, "config", "set", "behavior.save_favorites_to_folder=true")
 	output, _ = executeCommand(rootCmd, "config", "get", "behavior.save_favorites_to_folder")
 	if strings.TrimSpace(output) != "true" {
-		 t.Errorf("Expected 'true', se  got '%s'", output)
+		t.Errorf("Expected 'true', se  got '%s'", output)
 	}
 
 	executeCommand(rootCmd, "config", "set", "paths.index_wallpapers=true")
 	output, _ = executeCommand(rootCmd, "config", "get", "paths.index_wallpapers")
 	if strings.TrimSpace(output) != "true" {
-		 t.Errorf("Expected 'true', se  got '%s'", output)
+		t.Errorf("Expected 'true', se  got '%s'", output)
 	}
 }
 
@@ -98,7 +98,7 @@ func TestConfigReset(t *testing.T) {
 	// Ejecutamos reset
 	output, err := executeCommand(rootCmd, "config", "reset")
 	if err != nil {
-		 t.Fatalf("Error ejecutando reset: %v", err)
+		t.Fatalf("Error ejecutando reset: %v", err)
 	}
 
 	if !strings.Contains(output, "Configuration reset to defaults.") {
@@ -108,7 +108,7 @@ func TestConfigReset(t *testing.T) {
 	// Verificamos que volvió al valor por defecto (vacío)
 	output, _ = executeCommand(rootCmd, "config", "get", "behavior.theme")
 	if strings.TrimSpace(output) != "" {
-		 t.Errorf("Expected ''  after reset, se  got '%s'", output)
+		t.Errorf("Expected ''  after reset, se  got '%s'", output)
 	}
 }
 
@@ -122,7 +122,7 @@ func TestConfigExportAndImport(t *testing.T) {
 	// Test Export
 	exportOutput, err := executeCommand(rootCmd, "export", "config", "--file", exportFile)
 	if err != nil {
-		 t.Fatalf("Error ejecutando export: %v", err)
+		t.Fatalf("Error ejecutando export: %v", err)
 	}
 
 	expectedExportOutput := fmt.Sprintf("Configuration exported to: %s", exportFile)
@@ -140,7 +140,7 @@ func TestConfigExportAndImport(t *testing.T) {
 	// Test Import (debería restaurar 'dark' que es lo que se exportó)
 	importOutput, err := executeCommand(rootCmd, "import", "config", exportFile)
 	if err != nil {
-		 t.Fatalf("Error ejecutando import: %v", err)
+		t.Fatalf("Error ejecutando import: %v", err)
 	}
 
 	if !strings.Contains(importOutput, "Configuration imported successfully") {
@@ -149,7 +149,7 @@ func TestConfigExportAndImport(t *testing.T) {
 
 	output, _ := executeCommand(rootCmd, "config", "get", "behavior.theme")
 	if strings.TrimSpace(output) != "" {
-		 t.Errorf("Expected '' después de importar, se  got '%s'", output)
+		t.Errorf("Expected '' después de importar, se  got '%s'", output)
 	}
 }
 
@@ -177,7 +177,7 @@ func TestConfigUpdate(t *testing.T) {
 	// 2. Ejecutar config update
 	output, err := executeCommand(rootCmd, "config", "update")
 	if err != nil {
-		 t.Fatalf("Error executing config update: %v", err)
+		t.Fatalf("Error executing config update: %v", err)
 	}
 
 	if !strings.Contains(output, "Configuración actualizada con nuevos campos") {
@@ -205,7 +205,7 @@ func TestConfigFromFavorites(t *testing.T) {
 	// Test Get
 	output, err := executeCommand(rootCmd, "config", "get", "behavior.from_favorites")
 	if err != nil {
-		 t.Fatalf("Error executing get: %v", err)
+		t.Fatalf("Error executing get: %v", err)
 	}
 	if strings.TrimSpace(output) != "true" {
 		t.Errorf("Expected 'true', got '%s'", output)
@@ -220,7 +220,7 @@ func TestConfigGetConfigFolder(t *testing.T) {
 
 	output, err := executeCommand(rootCmd, "config", "get", "config-folder")
 	if err != nil {
-		 t.Fatalf("Error executing config get config-folder: %v", err)
+		t.Fatalf("Error executing config get config-folder: %v", err)
 	}
 
 	expectedConfigDir := ""

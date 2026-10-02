@@ -1,11 +1,12 @@
 package core
 
 import (
-	"gower/internal/utils"
-	"gower/pkg/models"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"gower/internal/utils"
+	"gower/pkg/models"
 )
 
 func TestDownloadService_GetWallpaperLocalPath(t *testing.T) {

@@ -15,13 +15,6 @@ type FeedService struct {
 	Log         *utils.Logger
 }
 
-func (s *FeedService) log() *utils.Logger {
-	if s.Log != nil {
-		return s.Log
-	}
-	return utils.Log
-}
-
 func NewFeedService(cfg *models.Config, fm *utils.SecureJSONManager) *FeedService {
 	return &FeedService{
 		Config:      cfg,
@@ -136,29 +129,6 @@ func (s *FeedService) saveFavorites(favorites []FavoriteWallpaper) error {
 		return nil
 	}
 	return s.feedManager.WriteJSON(path, favorites)
-}
-
-func (s *FeedService) loadFeedCache() ([]FeedCache, error) {
-	path, err := s.getFeedCachePath()
-	if err != nil {
-		return nil, err
-	}
-	var caches []FeedCache
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return []FeedCache{}, nil
-	}
-	if err := s.feedManager.ReadJSON(path, &caches); err != nil {
-		return nil, err
-	}
-	return caches, nil
-}
-
-func (s *FeedService) saveFeedCache(caches []FeedCache) error {
-	path, err := s.getFeedCachePath()
-	if err != nil {
-		return err
-	}
-	return s.feedManager.WriteJSON(path, caches)
 }
 
 func (s *FeedService) SaveParserSearch(providerName, query string, results []models.Wallpaper) error {

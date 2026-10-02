@@ -555,26 +555,26 @@ func (c *Controller) AnalyzeFeed(all bool, force bool, progress func(string)) er
 	results := make(chan job, len(feed))
 
 	workers := c.getWorkers()
-				var wg sync.WaitGroup
+	var wg sync.WaitGroup
 
-				for i := 0; i < workers; i++ {
-					wg.Add(1)
-					go func() {
-						defer wg.Done()
-						for j := range jobs {
-							newWp, changed, deleteItem := c.processWallpaperItem(j.Wp, force, all, thumbDir, progress)
-							if deleteItem {
-								results <- job{Index: j.Index, Delete: true}
-							} else if changed {
-								results <- job{Index: j.Index, Wp: newWp}
-							}
-						}
-					}()
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := range jobs {
+				newWp, changed, deleteItem := c.processWallpaperItem(j.Wp, force, all, thumbDir, progress)
+				if deleteItem {
+					results <- job{Index: j.Index, Delete: true}
+				} else if changed {
+					results <- job{Index: j.Index, Wp: newWp}
 				}
+			}
+		}()
+	}
 
-				for i, wp := range feed {
-					jobs <- job{Index: i, Wp: wp}
-				}
+	for i, wp := range feed {
+		jobs <- job{Index: i, Wp: wp}
+	}
 	close(jobs)
 	wg.Wait()
 	close(results)

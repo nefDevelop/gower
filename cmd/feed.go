@@ -284,7 +284,11 @@ var feedUpdateCmd = &cobra.Command{
 			// For simplicity, we can just invoke the runExplore function if we exported it or use executeCommand logic
 			// But since runExplore is in same package:
 			exploreAll = true
-			runExplore(exploreCmd, []string{"random"}) // Search for "random" or generic
+			// Búsqueda genérica ("random"). runExplore ya imprime su propio
+			// error, así que aquí solo se registra en lugar de ignorarlo.
+			if err := runExplore(exploreCmd, []string{"random"}); err != nil {
+				cmd.Printf("Warning: fallback explore failed: %v\n", err)
+			}
 
 			// Sync again
 			cmd.Println("Syncing feed again...")
@@ -424,7 +428,10 @@ var feedGetColorsCmd = &cobra.Command{
 	Use:   "get colors",
 	Short: "Get the color palette of feed wallpapers from colors.json",
 	Run: func(cmd *cobra.Command, args []string) {
-		ensureConfig() // Ensure config is loaded or initialized
+		if err := ensureConfig(); err != nil {
+			cmd.Println(err)
+			return
+		}
 
 		palettes, err := loadColorPalettes()
 		if err != nil {

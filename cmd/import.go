@@ -20,7 +20,10 @@ var importConfigCmd = &cobra.Command{
 	Short: "Import configuration",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		ensureConfig()
+		if err := ensureConfig(); err != nil {
+			cmd.Println(err)
+			return
+		}
 		data, err := os.ReadFile(args[0])
 		if err != nil {
 			cmd.Printf("Error reading file: %v\n", err)
@@ -48,7 +51,10 @@ var importFavoritesCmd = &cobra.Command{
 	Use:   "favorites",
 	Short: "Import favorite wallpapers from a file",
 	Run: func(cmd *cobra.Command, args []string) {
-		ensureConfig()
+		if err := ensureConfig(); err != nil {
+			cmd.Println(err)
+			return
+		}
 		filePath := favFile
 		if filePath == "" {
 			cmd.Println("Error: --file flag is required for import")

@@ -71,11 +71,11 @@ func runStats(cmd *cobra.Command, args []string) error {
 }
 
 type FeedStats struct {
-	Total        int              `json:"total"`
-	ByProvider   []StatEntry      `json:"by_provider"`
-	ByTheme      []StatEntry      `json:"by_theme"`
-	ByResolution []StatEntry      `json:"by_resolution"`
-	ByRatio      []StatEntry      `json:"by_aspect_ratio"`
+	Total        int         `json:"total"`
+	ByProvider   []StatEntry `json:"by_provider"`
+	ByTheme      []StatEntry `json:"by_theme"`
+	ByResolution []StatEntry `json:"by_resolution"`
+	ByRatio      []StatEntry `json:"by_aspect_ratio"`
 }
 
 type StatEntry struct {

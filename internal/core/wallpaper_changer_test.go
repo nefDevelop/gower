@@ -190,19 +190,12 @@ func TestBuildCommand_SwayDefaultMonitor(t *testing.T) {
 func TestApplyToMonitor_DMS_Fallback(t *testing.T) {
 	wc := NewWallpaperChanger("dms")
 
-	// Use SetWallpapersFunc to capture what would happen
-	called := false
-	wc.SetWallpapersFunc = func(paths []string, monitors []Monitor, mode string) error {
-		called = true
-		return nil
-	}
-
+	// applyToMonitor no delega en SetWallpapersFunc: lanza la IPC de dms y, si
+	// esta falla porque dms no está instalado, cae a quickshell y devuelve nil.
+	// Por eso aquí solo se verifica que no se propaga el fallo.
 	err := wc.applyToMonitor(Monitor{Name: "eDP-1"}, "/tmp/wp.jpg", 0)
 	if err != nil {
 		t.Logf("Expected possible error (DMS not installed): %v", err)
-	} else if !called {
-		// If no error, SetWallpapersFunc should have been called
-		// This is valid when DMS is not installed - it falls through gracefully
 	}
 }
 

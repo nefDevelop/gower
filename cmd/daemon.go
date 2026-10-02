@@ -93,7 +93,7 @@ changing wallpapers at the configured interval.`,
 var daemonUninstallCmd = &cobra.Command{
 	Use:   "uninstall",
 	Short: "Remove the systemd user service",
-	Run: runDaemonUninstall,
+	Run:   runDaemonUninstall,
 }
 
 var daemonResumeCmd = &cobra.Command{

@@ -35,7 +35,10 @@ var favoritesListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all favorited wallpapers",
 	Run: func(cmd *cobra.Command, args []string) {
-		ensureConfig()
+		if err := ensureConfig(); err != nil {
+			cmd.Println(err)
+			return
+		}
 		favorites, err := loadFavorites()
 		if err != nil {
 			cmd.Printf("Error loading favorites: %v\n", err)
@@ -108,7 +111,10 @@ var favoritesAddCmd = &cobra.Command{
 	Short: "Add a wallpaper to favorites",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		ensureConfig()
+		if err := ensureConfig(); err != nil {
+			cmd.Println(err)
+			return
+		}
 		wallpaperID := args[0]
 
 		favorites, err := loadFavorites()
@@ -224,7 +230,10 @@ var favoritesRemoveCmd = &cobra.Command{
 	Short: "Remove a wallpaper from favorites",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		ensureConfig()
+		if err := ensureConfig(); err != nil {
+			cmd.Println(err)
+			return
+		}
 		wallpaperID := args[0]
 
 		favorites, err := loadFavorites()
@@ -386,7 +395,10 @@ var favoritesGetColorsCmd = &cobra.Command{
 	Use:   "get colors",
 	Short: "Get the color palette of favorited wallpapers from colors.json",
 	Run: func(cmd *cobra.Command, args []string) {
-		ensureConfig() // Ensure config is loaded or initialized
+		if err := ensureConfig(); err != nil {
+			cmd.Println(err)
+			return
+		}
 
 		palettes, err := loadColorPalettes()
 		if err != nil {
