@@ -91,6 +91,7 @@ rechazarla. Se han retirado del modelo; si alguien las tenía guardadas,
 - ✅ **Watch mode** (`gower feed watch` — polling)
 - ✅ **Estadísticas** (`gower stats` — dashboard by provider/theme/resolution)
 - ✅ **Integración systemd** (`gower daemon install/uninstall`)
+- ✅ **Contrato JSON** (`contract/gower-contract.json` + `cmd/contract_test.go`): fija las claves `--json` que consume gowerGUI.
 
 ---
 

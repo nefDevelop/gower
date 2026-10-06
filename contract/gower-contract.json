@@ -1,0 +1,18 @@
+{
+  "contract_version": 1,
+  "description": "Claves mínimas de la salida --json de gower que consume gowerGUI. Es la fuente de verdad del contrato: gowerGUI lo descarga en su CI (del tag pineado) y verifica que las claves que usa siguen presentes. Si se renombra o se retira un tag json de models.Wallpaper, core.Monitor o StatusOutput, cmd/contract_test.go falla.",
+  "wallpaper_item": {
+    "required": ["id", "url", "source", "seen"],
+    "optional": ["thumbnail", "path", "ext", "dimension", "ratio", "theme", "color", "permalink", "title", "added"]
+  },
+  "monitor_item": {
+    "required": ["ID", "Name", "Primary"]
+  },
+  "status": {
+    "required": ["wallpaper", "daemon", "providers"],
+    "paths": ["wallpaper.wallpapers", "daemon.running"]
+  },
+  "colors": {
+    "type": "array<string>"
+  }
+}

@@ -204,6 +204,21 @@ CI runs the suite with `-shuffle=on` on purpose: the tests share package-level
 state, and shuffling makes any order dependence fail the build instead of
 lying in wait.
 
+## JSON contract / Contrato JSON
+
+The `--json` output is a public contract: `gowerGUI` consumes it. The keys that
+GUI depends on are frozen in [`contract/gower-contract.json`](contract/gower-contract.json),
+and `cmd/contract_test.go` fails if a `json` tag of `models.Wallpaper`,
+`core.Monitor` or `StatusOutput` drifts from it. `gowerGUI` downloads this file
+from the pinned gower tag and verifies its side.
+
+La salida `--json` es un contrato público que consume `gowerGUI`. Las claves de
+las que depende la GUI están fijadas en
+[`contract/gower-contract.json`](contract/gower-contract.json) y
+`cmd/contract_test.go` falla si un tag `json` de `models.Wallpaper`,
+`core.Monitor` o `StatusOutput` se desvía. `gowerGUI` descarga ese fichero del
+tag de gower que tenga pineado y verifica su lado.
+
 ## 🔍 Solución de Problemas
 
 ### Parpadeo o el fondo no cambia (Wayland/Niri)
