@@ -5,26 +5,39 @@
 [![Release](https://img.shields.io/github/v/release/nefDevelop/gower.svg)](https://github.com/nefDevelop/gower/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Gower** is a powerful CLI tool to discover, manage, and change desktop wallpapers from online and local sources.
-**Gower** es una potente herramienta de línea de comandos para descubrir, gestionar y cambiar los fondos de pantalla de tu escritorio desde diversas fuentes.
+**Gower** is a CLI tool to discover, manage and change desktop wallpapers from
+online and local sources.
+**Gower** es una herramienta de línea de comandos para descubrir, gestionar y
+cambiar los fondos de pantalla del escritorio desde diversas fuentes.
 
 > [!WARNING]
-> **In development / En desarrollo**: Gower is in active development. Bugs, breaking changes, and instability may occur. Use at your own risk.
+> **In development / En desarrollo**: Gower is in active development. Bugs,
+> breaking changes and instability may occur. Use at your own risk.
+> Gower está en desarrollo activo. Puede haber errores, cambios incompatibles e
+> inestabilidad. Úsalo bajo tu responsabilidad.
 
-## ✨ Features / Características
+## Features / Características
 
-- **Multi-Provider**: Download from Wallhaven, Reddit, NASA APOD, Bing, Unsplash, and custom JSON APIs
-  **Múltiples Proveedores**: Descarga desde Wallhaven, Reddit, NASA, Bing, Unsplash y APIs configurables
-- **Feed History**: Track wallpapers you've seen with search, filter, and purge
-- **Favorites & Blacklist**: Save preferred wallpapers and avoid unwanted ones
-- **Daemon Mode**: Auto-change wallpapers on a schedule, optionally as a systemd user service
-- **Smart Dark Mode**: Detects system theme (dark/light) and selects matching wallpapers
-- **Rate Limiting**: Respectful API usage with configurable limits
-- **Multi-Monitor**: Supports clone and distinct wallpaper modes per monitor
-- **Local Indexing**: Optionally index a local wallpaper folder into the feed
-- **Flexible Output**: Table or JSON output for scripting
+- **Multi-provider / Múltiples proveedores**: Wallhaven, Reddit, NASA APOD,
+  Bing, Unsplash and custom JSON APIs. / Wallhaven, Reddit, NASA, Bing, Unsplash
+  y APIs JSON configurables.
+- **Feed history / Historial**: track, search, filter and purge the wallpapers
+  you have seen. / Registra, busca, filtra y purga los fondos vistos.
+- **Favorites and blacklist / Favoritos y lista negra**: save preferred
+  wallpapers and avoid unwanted ones.
+- **Daemon mode / Modo demonio**: auto-change wallpapers on a schedule,
+  optionally as a systemd user service.
+- **Theme matching / Ajuste por tema**: detects the system dark/light theme and
+  selects matching wallpapers.
+- **Rate limiting / Límite de peticiones**: respectful API usage with
+  configurable limits.
+- **Multi-monitor**: clone or distinct wallpaper per monitor.
+- **Local indexing / Indexado local**: optionally index a local folder into the
+  feed.
+- **Output / Salida**: table for humans, stable JSON for scripting and for
+  [gowerGUI](https://github.com/nefDevelop/gowerGUI).
 
-## 📦 Installation / Instalación
+## Installation / Instalación
 
 ### Prebuilt binaries / Binarios precompilados
 
@@ -40,6 +53,10 @@ Download from [releases/latest](https://github.com/nefDevelop/gower/releases/lat
 chmod +x gower && sudo mv gower /usr/local/bin/
 ```
 
+Each release also ships `checksums.txt` (SHA-256) if you want to verify the
+download. / Cada release incluye `checksums.txt` (SHA-256) para verificar la
+descarga.
+
 ### From source / Desde el código fuente
 
 ```bash
@@ -49,7 +66,7 @@ cd gower
 make build
 ```
 
-## 🖥️ Supported desktops / Escritorios soportados
+## Supported desktops / Escritorios soportados
 
 Gower detects your session automatically and picks the right mechanism. You can
 check what it found with `gower status`.
@@ -66,9 +83,9 @@ check what it found with `gower status`.
 
 On Wayland compositors, running more than one wallpaper daemon at once causes
 flickering. Gower prefers whichever daemon is already running; see
-[Troubleshooting](#-solución-de-problemas).
+[Troubleshooting](#solución-de-problemas).
 
-## 🚀 Quick Start / Inicio rápido
+## Quick Start / Inicio rápido
 
 ```bash
 # Init config / Inicializar configuración
@@ -93,7 +110,7 @@ gower stats
 gower daemon start
 ```
 
-## 📖 Commands / Comandos
+## Commands / Comandos
 
 | Command | Description | Descripción |
 |---------|-------------|-------------|
@@ -139,7 +156,7 @@ gower daemon start
 
 Run `gower <command> --help` for flags. / Usa `gower <comando> --help` para ver las opciones.
 
-## 🛠️ Configuration / Configuración
+## Configuration / Configuración
 
 Resolved in this order, first match wins:
 
@@ -175,11 +192,12 @@ Key settings / Ajustes principales:
 `gower config get <key>` and `gower config set <key> <value>` work on any of
 them. / Funcionan con cualquiera de ellas.
 
-## 🏗️ Architecture / Arquitectura
+## Architecture / Arquitectura
 
 ```
 gower/
 ├── cmd/              # CLI commands (Cobra), one file per command group
+├── contract/         # JSON contract consumed by gowerGUI
 ├── internal/
 │   ├── core/         # Controller facade, services, wallpaper changer, colors
 │   ├── providers/    # Wallhaven, Reddit, NASA, Bing, Unsplash, Generic
@@ -189,7 +207,7 @@ gower/
 └── main.go           # Entry point
 ```
 
-## 🧪 Development / Desarrollo
+## Development / Desarrollo
 
 ```bash
 make test             # Unit tests
@@ -206,37 +224,50 @@ lying in wait.
 
 ## JSON contract / Contrato JSON
 
-The `--json` output is a public contract: `gowerGUI` consumes it. The keys that
-GUI depends on are frozen in [`contract/gower-contract.json`](contract/gower-contract.json),
-and `cmd/contract_test.go` fails if a `json` tag of `models.Wallpaper`,
-`core.Monitor` or `StatusOutput` drifts from it. `gowerGUI` downloads this file
-from the pinned gower tag and verifies its side.
+The `--json` output is a public contract: [gowerGUI](https://github.com/nefDevelop/gowerGUI)
+consumes it. The keys that GUI depends on are frozen in
+[`contract/gower-contract.json`](contract/gower-contract.json), and
+`cmd/contract_test.go` fails if a `json` tag of `models.Wallpaper`,
+`core.Monitor` or `StatusOutput` drifts from it. gowerGUI downloads that file
+from the pinned gower tag and verifies its own side.
 
-La salida `--json` es un contrato público que consume `gowerGUI`. Las claves de
+La salida `--json` es un contrato público que consume gowerGUI. Las claves de
 las que depende la GUI están fijadas en
 [`contract/gower-contract.json`](contract/gower-contract.json) y
 `cmd/contract_test.go` falla si un tag `json` de `models.Wallpaper`,
-`core.Monitor` o `StatusOutput` se desvía. `gowerGUI` descarga ese fichero del
+`core.Monitor` o `StatusOutput` se desvía. gowerGUI descarga ese fichero del
 tag de gower que tenga pineado y verifica su lado.
 
-## 🔍 Solución de Problemas
+Note: gower writes the `--json` payload to stderr (logs and payload share the
+stream), so consumers should capture stdout and stderr together. / Nota: gower
+escribe el JSON en stderr, así que conviene capturar stdout y stderr juntos.
+
+## Solución de problemas
 
 ### Parpadeo o el fondo no cambia (Wayland/Niri)
-En entornos Wayland como Niri, tener múltiples demonios de fondo (ej. `swww` y `awww`) ejecutándose simultáneamente puede causar conflictos, haciendo que el fondo parpadee o vuelva al anterior inmediatamente.
+
+En entornos Wayland como Niri, tener múltiples demonios de fondo (por ejemplo
+`swww` y `awww`) ejecutándose a la vez puede causar conflictos: el fondo
+parpadea o vuelve al anterior de inmediato.
 
 Gower prioriza los gestores en este orden para Niri:
-1. **Demonio ya activo**: si `awww-daemon` está corriendo, usa `awww`. Si `swww-daemon` está corriendo, usa `swww`.
-2. **Herramientas instaladas**: si ninguno está activo, intenta iniciar `awww` (si está instalado) y luego `swww`.
 
-**Solución**: asegúrate de que solo un demonio de fondo esté activo. Puedes verificarlo con `gower status`, que mostrará una advertencia si detecta múltiples demonios.
+1. **Demonio ya activo**: si `awww-daemon` está corriendo, usa `awww`; si
+   `swww-daemon` está corriendo, usa `swww`.
+2. **Herramientas instaladas**: si ninguno está activo, intenta iniciar `awww`
+   (si está instalado) y luego `swww`.
 
-### `gower status` reports a desktop you don't recognize
-Gower falls back to whichever tool it finds first when it can't identify the
+**Solución**: asegúrate de que solo un demonio esté activo. `gower status`
+muestra una advertencia si detecta varios.
+
+### gower status reports a desktop you don't recognize
+
+Gower falls back to whichever tool it finds first when it cannot identify the
 session. Check that you are running inside the graphical session, not over a
 plain SSH shell.
 
 ---
 
-## 📄 License / Licencia
+## License / Licencia
 
 [MIT](LICENSE)

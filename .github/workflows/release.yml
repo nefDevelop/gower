@@ -53,15 +53,23 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Dispatch gowerGUI sidecar bump
-        # Si el PAT no está configurado, se omite en silencio en vez de hacer
-        # fallar la release: el release ya se publicó en el paso anterior.
+        # El release ya está publicado en el paso anterior: un fallo al avisar
+        # NO debe marcarlo como fallido. Si el PAT no tiene acceso a gowerGUI,
+        # GitHub responde 404 (no 403); se avisa y se sigue. El bump se puede
+        # relanzar a mano con workflow_dispatch en gowerGUI.
         if: ${{ env.GOWER_DISPATCH_TOKEN != '' }}
+        continue-on-error: true
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
-          curl -fsSL -X POST \
+          HTTP=$(curl -sS -o /tmp/dispatch.out -w "%{http_code}" -X POST \
             -H "Authorization: token ${GOWER_DISPATCH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/nefDevelop/gowerGUI/dispatches" \
-            -d "{\"event_type\":\"gower-release\",\"client_payload\":{\"tag\":\"${TAG}\"}}"
-          echo "Dispatched gower-release for ${TAG}"
+            -d "{\"event_type\":\"gower-release\",\"client_payload\":{\"tag\":\"${TAG}\"}}")
+          if [ "$HTTP" = "204" ]; then
+            echo "Dispatched gower-release for ${TAG}"
+          else
+            echo "::warning::no se pudo avisar a gowerGUI (HTTP $HTTP). Comprueba que GOWER_DISPATCH_TOKEN tenga Contents: Read and write sobre gowerGUI."
+            cat /tmp/dispatch.out || true
+          fi
