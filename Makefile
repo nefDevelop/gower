@@ -10,6 +10,11 @@ BUILD_TIME?=$(shell date +"%Y-%m-%dT%H:%M:%S%z" 2>/dev/null || echo "unknown")
 # Flags de compilación
 LDFLAGS=-ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME)"
 
+# Destino de instalación. Se puede sobreescribir:
+#   make install PREFIX=/usr/local        (requiere permisos de escritura)
+#   make install DESTDIR=/tmp/paquete     (para empaquetar)
+DESTDIR?=
+
 # Detección de OS para comandos de sistema
 ifeq ($(OS),Windows_NT)
     # Windows (cmd.exe)
@@ -26,6 +31,10 @@ ifeq ($(OS),Windows_NT)
     RM_DIST=if exist $(DIST_DIR) $(RM_DIR) $(DIST_DIR)
     MKDIR_LINUX=if not exist "$(DIST_DIR)\linux" $(MKDIR) "$(DIST_DIR)\linux"
     MKDIR_WINDOWS=if not exist "$(DIST_DIR)\windows" $(MKDIR) "$(DIST_DIR)\windows"
+    # Instalación: sin "install(1)" en Windows, se copia y se crea el directorio
+    PREFIX?=$(USERPROFILE)/.local
+    COPY=copy /Y
+    MKDIR_INSTALL=if not exist "$(FIX_PATH $(INSTALL_DIR))" $(MKDIR) "$(FIX_PATH $(INSTALL_DIR))"
 else
     # Linux / macOS / WSL
     EXE=
@@ -38,11 +47,18 @@ else
     RM_DIST=$(RM_DIR) $(DIST_DIR)
     MKDIR_LINUX=$(MKDIR) $(DIST_DIR)/linux
     MKDIR_WINDOWS=$(MKDIR) $(DIST_DIR)/windows
+    # Instalación: por defecto en ~/.local/bin, sin necesidad de sudo
+    PREFIX?=$(HOME)/.local
+    COPY=install -m 755
+    MKDIR_INSTALL=$(MKDIR) "$(INSTALL_DIR)"
 endif
+
+# Ruta final del binario instalado
+INSTALL_DIR=$(DESTDIR)$(PREFIX)/bin
 
 # --- Objetivos ---
 
-.PHONY: all build build-linux build-windows build-all test test-integration lint generate release clean help
+.PHONY: all build build-linux build-windows build-all install uninstall test test-integration lint generate release clean help
 
 all: build
 
@@ -65,6 +81,18 @@ build-windows:
 
 ## build-all: Compila para todas las plataformas soportadas
 build-all: build-linux build-windows
+
+## install: Compila e instala el binario en $(PREFIX)/bin (por defecto ~/.local/bin)
+install: build
+	@echo "==> Instalando $(BINARY_NAME)$(EXE) en $(INSTALL_DIR)..."
+	@$(MKDIR_INSTALL) || { echo "==> ERROR: no se pudo crear $(INSTALL_DIR). Usa 'make install PREFIX=<ruta escribible>'."; exit 1; }
+	@$(COPY) $(BINARY_NAME)$(EXE) "$(INSTALL_DIR)/$(BINARY_NAME)$(EXE)"
+	@echo "==> Instalado. Asegúrate de que $(INSTALL_DIR) está en tu PATH."
+
+## uninstall: Elimina el binario instalado en $(PREFIX)/bin
+uninstall:
+	@echo "==> Eliminando $(INSTALL_DIR)/$(BINARY_NAME)$(EXE)..."
+	@$(RM) "$(INSTALL_DIR)/$(BINARY_NAME)$(EXE)" $(NULL_OUTPUT) || true
 
 ## test: Ejecuta todos los tests unitarios
 test:

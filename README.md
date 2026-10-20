@@ -63,7 +63,9 @@ descarga.
 # Prerequisites / Requisitos: Go 1.25+
 git clone https://github.com/nefDevelop/gower
 cd gower
-make build
+make build            # Binary in the working directory / binario en el directorio actual
+make install          # Installs to ~/.local/bin / instala en ~/.local/bin
+make install PREFIX=/usr/local   # System-wide (needs write access) / a nivel de sistema
 ```
 
 ## Supported desktops / Escritorios soportados
@@ -215,6 +217,8 @@ make lint             # go vet
 golangci-lint run     # Full lint (needs golangci-lint v2.5.0, the version CI pins)
 make generate         # Regenerate config code after changing models
 make build-all        # Cross-compile for Linux and Windows
+make install          # Install to $(PREFIX)/bin (default ~/.local/bin)
+make uninstall        # Remove the installed binary / elimina el binario instalado
 make release RELEASE_VERSION=vX.Y.Z   # Tag and publish, which triggers the release workflow
 ```
 
