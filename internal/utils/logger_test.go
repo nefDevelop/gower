@@ -59,7 +59,7 @@ func TestInitLogger_FileCreation(t *testing.T) {
 	err = InitLogger(true)
 	assert.NoError(t, err)
 
-	logDir := filepath.Join(tmpDir, ".gower", "logs")
+	logDir := filepath.Join(tmpDir, ".config", "gower", "logs")
 	filename := "gower-" + time.Now().Format("2006-01-02") + ".log"
 	logPath := filepath.Join(logDir, filename)
 

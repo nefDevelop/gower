@@ -2,10 +2,13 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
+	"net/url"
 	"os/exec"
 	"strings"
+	"time"
 
 	"gower/internal/core"
 	"gower/pkg/models"
@@ -22,6 +25,21 @@ var (
 	setMultiMonitor  string
 	setCommand       string
 	setTargetMonitor string
+
+	setTransitionType     string
+	setTransitionDuration float64
+	setTransitionFPS      int
+	setTransitionStep     int
+	setTransitionAngle    int
+	setTransitionPos      string
+	setTransitionBezier   string
+	setTransitionWave     string
+	setTransitionEngine   string
+	setTransitionLinger   int
+	setTransitionMask     string
+	setTransitionFeather  float64
+	setTransitionInvert   bool
+	setTransitionLayer    string
 )
 
 var setCmd = &cobra.Command{
@@ -53,6 +71,22 @@ func init() {
 	setRandomCmd.Flags().StringVar(&setTheme, "theme", "", "theme filter [dark|light|auto]")
 	setRandomCmd.Flags().BoolVar(&setFromFavorites, "from-favorites", false, "random from favorites only")
 	setRandomCmd.Flags().StringVar(&setMultiMonitor, "multi-monitor", "", "multi-monitor mode [clone|distinct]")
+
+	// Flags persistentes: se heredan en set random y set undo.
+	setCmd.PersistentFlags().StringVar(&setTransitionType, "transition-type", "", "transition effect for awww/swww (none|simple|fade|left|right|top|bottom|wipe|wave|grow|center|any|outer|random)")
+	setCmd.PersistentFlags().Float64Var(&setTransitionDuration, "transition-duration", 0, "transition duration in seconds")
+	setCmd.PersistentFlags().IntVar(&setTransitionFPS, "transition-fps", 0, "transition frame rate")
+	setCmd.PersistentFlags().IntVar(&setTransitionStep, "transition-step", 0, "transition step (how fast it approaches the new image)")
+	setCmd.PersistentFlags().IntVar(&setTransitionAngle, "transition-angle", 0, "wipe/wave angle in degrees")
+	setCmd.PersistentFlags().StringVar(&setTransitionPos, "transition-pos", "", "grow/outer center (e.g. center, 0.5,0.5)")
+	setCmd.PersistentFlags().StringVar(&setTransitionBezier, "transition-bezier", "", "fade bezier curve (e.g. .54,0,.34,.99)")
+	setCmd.PersistentFlags().StringVar(&setTransitionWave, "transition-wave", "", "wave width and height (e.g. 20,20)")
+	setCmd.PersistentFlags().StringVar(&setTransitionEngine, "transition-engine", "", "transition engine [auto|awww|roserlay]")
+	setCmd.PersistentFlags().IntVar(&setTransitionLinger, "transition-linger", 0, "roserlay: ms to keep the overlay after committing the image")
+	setCmd.PersistentFlags().StringVar(&setTransitionMask, "transition-mask", "", "roserlay mask [crossfade|wipe|radial|drops|random|color|edges|luminance|hue|saliency|diff]")
+	setCmd.PersistentFlags().Float64Var(&setTransitionFeather, "transition-feather", 0, "roserlay mask feather (0..1)")
+	setCmd.PersistentFlags().BoolVar(&setTransitionInvert, "transition-invert", false, "roserlay: invert reveal order")
+	setCmd.PersistentFlags().StringVar(&setTransitionLayer, "transition-layer", "", "roserlay layer [background|bottom|top|overlay]")
 
 	// Subcomandos
 	setCmd.AddCommand(setRandomCmd)
@@ -90,20 +124,28 @@ func runSet(cmd *cobra.Command, args []string) error {
 	var targetMonitorIndex = -1
 
 	// 1. Determine target wallpaper
+	if setID != "" && setURL != "" {
+		return fmt.Errorf("--id and --url cannot be used together")
+	}
+	if setMultiMonitor != "" && setMultiMonitor != "clone" && setMultiMonitor != "distinct" {
+		return fmt.Errorf("invalid --multi-monitor %q: expected clone or distinct", setMultiMonitor)
+	}
+	if setTheme != "" && setTheme != "dark" && setTheme != "light" && setTheme != "auto" {
+		return fmt.Errorf("invalid --theme %q: expected dark, light or auto", setTheme)
+	}
+
 	if len(args) > 0 {
 		input := args[0]
 		if input == "random" {
 			return runSetRandom(cmd, args)
 		}
-		// Check if it looks like a URL
-		if len(input) > 4 && input[:4] == "http" {
+		if u, err := url.Parse(input); err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" {
 			wallpaper = &models.Wallpaper{
 				ID:     "manual_url",
 				URL:    input,
 				Source: "manual",
 			}
 		} else {
-			// Assume ID
 			wp, err := controller.GetWallpaper(input)
 			if err != nil {
 				return fmt.Errorf("error: %w", err)
@@ -111,6 +153,10 @@ func runSet(cmd *cobra.Command, args []string) error {
 			wallpaper = wp
 		}
 	} else if setURL != "" {
+		u, err := url.Parse(setURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("invalid --url %q: expected an http(s) URL", setURL)
+		}
 		wallpaper = &models.Wallpaper{
 			ID:     "manual_url",
 			URL:    setURL,
@@ -170,15 +216,20 @@ func runSetRandom(cmd *cobra.Command, args []string) error {
 	}
 	controller := core.NewController(cfg)
 
-	// Auto-detect theme if "auto" or if empty and config enabled
-	if setTheme == "auto" || (setTheme == "" && cfg.Behavior.RespectDarkMode) {
+	// Auto-detect theme if "auto" or if empty and config enabled. Se usa una
+	// variable local para no mutar el flag global entre invocaciones.
+	targetTheme := setTheme
+	if targetTheme == "" {
+		targetTheme = cfg.Behavior.Theme
+	}
+	if targetTheme == "auto" || (targetTheme == "" && cfg.Behavior.RespectDarkMode) {
 		if core.IsSystemInDarkMode() {
-			setTheme = "dark"
+			targetTheme = "dark"
 		} else {
-			setTheme = "light"
+			targetTheme = "light"
 		}
 		if config.Debug {
-			cmd.Printf("   [DEBUG] Auto-selecting theme: %s\n", setTheme)
+			cmd.Printf("   [DEBUG] Auto-selecting theme: %s\n", targetTheme)
 		}
 	}
 
@@ -246,7 +297,7 @@ func runSetRandom(cmd *cobra.Command, args []string) error {
 			wallpaper = fav.Wallpaper
 		} else {
 			var err error
-			wallpaper, err = controller.GetRandomFromFeed(setTheme)
+			wallpaper, err = controller.GetRandomFromFeed(targetTheme)
 			if err != nil {
 				return fmt.Errorf("error getting random wallpaper %d: %w", i+1, err)
 			}
@@ -308,9 +359,20 @@ func applyWallpapers(cmd *cobra.Command, controller *core.Controller, wallpapers
 		return fmt.Errorf("no wallpapers provided to apply")
 	}
 
+	if config.DryRun {
+		for _, wp := range wallpapers {
+			if !config.Quiet {
+				cmd.Printf("[DRY-RUN] Se aplicaría %s (Source: %s, URL: %s)\n", wp.ID, wp.Source, wp.URL)
+			}
+		}
+		return nil
+	}
+
 	localPaths := make([]string, len(wallpapers))
 	for i, wp := range wallpapers {
-		cmd.Printf("Preparing wallpaper: %s (Source: %s)\n", wp.ID, wp.Source)
+		if !config.Quiet {
+			cmd.Printf("Preparing wallpaper: %s (Source: %s)\n", wp.ID, wp.Source)
+		}
 		if config.Debug {
 			lum := controller.ColorManager.GetLuminance(wp.Color)
 			cmd.Printf("   [DEBUG] Color: %s | Luminance: %.2f | Dark: %v\n", wp.Color, lum, lum < 100)
@@ -329,18 +391,20 @@ func applyWallpapers(cmd *cobra.Command, controller *core.Controller, wallpapers
 	customCmdTpl := setCommand
 
 	if customCmdTpl != "" {
-		// Use custom command. This path currently only supports a single wallpaper.
-		// For multi-monitor with custom command, the user would need to handle it themselves.
-		if len(localPaths) > 1 {
-			cmd.Printf("Warning: Custom command is used with multiple wallpapers. Only the first wallpaper will be passed to the command.\n")
-		}
-		finalCmd := strings.ReplaceAll(customCmdTpl, "%s", localPaths[0])
 		if !config.Quiet {
-			cmd.Printf("Running custom command: %s\n", finalCmd)
+			cmd.Printf("Running custom command for %d wallpaper(s)\n", len(localPaths))
 		}
-		err := exec.Command("sh", "-c", finalCmd).Run() //nolint:gosec // User provides the command template, this is an advanced feature.
-		if err != nil {
-			return fmt.Errorf("error running custom wallpaper command: %w", err)
+		for _, localPath := range localPaths {
+			finalCmd := strings.ReplaceAll(customCmdTpl, "%s", shellQuote(localPath))
+			if !config.Quiet {
+				cmd.Printf("Running custom command: %s\n", finalCmd)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			err := exec.CommandContext(ctx, "sh", "-c", finalCmd).Run() //nolint:gosec // User provides the command template.
+			cancel()
+			if err != nil {
+				return fmt.Errorf("error running custom wallpaper command: %w", err)
+			}
 		}
 	} else {
 		// Fallback to existing auto-detection logic
@@ -351,6 +415,12 @@ func applyWallpapers(cmd *cobra.Command, controller *core.Controller, wallpapers
 		changer := core.NewWallpaperChanger("", respectDark)
 		if config.Debug {
 			cmd.Printf("   [DEBUG] Desktop Environment detected: %s\n", changer.Env)
+		}
+		changer.Transition = resolveTransition(cfg, cmd)
+		if transitionExplicit(cmd, changer.Transition) && !changer.SupportsTransitions() {
+			if !config.Quiet {
+				cmd.Printf("Warning: transition effects are only supported by awww/swww; ignoring them on '%s'.\n", changer.Env)
+			}
 		}
 
 		mmMode := setMultiMonitor
@@ -426,6 +496,81 @@ func applyWallpapers(cmd *cobra.Command, controller *core.Controller, wallpapers
 		}
 	}
 
-	cmd.Println("Wallpaper(s) set successfully.")
+	if !config.Quiet {
+		cmd.Println("Wallpaper(s) set successfully.")
+	}
 	return nil
+}
+
+// shellQuote escapa un argumento para pasarlo a sh -c sin permitir inyección.
+func shellQuote(s string) string {
+	if s != "" && !strings.ContainsAny(s, " \t\n\"'\\$`;&|<>()*?!") {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// resolveTransition aplica la precedencia flag > config.
+func resolveTransition(cfg *models.Config, cmd *cobra.Command) models.TransitionConfig {
+	t := cfg.Behavior.Transition
+	if cmd == nil {
+		return t
+	}
+	if f := cmd.Flags().Lookup("transition-type"); f != nil && f.Changed {
+		t.Type = setTransitionType
+	}
+	if f := cmd.Flags().Lookup("transition-duration"); f != nil && f.Changed {
+		t.Duration = setTransitionDuration
+	}
+	if f := cmd.Flags().Lookup("transition-fps"); f != nil && f.Changed {
+		t.FPS = setTransitionFPS
+	}
+	if f := cmd.Flags().Lookup("transition-step"); f != nil && f.Changed {
+		t.Step = setTransitionStep
+	}
+	if f := cmd.Flags().Lookup("transition-angle"); f != nil && f.Changed {
+		t.Angle = setTransitionAngle
+	}
+	if f := cmd.Flags().Lookup("transition-pos"); f != nil && f.Changed {
+		t.Pos = setTransitionPos
+	}
+	if f := cmd.Flags().Lookup("transition-bezier"); f != nil && f.Changed {
+		t.Bezier = setTransitionBezier
+	}
+	if f := cmd.Flags().Lookup("transition-wave"); f != nil && f.Changed {
+		t.Wave = setTransitionWave
+	}
+	if f := cmd.Flags().Lookup("transition-engine"); f != nil && f.Changed {
+		t.Engine = setTransitionEngine
+	}
+	if f := cmd.Flags().Lookup("transition-linger"); f != nil && f.Changed {
+		t.Linger = setTransitionLinger
+	}
+	if f := cmd.Flags().Lookup("transition-mask"); f != nil && f.Changed {
+		t.Mask = setTransitionMask
+	}
+	if f := cmd.Flags().Lookup("transition-feather"); f != nil && f.Changed {
+		t.Feather = setTransitionFeather
+	}
+	if f := cmd.Flags().Lookup("transition-invert"); f != nil && f.Changed {
+		t.Invert = setTransitionInvert
+	}
+	if f := cmd.Flags().Lookup("transition-layer"); f != nil && f.Changed {
+		t.Layer = setTransitionLayer
+	}
+	return t
+}
+
+// transitionExplicit indica si el usuario pidió una transición distinta de la
+// implícita por defecto. Evita avisar en cada `set` sobre escritorios sin
+// soporte cuando no se ha configurado nada especial.
+func transitionExplicit(cmd *cobra.Command, t models.TransitionConfig) bool {
+	if cmd != nil {
+		for _, name := range []string{"transition-type", "transition-duration", "transition-fps", "transition-step", "transition-angle", "transition-pos", "transition-bezier", "transition-wave", "transition-engine", "transition-linger", "transition-mask", "transition-feather", "transition-invert", "transition-layer"} {
+			if f := cmd.Flags().Lookup(name); f != nil && f.Changed {
+				return true
+			}
+		}
+	}
+	return t.Type != "" && t.Type != "simple" && t.Type != "none"
 }

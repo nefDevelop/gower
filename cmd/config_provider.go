@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"gower/internal/core"
+	"gower/internal/utils"
 	"gower/pkg/models"
 
 	"github.com/spf13/cobra"
@@ -122,7 +123,7 @@ var configProviderAddCmd = &cobra.Command{
 			cmd.Printf("Warning: Could not create parser directory: %v\n", err)
 		}
 
-		parserFile := filepath.Join(parserDir, name+".json")
+		parserFile := filepath.Join(parserDir, utils.SafeFilename(name)+".json")
 		data, _ := json.MarshalIndent(mapping, "", "  ")
 		if err := os.WriteFile(parserFile, data, 0644); err != nil {
 			cmd.Printf("Warning: Could not save parser config: %v\n", err)
@@ -172,7 +173,7 @@ var configProviderRemoveCmd = &cobra.Command{
 
 		// Eliminar archivo del parser
 		appDir, _ := core.GetAppDir()
-		parserFile := filepath.Join(appDir, "data", "parser", name+".json")
+		parserFile := filepath.Join(appDir, "data", "parser", utils.SafeFilename(name)+".json")
 		if err := os.Remove(parserFile); err != nil && !os.IsNotExist(err) {
 			cmd.Printf("Warning: Could not remove parser file: %v\n", err)
 		}

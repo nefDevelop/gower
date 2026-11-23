@@ -185,52 +185,40 @@ func generate(paths []FieldPath, root string, fset *token.FileSet) {
 	sb.WriteString("package models\n\n")
 	sb.WriteString("import (\n\t\"fmt\"\n\t\"strconv\"\n)\n\n")
 
-	sb.WriteString("// ConfigPathEntry describes a single config path.\n")
-	sb.WriteString("type ConfigPathEntry struct {\n\tPath string\n\tType string\n}\n\n")
-
-	sb.WriteString("// ListConfigPaths returns all available configuration paths.\n")
-	sb.WriteString("func ListConfigPaths() []ConfigPathEntry {\n")
-	sb.WriteString("\treturn []ConfigPathEntry{\n")
-	for _, fp := range flat {
-		sb.WriteString(fmt.Sprintf("\t\t{Path: %q, Type: %q},\n", fp.Path, fp.GoType))
-	}
-	sb.WriteString("\t}\n")
-	sb.WriteString("}\n\n")
-
 	sb.WriteString("// SetConfigValue sets a configuration value by dotted path.\n")
 	sb.WriteString("func SetConfigValue(cfg *Config, path string, value string) error {\n")
 	sb.WriteString("\tswitch path {\n")
 	for _, fp := range flat {
-		sb.WriteString(fmt.Sprintf("\tcase %q:\n", fp.Path))
+		fmt.Fprintf(&sb, "\tcase %q:\n", fp.Path)
 
 		fieldExpr := strings.TrimPrefix(fp.GoField, "cfg.")
 		switch fp.GoType {
 		case "string":
-			sb.WriteString(fmt.Sprintf("\t\tcfg.%s = value\n", fieldExpr))
+			fmt.Fprintf(&sb, "\t\tcfg.%s = value\n", fieldExpr)
 			sb.WriteString("\t\treturn nil\n")
 		case "bool":
 			sb.WriteString("\t\tv, err := strconv.ParseBool(value)\n")
 			sb.WriteString("\t\tif err != nil {\n")
 			sb.WriteString("\t\t\treturn fmt.Errorf(\"invalid value for %s: %v\", path, err)\n")
 			sb.WriteString("\t\t}\n")
-			sb.WriteString(fmt.Sprintf("\t\tcfg.%s = v\n", fieldExpr))
+			fmt.Fprintf(&sb, "\t\tcfg.%s = v\n", fieldExpr)
 			sb.WriteString("\t\treturn nil\n")
 		case "int":
 			sb.WriteString("\t\tv, err := strconv.Atoi(value)\n")
 			sb.WriteString("\t\tif err != nil {\n")
 			sb.WriteString("\t\t\treturn fmt.Errorf(\"invalid value for %s: %v\", path, err)\n")
 			sb.WriteString("\t\t}\n")
-			sb.WriteString(fmt.Sprintf("\t\tcfg.%s = v\n", fieldExpr))
+			fmt.Fprintf(&sb, "\t\tcfg.%s = v\n", fieldExpr)
 			sb.WriteString("\t\treturn nil\n")
 		case "float64":
 			sb.WriteString("\t\tv, err := strconv.ParseFloat(value, 64)\n")
 			sb.WriteString("\t\tif err != nil {\n")
 			sb.WriteString("\t\t\treturn fmt.Errorf(\"invalid value for %s: %v\", path, err)\n")
 			sb.WriteString("\t\t}\n")
-			sb.WriteString(fmt.Sprintf("\t\tcfg.%s = v\n", fieldExpr))
+			fmt.Fprintf(&sb, "\t\tcfg.%s = v\n", fieldExpr)
 			sb.WriteString("\t\treturn nil\n")
 		default:
-			sb.WriteString(fmt.Sprintf("\t\tcfg.%s = value\n", fieldExpr))
+			fmt.Fprintf(&sb, "\t\tcfg.%s = value\n", fieldExpr)
 			sb.WriteString("\t\treturn nil\n")
 		}
 	}
@@ -243,19 +231,19 @@ func generate(paths []FieldPath, root string, fset *token.FileSet) {
 	sb.WriteString("func GetConfigValue(cfg *Config, path string) (string, error) {\n")
 	sb.WriteString("\tswitch path {\n")
 	for _, fp := range flat {
-		sb.WriteString(fmt.Sprintf("\tcase %q:\n", fp.Path))
+		fmt.Fprintf(&sb, "\tcase %q:\n", fp.Path)
 		fieldExpr := strings.TrimPrefix(fp.GoField, "cfg.")
 		switch fp.GoType {
 		case "string":
-			sb.WriteString(fmt.Sprintf("\t\treturn cfg.%s, nil\n", fieldExpr))
+			fmt.Fprintf(&sb, "\t\treturn cfg.%s, nil\n", fieldExpr)
 		case "bool":
-			sb.WriteString(fmt.Sprintf("\t\treturn strconv.FormatBool(cfg.%s), nil\n", fieldExpr))
+			fmt.Fprintf(&sb, "\t\treturn strconv.FormatBool(cfg.%s), nil\n", fieldExpr)
 		case "int":
-			sb.WriteString(fmt.Sprintf("\t\treturn strconv.Itoa(cfg.%s), nil\n", fieldExpr))
+			fmt.Fprintf(&sb, "\t\treturn strconv.Itoa(cfg.%s), nil\n", fieldExpr)
 		case "float64":
-			sb.WriteString(fmt.Sprintf("\t\treturn strconv.FormatFloat(cfg.%s, 'f', -1, 64), nil\n", fieldExpr))
+			fmt.Fprintf(&sb, "\t\treturn strconv.FormatFloat(cfg.%s, 'f', -1, 64), nil\n", fieldExpr)
 		default:
-			sb.WriteString(fmt.Sprintf("\t\treturn fmt.Sprintf(\"%%v\", cfg.%s), nil\n", fieldExpr))
+			fmt.Fprintf(&sb, "\t\treturn fmt.Sprintf(\"%%v\", cfg.%s), nil\n", fieldExpr)
 		}
 	}
 	sb.WriteString("\tdefault:\n")

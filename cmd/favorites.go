@@ -57,21 +57,22 @@ var favoritesListCmd = &cobra.Command{
 			// Use favorites palette
 			_, palette, err := controller.LoadColorPalettes()
 			if err != nil {
-				if !config.JSONOutput {
-					cmd.Printf("Warning: could not load color palette: %v\n", err)
+				cmd.PrintErrf("Error loading color palette: %v\n", err)
+				return
+			}
+			if len(palette) == 0 {
+				cmd.PrintErrln("Error: no color palette available (run 'gower favorites analyze' first)")
+				return
+			}
+			targetBucket := controller.ColorManager.FindNearestColorInPalette(favColor, palette)
+			filtered := make([]core.FavoriteWallpaper, 0, len(favorites))
+			for _, fav := range favorites {
+				favBucket := controller.ColorManager.FindNearestColorInPalette(fav.Color, palette)
+				if favBucket == targetBucket {
+					filtered = append(filtered, fav)
 				}
 			}
-			if err == nil {
-				var filtered []core.FavoriteWallpaper
-				for _, fav := range favorites {
-					targetBucket := controller.ColorManager.FindNearestColorInPalette(favColor, palette)
-					favBucket := controller.ColorManager.FindNearestColorInPalette(fav.Color, palette)
-					if favBucket == targetBucket {
-						filtered = append(filtered, fav)
-					}
-				}
-				favorites = filtered
-			}
+			favorites = filtered
 		}
 
 		if len(favorites) == 0 {
@@ -89,8 +90,18 @@ var favoritesListCmd = &cobra.Command{
 		if !cmd.Flags().Changed("limit") && cfg.UI.ItemsPerPage > 0 {
 			favLimit = cfg.UI.ItemsPerPage
 		}
+		if favPage < 1 {
+			cmd.PrintErrln("Error: --page must be >= 1")
+			setCommandError(fmt.Errorf("--page must be >= 1"))
+			return
+		}
+		if favLimit < 1 {
+			cmd.PrintErrln("Error: --limit must be >= 1")
+			setCommandError(fmt.Errorf("--limit must be >= 1"))
+			return
+		}
 		start := (favPage - 1) * favLimit
-		if start >= len(favorites) {
+		if start > len(favorites) {
 			start = len(favorites)
 		}
 		end := start + favLimit
@@ -144,80 +155,98 @@ var favoritesAddCmd = &cobra.Command{
 
 		// Check if wallpaper exists in feed
 		var wallpaperToAdd models.Wallpaper
-		feedPath, _ := getFeedPath()
-		var feed []models.Wallpaper
+		feedPath, err := getFeedPath()
+		if err != nil {
+			cmd.PrintErrf("Error resolving feed path: %v\n", err)
+			setCommandError(err)
+			return
+		}
 		manager := utils.NewSecureJSONManager()
 
-		// Try to read feed, ignore error if not exists
-		_ = manager.ReadJSON(feedPath, &feed)
-
 		foundInFeed := false
-		for i, wp := range feed {
-			if wp.ID == wallpaperID {
-				wallpaperToAdd = wp
-				// Remove from feed
-				feed = append(feed[:i], feed[i+1:]...)
-				foundInFeed = true
-				break
+		// La secuencia leer-quitar-escribir debe ejecutarse bajo el mismo lock
+		// que usa el daemon para no perder actualizaciones.
+		lockErr := utils.WithFileLock(feedPath, func() error {
+			var feed []models.Wallpaper
+			if err := manager.ReadJSON(feedPath, &feed); err != nil && !os.IsNotExist(err) {
+				return err
 			}
+			for i, wp := range feed {
+				if wp.ID == wallpaperID {
+					wallpaperToAdd = wp
+					feed = append(feed[:i], feed[i+1:]...)
+					foundInFeed = true
+					break
+				}
+			}
+			if foundInFeed {
+				return manager.WriteJSON(feedPath, feed)
+			}
+			return nil
+		})
+		if lockErr != nil {
+			cmd.PrintErrf("Error updating feed: %v\n", lockErr)
+			setCommandError(lockErr)
+			return
 		}
 
-		if foundInFeed {
-			if err := manager.WriteJSON(feedPath, feed); err != nil {
-				cmd.Printf("Warning: Could not update feed: %v\n", err)
-			}
-			cmd.Printf("Moved wallpaper %s from feed to favorites.\n", wallpaperID)
-		} else {
-			// Fallback to dummy
+		if !foundInFeed {
+			// Se permite añadir un ID que aún no está en el feed, pero sin
+			// fabricar una URL falsa: queda como entrada desconocida.
 			wallpaperToAdd = models.Wallpaper{
 				ID:     wallpaperID,
-				URL:    fmt.Sprintf("http://example.com/wallpaper/%s", wallpaperID),
 				Source: "unknown",
 			}
+			cmd.PrintErrf("Warning: wallpaper %s is not in the feed; favorites entry has no URL.\n", wallpaperID)
+		} else {
+			cmd.Printf("Moved wallpaper %s from feed to favorites.\n", wallpaperID)
 		}
 
 		newFav := core.FavoriteWallpaper{Wallpaper: wallpaperToAdd, Notes: favNotes}
 
+		if config.DryRun {
+			if !config.Quiet {
+				cmd.Printf("[DRY-RUN] Se añadiría %s a favoritos.\n", wallpaperID)
+			}
+			return
+		}
+
 		// Check if we need to save to local folder
 		if cfg, err := loadConfig(); err == nil && cfg.Behavior.SaveFavoritesToFolder && cfg.Paths.Wallpapers != "" {
-			// Ensure directory exists
 			if err := os.MkdirAll(cfg.Paths.Wallpapers, 0755); err != nil {
-				cmd.Printf("Warning: Could not create wallpapers directory: %v\n", err)
+				cmd.PrintErrf("Warning: Could not create wallpapers directory: %v\n", err)
 			} else {
-				// Determine filename
-				ext := filepath.Ext(newFav.URL)
+				ext := filepath.Ext(strings.Split(newFav.URL, "?")[0])
 				if ext == "" {
 					ext = ".jpg"
 				}
-				destFilename := fmt.Sprintf("%s%s", newFav.ID, ext)
+				destFilename := utils.SafeFilename(newFav.ID) + ext
 				destPath := filepath.Join(cfg.Paths.Wallpapers, destFilename)
-
-				// Copy or Download
-				success := false
-				if _, err := os.Stat(destPath); err == nil {
-					// Already exists
-					success = true
+				if !utils.IsWithinDir(destPath, cfg.Paths.Wallpapers) {
+					cmd.PrintErrf("Warning: refusing to write outside %s\n", cfg.Paths.Wallpapers)
 				} else {
-					// Check if URL is local file
-					if _, err := os.Stat(newFav.URL); err == nil {
-						// It's a local file, copy it
+
+					// Copy or Download
+					success := false
+					if info, err := os.Stat(destPath); err == nil && info.Size() > 0 {
+						success = true
+					} else if _, err := os.Stat(newFav.URL); err == nil {
 						if err := copyFile(newFav.URL, destPath); err == nil {
 							success = true
 						} else {
-							cmd.Printf("Warning: Failed to copy local file to favorites folder: %v\n", err)
+							cmd.PrintErrf("Warning: Failed to copy local file to favorites folder: %v\n", err)
 						}
 					} else {
-						// It's a URL, download it
 						if err := downloadFile(newFav.URL, destPath); err == nil {
 							success = true
 						} else {
-							cmd.Printf("Warning: Failed to download favorite to folder: %v\n", err)
+							cmd.PrintErrf("Warning: Failed to download favorite to folder: %v\n", err)
 						}
 					}
-				}
 
-				if success {
-					newFav.URL = destPath // Update URL to point to the persistent local file
+					if success {
+						newFav.URL = destPath // Update URL to point to the persistent local file
+					}
 				}
 			}
 		}
@@ -267,6 +296,13 @@ var favoritesRemoveCmd = &cobra.Command{
 		if !found {
 			if !favForce {
 				cmd.Printf("Wallpaper %s not found in favorites.\n", wallpaperID)
+			}
+			return
+		}
+
+		if config.DryRun {
+			if !config.Quiet {
+				cmd.Printf("[DRY-RUN] Se quitaría %s de favoritos.\n", wallpaperID)
 			}
 			return
 		}
@@ -398,7 +434,7 @@ func loadColorPalettes() (*ColorPalettes, error) {
 	}
 
 	if err := manager.ReadJSON(path, &palettes); err != nil {
-		return nil, fmt.Errorf("error reading colors.json: %v", err)
+		return nil, fmt.Errorf("error reading colors.json: %w", err)
 	}
 	return &palettes, nil
 }
@@ -460,30 +496,47 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	defer func() { _ = sourceFile.Close() }()
-
-	destFile, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = destFile.Close() }()
-
-	_, err = io.Copy(destFile, sourceFile)
-	return err
+	return writeFileAtomicCmd(dst, sourceFile)
 }
 
 func downloadFile(url, dst string) error {
-	resp, err := http.Get(url)
+	resp, err := utils.DownloadHTTPClient.Get(url) //nolint:bodyclose // cerrado con utils.CloseResponse
 	if err != nil {
 		return err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer utils.CloseResponse(resp)
 
-	out, err := os.Create(dst)
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download failed with status %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); strings.HasPrefix(ct, "text/html") {
+		return fmt.Errorf("unexpected content type: %s", ct)
+	}
+
+	return writeFileAtomicCmd(dst, io.LimitReader(resp.Body, utils.MaxImageBytes))
+}
+
+// writeFileAtomicCmd escribe en un temporal del mismo directorio y lo renombra
+// al final, para no dejar un fichero parcial si la descarga se corta.
+func writeFileAtomicCmd(dst string, r io.Reader) error {
+	dir := filepath.Dir(dst)
+	tmp, err := os.CreateTemp(dir, ".gower-fav-*")
 	if err != nil {
 		return err
 	}
-	defer func() { _ = out.Close() }()
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }()
 
-	_, err = io.Copy(out, resp.Body)
-	return err
+	if _, err := io.Copy(tmp, r); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, dst)
 }

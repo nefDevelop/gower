@@ -49,7 +49,10 @@ func setWallpaperWindows(path string) error {
 
 	// Un valor de retorno distinto de cero indica éxito.
 	if ret == 0 {
-		return fmt.Errorf("SystemParametersInfoW call failed: %w", sysErr)
+		if sysErr != 0 {
+			return fmt.Errorf("SystemParametersInfoW call failed: %w", sysErr)
+		}
+		return fmt.Errorf("SystemParametersInfoW call failed")
 	}
 
 	return nil

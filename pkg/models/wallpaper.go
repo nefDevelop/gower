@@ -7,7 +7,7 @@ type Wallpaper struct {
 	Thumbnail string `json:"thumbnail,omitempty"`
 	Path      string `json:"path,omitempty"` // Local path, empty if not downloaded
 	Source    string `json:"source"`
-	Extension string `json:"ext,omitempty"` // Agrega esta línea
+	Extension string `json:"ext,omitempty"`
 
 	// Metadata
 	Dimension string `json:"dimension,omitempty"` // Resolution (e.g. 1920x1080)

@@ -6,54 +6,6 @@ import (
 	"strconv"
 )
 
-// ConfigPathEntry describes a single config path.
-type ConfigPathEntry struct {
-	Path string
-	Type string
-}
-
-// ListConfigPaths returns all available configuration paths.
-func ListConfigPaths() []ConfigPathEntry {
-	return []ConfigPathEntry{
-		{Path: "providers.wallhaven.enabled", Type: "bool"},
-		{Path: "providers.wallhaven.api_key", Type: "string"},
-		{Path: "providers.wallhaven.rate_limit.requests", Type: "int"},
-		{Path: "providers.wallhaven.rate_limit.per_seconds", Type: "int"},
-		{Path: "providers.reddit.enabled", Type: "bool"},
-		{Path: "providers.reddit.subreddit", Type: "string"},
-		{Path: "providers.reddit.sort", Type: "string"},
-		{Path: "providers.reddit.limit", Type: "int"},
-		{Path: "providers.nasa.enabled", Type: "bool"},
-		{Path: "providers.nasa.api_key", Type: "string"},
-		{Path: "providers.bing.enabled", Type: "bool"},
-		{Path: "providers.bing.market", Type: "string"},
-		{Path: "providers.unsplash.enabled", Type: "bool"},
-		{Path: "providers.unsplash.api_key", Type: "string"},
-		{Path: "search.min_width", Type: "int"},
-		{Path: "search.min_height", Type: "int"},
-		{Path: "search.aspect_ratio", Type: "string"},
-		{Path: "search.tolerance", Type: "float64"},
-		{Path: "behavior.theme", Type: "string"},
-		{Path: "behavior.change_interval", Type: "int"},
-		{Path: "behavior.multi_monitor", Type: "string"},
-		{Path: "behavior.auto_download", Type: "bool"},
-		{Path: "behavior.respect_dark_mode", Type: "bool"},
-		{Path: "behavior.save_favorites_to_folder", Type: "bool"},
-		{Path: "behavior.from_favorites", Type: "bool"},
-		{Path: "paths.wallpapers", Type: "string"},
-		{Path: "paths.index_wallpapers", Type: "bool"},
-		{Path: "ui.show_colors", Type: "bool"},
-		{Path: "ui.items_per_page", Type: "int"},
-		{Path: "limits.feed_soft_limit", Type: "int"},
-		{Path: "limits.feed_hard_limit", Type: "int"},
-		{Path: "limits.rate_limit_requests", Type: "int"},
-		{Path: "limits.rate_limit_period", Type: "int"},
-		{Path: "limits.log_retention_days", Type: "int"},
-		{Path: "limits.analysis_workers", Type: "int"},
-		{Path: "dry_run", Type: "bool"},
-	}
-}
-
 // SetConfigValue sets a configuration value by dotted path.
 func SetConfigValue(cfg *Config, path string, value string) error {
 	switch path {
@@ -196,6 +148,76 @@ func SetConfigValue(cfg *Config, path string, value string) error {
 		}
 		cfg.Behavior.FromFavorites = v
 		return nil
+	case "behavior.transition.type":
+		cfg.Behavior.Transition.Type = value
+		return nil
+	case "behavior.transition.duration":
+		v, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return fmt.Errorf("invalid value for %s: %v", path, err)
+		}
+		cfg.Behavior.Transition.Duration = v
+		return nil
+	case "behavior.transition.fps":
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid value for %s: %v", path, err)
+		}
+		cfg.Behavior.Transition.FPS = v
+		return nil
+	case "behavior.transition.step":
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid value for %s: %v", path, err)
+		}
+		cfg.Behavior.Transition.Step = v
+		return nil
+	case "behavior.transition.angle":
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid value for %s: %v", path, err)
+		}
+		cfg.Behavior.Transition.Angle = v
+		return nil
+	case "behavior.transition.pos":
+		cfg.Behavior.Transition.Pos = value
+		return nil
+	case "behavior.transition.bezier":
+		cfg.Behavior.Transition.Bezier = value
+		return nil
+	case "behavior.transition.wave":
+		cfg.Behavior.Transition.Wave = value
+		return nil
+	case "behavior.transition.engine":
+		cfg.Behavior.Transition.Engine = value
+		return nil
+	case "behavior.transition.linger":
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid value for %s: %v", path, err)
+		}
+		cfg.Behavior.Transition.Linger = v
+		return nil
+	case "behavior.transition.mask":
+		cfg.Behavior.Transition.Mask = value
+		return nil
+	case "behavior.transition.feather":
+		v, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return fmt.Errorf("invalid value for %s: %v", path, err)
+		}
+		cfg.Behavior.Transition.Feather = v
+		return nil
+	case "behavior.transition.invert":
+		v, err := strconv.ParseBool(value)
+		if err != nil {
+			return fmt.Errorf("invalid value for %s: %v", path, err)
+		}
+		cfg.Behavior.Transition.Invert = v
+		return nil
+	case "behavior.transition.layer":
+		cfg.Behavior.Transition.Layer = value
+		return nil
 	case "paths.wallpapers":
 		cfg.Paths.Wallpapers = value
 		return nil
@@ -234,13 +256,6 @@ func SetConfigValue(cfg *Config, path string, value string) error {
 		}
 		cfg.Limits.FeedHardLimit = v
 		return nil
-	case "limits.rate_limit_requests":
-		v, err := strconv.Atoi(value)
-		if err != nil {
-			return fmt.Errorf("invalid value for %s: %v", path, err)
-		}
-		cfg.Limits.RateLimitRequests = v
-		return nil
 	case "limits.rate_limit_period":
 		v, err := strconv.Atoi(value)
 		if err != nil {
@@ -261,13 +276,6 @@ func SetConfigValue(cfg *Config, path string, value string) error {
 			return fmt.Errorf("invalid value for %s: %v", path, err)
 		}
 		cfg.Limits.AnalysisWorkers = v
-		return nil
-	case "dry_run":
-		v, err := strconv.ParseBool(value)
-		if err != nil {
-			return fmt.Errorf("invalid value for %s: %v", path, err)
-		}
-		cfg.DryRun = v
 		return nil
 	default:
 		return fmt.Errorf("unknown config path: %s", path)
@@ -327,6 +335,34 @@ func GetConfigValue(cfg *Config, path string) (string, error) {
 		return strconv.FormatBool(cfg.Behavior.SaveFavoritesToFolder), nil
 	case "behavior.from_favorites":
 		return strconv.FormatBool(cfg.Behavior.FromFavorites), nil
+	case "behavior.transition.type":
+		return cfg.Behavior.Transition.Type, nil
+	case "behavior.transition.duration":
+		return strconv.FormatFloat(cfg.Behavior.Transition.Duration, 'f', -1, 64), nil
+	case "behavior.transition.fps":
+		return strconv.Itoa(cfg.Behavior.Transition.FPS), nil
+	case "behavior.transition.step":
+		return strconv.Itoa(cfg.Behavior.Transition.Step), nil
+	case "behavior.transition.angle":
+		return strconv.Itoa(cfg.Behavior.Transition.Angle), nil
+	case "behavior.transition.pos":
+		return cfg.Behavior.Transition.Pos, nil
+	case "behavior.transition.bezier":
+		return cfg.Behavior.Transition.Bezier, nil
+	case "behavior.transition.wave":
+		return cfg.Behavior.Transition.Wave, nil
+	case "behavior.transition.engine":
+		return cfg.Behavior.Transition.Engine, nil
+	case "behavior.transition.linger":
+		return strconv.Itoa(cfg.Behavior.Transition.Linger), nil
+	case "behavior.transition.mask":
+		return cfg.Behavior.Transition.Mask, nil
+	case "behavior.transition.feather":
+		return strconv.FormatFloat(cfg.Behavior.Transition.Feather, 'f', -1, 64), nil
+	case "behavior.transition.invert":
+		return strconv.FormatBool(cfg.Behavior.Transition.Invert), nil
+	case "behavior.transition.layer":
+		return cfg.Behavior.Transition.Layer, nil
 	case "paths.wallpapers":
 		return cfg.Paths.Wallpapers, nil
 	case "paths.index_wallpapers":
@@ -339,16 +375,12 @@ func GetConfigValue(cfg *Config, path string) (string, error) {
 		return strconv.Itoa(cfg.Limits.FeedSoftLimit), nil
 	case "limits.feed_hard_limit":
 		return strconv.Itoa(cfg.Limits.FeedHardLimit), nil
-	case "limits.rate_limit_requests":
-		return strconv.Itoa(cfg.Limits.RateLimitRequests), nil
 	case "limits.rate_limit_period":
 		return strconv.Itoa(cfg.Limits.RateLimitPeriod), nil
 	case "limits.log_retention_days":
 		return strconv.Itoa(cfg.Limits.LogRetentionDays), nil
 	case "limits.analysis_workers":
 		return strconv.Itoa(cfg.Limits.AnalysisWorkers), nil
-	case "dry_run":
-		return strconv.FormatBool(cfg.DryRun), nil
 	default:
 		return "", fmt.Errorf("unknown config path: %s", path)
 	}

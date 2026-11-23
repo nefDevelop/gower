@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"gower/internal/core"
 	"gower/internal/providers"
@@ -129,11 +130,16 @@ func runExplore(cmd *cobra.Command, args []string) error {
 	var allWallpapers []models.Wallpaper
 	var encounteredError error // Para almacenar el primer error encontrado
 
+	// Un deadline global evita que una exploración multi-proveedor se alargue
+	// indefinidamente aunque cada petición tenga su propio timeout.
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
 	for _, p := range selectedProviders {
 		if !config.Quiet && !config.JSONOutput {
 			cmd.Printf("Querying provider: %s...\n", p.GetName())
 		}
-		results, err := p.Search(context.Background(), term, searchOpts)
+		results, err := p.Search(ctx, term, searchOpts)
 		if err != nil {
 			if !config.Quiet && !config.JSONOutput {
 				cmd.Printf("Warning: Error searching %s: %v\n", p.GetName(), err)

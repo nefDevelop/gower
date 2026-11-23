@@ -1,12 +1,16 @@
 package core
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"image"
 	_ "image/gif" // Support GIF decoding
 	"image/jpeg"
 	_ "image/png" // Support PNG decoding
+	"io"
 	"math"
 	"math/rand"
 	"net/http"
@@ -15,9 +19,15 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"gower/internal/utils"
+)
+
+const (
+	thumbnailWidth = 300
+	maxImagePixels = 60_000_000 // ~60 MP: evita bombas de descompresión
 )
 
 // ColorManager handles image processing tasks such as thumbnail generation and color analysis.
@@ -25,36 +35,52 @@ type ColorManager struct {
 	Log *utils.Logger
 }
 
-func (cm *ColorManager) log() *utils.Logger {
-	if cm.Log != nil {
-		return cm.Log
-	}
-	return utils.Log
-}
-
-// StandardPalette defines a set of base colors for quantization.
-var StandardPalette = []string{
-	"#000000", // Black
-	"#FFFFFF", // White
-	"#808080", // Gray
-	"#FF0000", // Red
-	"#00FF00", // Green
-	"#0000FF", // Blue
-	"#FFFF00", // Yellow
-	"#00FFFF", // Cyan
-	"#FF00FF", // Magenta
-	"#FFA500", // Orange
-	"#800080", // Purple
-	"#A52A2A", // Brown
-	"#FFC0CB", // Pink
-	"#008080", // Teal
-	"#000080", // Navy
-	"#800000", // Maroon
-}
-
 // NewColorManager creates a new instance of ColorManager.
 func NewColorManager() *ColorManager {
 	return &ColorManager{}
+}
+
+var (
+	matugenOnce sync.Once
+	matugenPath string
+)
+
+func findMatugen() string {
+	matugenOnce.Do(func() {
+		if path, err := exec.LookPath("matugen"); err == nil {
+			matugenPath = path
+		}
+	})
+	return matugenPath
+}
+
+// decodeImage lee la imagen con un límite de tamaño y rechaza imágenes
+// desproporcionadas antes de decodificarlas completas.
+func decodeImage(r io.Reader) (image.Image, error) {
+	data, err := utils.ReadBodyLimit(r, utils.MaxImageBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode image config: %w", err)
+	}
+	if cfg.Width <= 0 || cfg.Height <= 0 {
+		return nil, fmt.Errorf("invalid image dimensions: %dx%d", cfg.Width, cfg.Height)
+	}
+	if cfg.Width*cfg.Height > maxImagePixels {
+		return nil, fmt.Errorf("image too large: %dx%d", cfg.Width, cfg.Height)
+	}
+
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode image: %w", err)
+	}
+	if img == nil {
+		return nil, fmt.Errorf("image.Decode returned nil image")
+	}
+	return img, nil
 }
 
 // GenerateThumbnail creates a thumbnail for the specified image file.
@@ -63,43 +89,39 @@ func (cm *ColorManager) GenerateThumbnail(src, destPath string) (int, int, error
 	var img image.Image
 	var err error
 
-	// Check if src is URL or local path
-	if len(src) > 4 && src[:4] == "http" {
-		client := &http.Client{Timeout: 15 * time.Second}
+	if strings.HasPrefix(src, "http://") || strings.HasPrefix(src, "https://") {
 		var resp *http.Response
-		var errGet error
-
-		// Retry up to 3 times for network glitches
-		for i := 0; i < 3; i++ {
-			resp, errGet = client.Get(src)
-			if errGet == nil {
+		for attempt := 0; attempt < 3; attempt++ {
+			req, reqErr := http.NewRequestWithContext(context.Background(), http.MethodGet, src, nil)
+			if reqErr != nil {
+				return 0, 0, reqErr
+			}
+			resp, err = utils.DefaultHTTPClient.Do(req) //nolint:bodyclose // cerrado con utils.CloseResponse
+			if err == nil {
 				break
 			}
-			time.Sleep(1 * time.Second)
+			if attempt < 2 {
+				time.Sleep(500 * time.Millisecond)
+			}
 		}
-
-		if errGet != nil {
-			return 0, 0, errGet
+		if err != nil {
+			return 0, 0, err
 		}
-		defer func() { _ = resp.Body.Close() }()
+		defer utils.CloseResponse(resp)
 		if resp.StatusCode != http.StatusOK {
 			return 0, 0, fmt.Errorf("failed to download image: %d", resp.StatusCode)
 		}
-		img, _, err = image.Decode(resp.Body)
+		img, err = decodeImage(resp.Body)
 	} else {
-		file, errOpen := os.Open(src) //nolint:gosec // Path is constructed internally.
+		file, errOpen := os.Open(src)
 		if errOpen != nil {
 			return 0, 0, errOpen
 		}
 		defer func() { _ = file.Close() }()
-		img, _, err = image.Decode(file)
+		img, err = decodeImage(file)
 	}
-
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to decode image: %w", err)
-	}
-	if img == nil {
-		return 0, 0, fmt.Errorf("image.Decode returned nil image for %s", src) // Explicit check
+		return 0, 0, err
 	}
 
 	dir := filepath.Dir(destPath)
@@ -107,11 +129,19 @@ func (cm *ColorManager) GenerateThumbnail(src, destPath string) (int, int, error
 		return 0, 0, fmt.Errorf("failed to create thumbnail directory: %w", err)
 	}
 
-	// Simple resizing (Nearest Neighbor equivalent for standard lib)
 	bounds := img.Bounds()
-	width := 300
-	ratio := float64(bounds.Dy()) / float64(bounds.Dx())
-	height := int(float64(width) * ratio)
+	if bounds.Dx() <= 0 || bounds.Dy() <= 0 {
+		return 0, 0, fmt.Errorf("invalid image bounds for %s", src)
+	}
+
+	width := thumbnailWidth
+	if bounds.Dx() < width {
+		width = bounds.Dx()
+	}
+	height := int(float64(width) * float64(bounds.Dy()) / float64(bounds.Dx()))
+	if height <= 0 {
+		height = 1
+	}
 
 	dst := image.NewRGBA(image.Rect(0, 0, width, height))
 	for y := 0; y < height; y++ {
@@ -122,7 +152,7 @@ func (cm *ColorManager) GenerateThumbnail(src, destPath string) (int, int, error
 		}
 	}
 
-	out, err := os.Create(destPath) //nolint:gosec // Path is constructed internally.
+	out, err := os.Create(destPath)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -133,7 +163,7 @@ func (cm *ColorManager) GenerateThumbnail(src, destPath string) (int, int, error
 
 // GetImageDimensions returns the width and height of an image file without decoding the whole file.
 func (cm *ColorManager) GetImageDimensions(path string) (int, int, error) {
-	file, err := os.Open(path) //nolint:gosec // Path is constructed internally.
+	file, err := os.Open(path)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -143,34 +173,51 @@ func (cm *ColorManager) GetImageDimensions(path string) (int, int, error) {
 	if err != nil {
 		return 0, 0, err
 	}
+	if cfg.Width <= 0 || cfg.Height <= 0 {
+		return 0, 0, fmt.Errorf("invalid image dimensions: %dx%d", cfg.Width, cfg.Height)
+	}
 	return cfg.Width, cfg.Height, nil
 }
 
-// AnalyzeColor determines the dominant color of the image.
+// AnalyzeColor determines the dominant color of the image. Se muestrea la
+// imagen en una rejilla en vez de recorrer todos los píxeles: en una imagen 4K
+// el recorrido completo son millones de llamadas a image.Image.At.
 func (cm *ColorManager) AnalyzeColor(path string) (string, error) {
-	// 1. Try Matugen if available
-	if _, err := exec.LookPath("matugen"); err == nil {
-		if color, err := cm.analyzeColorMatugen(path); err == nil {
+	if matugen := findMatugen(); matugen != "" {
+		if color, err := cm.analyzeColorMatugen(matugen, path); err == nil {
 			return color, nil
 		}
 	}
 
-	file, err := os.Open(path) //nolint:gosec // Path is constructed internally.
+	file, err := os.Open(path)
 	if err != nil {
 		return "", err
 	}
 	defer func() { _ = file.Close() }()
 
-	img, _, err := image.Decode(file)
+	img, err := decodeImage(file)
 	if err != nil {
 		return "", err
 	}
 
-	// Calculate average color
 	bounds := img.Bounds()
+	dx, dy := bounds.Dx(), bounds.Dy()
+	if dx <= 0 || dy <= 0 {
+		return "", fmt.Errorf("invalid image bounds")
+	}
+
+	stepX := dx / 64
+	if stepX < 1 {
+		stepX = 1
+	}
+	stepY := dy / 64
+	if stepY < 1 {
+		stepY = 1
+	}
+
 	var r, g, b, count uint64
-	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+	for y := bounds.Min.Y; y < bounds.Max.Y; y += stepY {
+		for x := bounds.Min.X; x < bounds.Max.X; x += stepX {
 			pr, pg, pb, _ := img.At(x, y).RGBA()
 			r += uint64(pr)
 			g += uint64(pg)
@@ -178,28 +225,24 @@ func (cm *ColorManager) AnalyzeColor(path string) (string, error) {
 			count++
 		}
 	}
-
 	if count == 0 {
 		return "#000000", nil
 	}
 
-	// RGBA returns 0-65535, scale down to 0-255
 	r = (r / count) >> 8
 	g = (g / count) >> 8
 	b = (b / count) >> 8
 
-	// Return the actual average color as a hex string
 	return fmt.Sprintf("#%02X%02X%02X", r, g, b), nil
 }
 
-func (cm *ColorManager) analyzeColorMatugen(path string) (string, error) {
-	cmd := exec.Command("matugen", "image", path, "--json")
+func (cm *ColorManager) analyzeColorMatugen(matugen, path string) (string, error) {
+	cmd := exec.Command(matugen, "image", path, "--json")
 	output, err := cmd.Output()
 	if err != nil {
 		return "", err
 	}
 
-	// Attempt to parse JSON output from matugen
 	var result struct {
 		Source      string `json:"source"`
 		SourceColor string `json:"source_color"`
@@ -219,9 +262,7 @@ func (cm *ColorManager) analyzeColorMatugen(path string) (string, error) {
 
 // IsDark determines if a hex color is considered dark based on luminance.
 func (cm *ColorManager) IsDark(hex string) bool {
-	lum := cm.GetLuminance(hex)
-	cm.log().Debug("Color Analysis - Hex: %s, Luminance: %.2f (Dark: %v)", hex, lum, lum < 100)
-	return lum < 100
+	return cm.GetLuminance(hex) < 100
 }
 
 // GetLuminance calculates the luminance of a hex color using Rec. 601 formula.
@@ -241,7 +282,6 @@ func (cm *ColorManager) FindNearestColorInPalette(targetHex string, palette []st
 
 	for _, hex := range palette {
 		pr, pg, pb := HexToRGB(hex)
-		// Euclidean distance
 		dist := math.Sqrt(math.Pow(float64(r-pr), 2) + math.Pow(float64(g-pg), 2) + math.Pow(float64(b-pb), 2))
 		if dist < minDist {
 			minDist = dist
@@ -252,34 +292,37 @@ func (cm *ColorManager) FindNearestColorInPalette(targetHex string, palette []st
 }
 
 // GenerateDynamicPalette uses K-Means clustering to find k representative colors.
+// El orden inicial es determinista (hash de los colores) para que el mismo feed
+// produzca siempre la misma paleta.
 func (cm *ColorManager) GenerateDynamicPalette(colors []string, k int) []string {
-	if len(colors) == 0 {
+	if len(colors) == 0 || k <= 0 {
 		return []string{}
 	}
 	if len(colors) <= k {
 		return colors
 	}
 
-	// Convert hex strings to RGB points
-	type Point struct {
+	type point struct {
 		R, G, B float64
 	}
-	var points []Point
+	points := make([]point, 0, len(colors))
 	for _, c := range colors {
 		r, g, b := HexToRGB(c)
-		points = append(points, Point{float64(r), float64(g), float64(b)})
+		points = append(points, point{float64(r), float64(g), float64(b)})
 	}
 
-	// Initialize Centroids (Randomly pick k points)
-	centroids := make([]Point, k)
-	perm := rand.Perm(len(points))
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(strings.Join(colors, ",")))
+	rng := rand.New(rand.NewSource(int64(h.Sum64())))
+
+	centroids := make([]point, k)
+	perm := rng.Perm(len(points))
 	for i := 0; i < k; i++ {
 		centroids[i] = points[perm[i]]
 	}
 
-	// K-Means Iterations
 	for iter := 0; iter < 10; iter++ {
-		buckets := make([][]Point, k)
+		buckets := make([][]point, k)
 		for _, p := range points {
 			minDist := math.MaxFloat64
 			idx := 0
@@ -295,22 +338,27 @@ func (cm *ColorManager) GenerateDynamicPalette(colors []string, k int) []string 
 			}
 			buckets[idx] = append(buckets[idx], p)
 		}
+
 		for i := 0; i < k; i++ {
-			if len(buckets[i]) > 0 {
-				var sumR, sumG, sumB float64
-				for _, p := range buckets[i] {
-					sumR += p.R
-					sumG += p.G
-					sumB += p.B
-				}
-				count := float64(len(buckets[i]))
-				centroids[i] = Point{R: sumR / count, G: sumG / count, B: sumB / count}
+			if len(buckets[i]) == 0 {
+				// Reinicializar un centroide vacío; si no, conserva un valor
+				// viejo y la paleta puede acabar con menos de k colores.
+				centroids[i] = points[(iter+i)%len(points)]
+				continue
 			}
+			var sumR, sumG, sumB float64
+			for _, p := range buckets[i] {
+				sumR += p.R
+				sumG += p.G
+				sumB += p.B
+			}
+			count := float64(len(buckets[i]))
+			centroids[i] = point{R: sumR / count, G: sumG / count, B: sumB / count}
 		}
 	}
 
 	uniqueColors := make(map[string]bool)
-	var result []string
+	result := make([]string, 0, k)
 	for _, c := range centroids {
 		hex := fmt.Sprintf("#%02X%02X%02X", int(c.R), int(c.G), int(c.B))
 		if !uniqueColors[hex] {
@@ -319,22 +367,6 @@ func (cm *ColorManager) GenerateDynamicPalette(colors []string, k int) []string 
 		}
 	}
 	return result
-}
-
-func FindNearestColor(r, g, b int) string {
-	minDist := math.MaxFloat64
-	nearest := "#000000"
-
-	for _, hex := range StandardPalette {
-		pr, pg, pb := HexToRGB(hex)
-		// Euclidean distance
-		dist := math.Sqrt(math.Pow(float64(r-pr), 2) + math.Pow(float64(g-pg), 2) + math.Pow(float64(b-pb), 2))
-		if dist < minDist {
-			minDist = dist
-			nearest = hex
-		}
-	}
-	return nearest
 }
 
 func HexToRGB(hex string) (int, int, int) {
@@ -349,11 +381,4 @@ func HexToRGB(hex string) (int, int, int) {
 		return 0, 0, 0
 	}
 	return int(val >> 16), int((val >> 8) & 0xFF), int(val & 0xFF)
-}
-
-// UpdateIndex adds the color to the search index.
-// Currently a placeholder.
-func (cm *ColorManager) UpdateIndex(hexColor string) error {
-	// TODO: Implement indexing logic.
-	return nil
 }

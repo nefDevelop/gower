@@ -1,21 +1,26 @@
 package core
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
 	"gower/internal/utils"
+	"gower/pkg/models"
 )
 
 type WallpaperChanger struct {
 	Env                string
 	RespectDarkMode    bool
+	Transition         models.TransitionConfig
 	DetectMonitorsFunc func() ([]Monitor, error)
 	SetWallpapersFunc  func([]string, []Monitor, string) error
 	Log                *utils.Logger
@@ -59,6 +64,10 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 		return wc.SetWallpapersFunc(paths, monitors, multiMonitor)
 	}
 
+	if len(paths) == 0 {
+		return fmt.Errorf("no wallpapers provided")
+	}
+
 	if (len(monitors) == 1 && multiMonitor != "distinct") || multiMonitor == "clone" || len(monitors) == 0 {
 		path := paths[0]
 		var targetMonitors []Monitor
@@ -72,12 +81,8 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 			}
 		}
 
-		return wc.applyToMonitors(targetMonitors, path, "")
+		return wc.applyToMonitors(targetMonitors, path)
 	} else if multiMonitor == "distinct" {
-		if len(paths) == 0 {
-			return fmt.Errorf("no wallpapers provided for distinct mode")
-		}
-
 		var allErrs []error
 		for i, monitor := range monitors {
 			path := paths[i%len(paths)]
@@ -87,7 +92,7 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 			}
 		}
 		if len(allErrs) > 0 {
-			return fmt.Errorf("errors occurred while setting distinct wallpapers: %v", allErrs)
+			return fmt.Errorf("errors occurred while setting distinct wallpapers: %w", errors.Join(allErrs...))
 		}
 		return nil
 	}
@@ -95,7 +100,7 @@ func (wc *WallpaperChanger) SetWallpapers(paths []string, monitors []Monitor, mu
 	return fmt.Errorf("invalid multi-monitor mode: %s", multiMonitor)
 }
 
-func (wc *WallpaperChanger) applyToMonitors(monitors []Monitor, path string, _ string) error {
+func (wc *WallpaperChanger) applyToMonitors(monitors []Monitor, path string) error {
 	var allErrs []error
 	for _, monitor := range monitors {
 		wc.log().Info("Setting wallpaper for monitor %s: %s", monitor.Name, path)
@@ -130,7 +135,7 @@ func (wc *WallpaperChanger) applyToMonitors(monitors []Monitor, path string, _ s
 		}
 	}
 	if len(allErrs) > 0 {
-		return fmt.Errorf("errors occurred while setting wallpapers: %v", allErrs)
+		return fmt.Errorf("errors occurred while setting wallpapers: %w", errors.Join(allErrs...))
 	}
 	return nil
 }
@@ -159,7 +164,10 @@ func (wc *WallpaperChanger) applyToMonitor(monitor Monitor, path string, index i
 			wc.log().Debug("DMS: IPC call successful for monitor %s", monitor.Name)
 			return nil
 		}
-		wc.log().Error("Warning: DMS IPC call failed for monitor %s (error: %v).", monitor.Name, err)
+		wc.log().Info("Warning: DMS IPC call failed for monitor %s (error: %v). Falling back to quickshell.", monitor.Name, err)
+		if err := runCommand(exec.Command("quickshell", "-w", path)); err != nil {
+			return fmt.Errorf("failed to set wallpaper for monitor %s: %w", monitor.Name, err)
+		}
 		return nil
 	}
 
@@ -167,6 +175,20 @@ func (wc *WallpaperChanger) applyToMonitor(monitor Monitor, path string, index i
 }
 
 func (wc *WallpaperChanger) execCommand(monitor Monitor, path string, index int) error {
+	// GNOME distingue picture-uri y picture-uri-dark. Cuando no se respeta el
+	// tema hay que fijar ambas; antes se lanzaba una de ellas como efecto
+	// secundario dentro de buildCommand.
+	if wc.Env == "gnome" && !wc.RespectDarkMode {
+		uri := "file://" + path
+		if err := runCommand(exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri)); err != nil {
+			return fmt.Errorf("failed to set wallpaper for monitor %s: %w", monitor.Name, err)
+		}
+		if err := runCommand(exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri-dark", uri)); err != nil {
+			return fmt.Errorf("failed to set wallpaper for monitor %s: %w", monitor.Name, err)
+		}
+		return nil
+	}
+
 	cmd, err := wc.buildCommand(monitor, path, index)
 	if err != nil {
 		return err
@@ -174,9 +196,319 @@ func (wc *WallpaperChanger) execCommand(monitor Monitor, path string, index int)
 	if cmd == nil {
 		return nil
 	}
+
+	// swaybg es un demonio en primer plano: cmd.Run() no retornaría nunca.
+	if isBackgroundCommand(cmd) {
+		return wc.runBackgroundCommand(cmd)
+	}
+
+	if isRoserlayCommand(cmd) {
+		if err := runCommand(cmd); err != nil {
+			wc.log().Error("roserlay failed (%v); falling back to native transitions", err)
+			previousEngine := wc.Transition.Engine
+			wc.Transition.Engine = "awww"
+			native, nativeErr := wc.buildCommand(monitor, path, index)
+			wc.Transition.Engine = previousEngine
+			if nativeErr != nil {
+				return nativeErr
+			}
+			if native == nil {
+				return fmt.Errorf("roserlay failed and no native fallback is available: %w", err)
+			}
+			if isBackgroundCommand(native) {
+				return wc.runBackgroundCommand(native)
+			}
+			if nativeErr := runCommand(native); nativeErr != nil {
+				return fmt.Errorf("failed to set wallpaper for monitor %s: %w", monitor.Name, nativeErr)
+			}
+			return nil
+		}
+		return nil
+	}
+
 	if err := runCommand(cmd); err != nil {
 		return fmt.Errorf("failed to set wallpaper for monitor %s: %w", monitor.Name, err)
 	}
+	return nil
+}
+
+func isRoserlayCommand(cmd *exec.Cmd) bool {
+	return cmd != nil && filepath.Base(cmd.Path) == "roserlay"
+}
+
+func isBackgroundCommand(cmd *exec.Cmd) bool {
+	if cmd == nil || len(cmd.Args) == 0 {
+		return false
+	}
+	return filepath.Base(cmd.Args[0]) == "swaybg"
+}
+
+// SupportsTransitions indica si el backend activo acepta animación.
+func (wc *WallpaperChanger) SupportsTransitions() bool {
+	switch wc.Env {
+	case "awww", "swww":
+		return commandExists(wc.Env)
+	case "niri":
+		return commandExists("awww") || commandExists("swww")
+	default:
+		return false
+	}
+}
+
+// transitionArgs traduce la configuración de transición a flags de awww/swww.
+// Los valores a cero se omiten para dejar que el backend use su default.
+func (wc *WallpaperChanger) transitionArgs() []string {
+	t := wc.Transition
+	if t.Type == "" {
+		return nil
+	}
+
+	args := []string{"--transition-type", t.Type}
+	if t.Duration > 0 {
+		args = append(args, "--transition-duration", strconv.FormatFloat(t.Duration, 'f', -1, 64))
+	}
+	if t.FPS > 0 {
+		args = append(args, "--transition-fps", strconv.Itoa(t.FPS))
+	}
+	if t.Step > 0 {
+		args = append(args, "--transition-step", strconv.Itoa(t.Step))
+	}
+	if t.Angle > 0 {
+		args = append(args, "--transition-angle", strconv.Itoa(t.Angle))
+	}
+	if t.Pos != "" {
+		args = append(args, "--transition-pos", t.Pos)
+	}
+	if t.Bezier != "" {
+		args = append(args, "--transition-bezier", t.Bezier)
+	}
+	if t.Wave != "" {
+		args = append(args, "--transition-wave", t.Wave)
+	}
+	return args
+}
+
+// swwwCommand construye el comando compartido por swww y awww.
+func (wc *WallpaperChanger) swwwCommand(binary string, monitor Monitor, path string) *exec.Cmd {
+	args := []string{"img", "-o", monitor.Name}
+	args = append(args, wc.transitionArgs()...)
+	args = append(args, path)
+	return exec.Command(binary, args...)
+}
+
+// swwwBinary devuelve qué ejecutable awww/swww está disponible para fijar el
+// fondo definitivo. Es también el que usa roserlay en su --on-complete.
+func (wc *WallpaperChanger) swwwBinary() (string, bool) {
+	switch wc.Env {
+	case "awww":
+		if commandExists("awww") {
+			return "awww", true
+		}
+	case "swww":
+		if commandExists("swww") {
+			return "swww", true
+		}
+	case "niri":
+		if IsProcessRunning("awww-daemon") && commandExists("awww") {
+			return "awww", true
+		}
+		if IsProcessRunning("swww-daemon") && commandExists("swww") {
+			return "swww", true
+		}
+		if commandExists("awww") {
+			return "awww", true
+		}
+		if commandExists("swww") {
+			return "swww", true
+		}
+	}
+	return "", false
+}
+
+func shQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// roserlayMask traduce type/mask de la configuración a la máscara de roserlay.
+// Devuelve también el ángulo y si hay que invertir el orden de revelado.
+func roserlayMask(t models.TransitionConfig) (mask string, angle int, invert bool) {
+	mask = t.Mask
+	angle = t.Angle
+
+	if mask == "" {
+		switch t.Type {
+		case "", "simple", "fade":
+			mask = "crossfade"
+		case "left":
+			mask, angle = "wipe", 0
+		case "right":
+			mask, angle = "wipe", 180
+		case "top":
+			mask, angle = "wipe", 90
+		case "bottom":
+			mask, angle = "wipe", 270
+		case "wipe", "wave":
+			mask = "wipe"
+		case "grow", "center", "any":
+			mask = "radial"
+		case "outer":
+			mask = "radial"
+			invert = true
+		case "random":
+			mask = "random"
+		default:
+			mask = "crossfade"
+		}
+	}
+
+	if t.Type == "outer" {
+		invert = true
+	}
+	return mask, angle, invert
+}
+
+// CurrentWallpaperPath consulta al backend (awww/swww) qué imagen se está
+// mostrando en el monitor indicado.
+func CurrentWallpaperPath(setterPath, monitorName string) (string, error) {
+	out, err := outputWithTimeout(2*time.Second, setterPath, "query")
+	if err != nil {
+		return "", err
+	}
+
+	first := ""
+	for _, line := range strings.Split(string(out), "\n") {
+		idx := strings.Index(line, "image: ")
+		if idx < 0 {
+			continue
+		}
+		path := strings.TrimSpace(line[idx+len("image: "):])
+		if path == "" {
+			continue
+		}
+		if first == "" {
+			first = path
+		}
+		if monitorName == "" || monitorName == "default" || strings.Contains(line, monitorName) {
+			return path, nil
+		}
+	}
+
+	if first != "" {
+		return first, nil
+	}
+	return "", fmt.Errorf("current wallpaper not found")
+}
+
+// roserlayCommand construye el overlay propio de transición. Devuelve false si
+// el motor no es roserlay, si no está instalado o si el backend no lo soporta;
+// en ese caso se usa la transición nativa de awww.
+func (wc *WallpaperChanger) roserlayCommand(monitor Monitor, path string) (*exec.Cmd, bool) {
+	engine := wc.Transition.Engine
+	if engine == "" {
+		// Valor cero (tests / config antigua): comportamiento clásico.
+		engine = "awww"
+	}
+	if engine == "awww" || wc.Transition.Type == "none" {
+		return nil, false
+	}
+
+	roserlayPath, err := exec.LookPath("roserlay")
+	if err != nil {
+		if engine == "auto" {
+			wc.log().Debug("transition engine auto: roserlay not found, using awww")
+		}
+		return nil, false
+	}
+	setter, ok := wc.swwwBinary()
+	if !ok {
+		if engine == "auto" {
+			wc.log().Debug("transition engine auto: no awww/swww backend, using native transitions")
+		}
+		return nil, false
+	}
+	setterPath, err := exec.LookPath(setter)
+	if err != nil {
+		return nil, false
+	}
+	if engine == "auto" {
+		wc.log().Debug("transition engine auto: using roserlay")
+	}
+
+	args := []string{"--new", path}
+	if wc.Transition.Duration > 0 {
+		args = append(args, "--duration", strconv.FormatFloat(wc.Transition.Duration, 'f', -1, 64))
+	}
+	if wc.Transition.Linger > 0 {
+		args = append(args, "--linger", strconv.Itoa(wc.Transition.Linger))
+	}
+
+	mask, angle, invert := roserlayMask(wc.Transition)
+	if wc.Transition.Invert {
+		invert = true
+	}
+	maskFile := ""
+	oldPath := ""
+	if mask == "diff" {
+		var err error
+		oldPath, err = CurrentWallpaperPath(setterPath, monitor.Name)
+		if err != nil {
+			wc.log().Error("diff mask: cannot read current wallpaper for %s: %v; falling back to color", monitor.Name, err)
+			mask = "color"
+		}
+	}
+	if IsContentMask(mask) {
+		generated, err := GenerateTransitionMaskFile(path, mask, oldPath)
+		if err != nil {
+			wc.log().Error("failed to generate %s mask for %s: %v; falling back to crossfade", mask, path, err)
+			mask = "crossfade"
+		} else {
+			maskFile = generated
+			mask = ""
+		}
+	}
+	if maskFile != "" {
+		args = append(args, "--mask-file", maskFile)
+	} else if mask != "" {
+		args = append(args, "--mask", mask)
+	}
+	if angle > 0 {
+		args = append(args, "--angle", strconv.Itoa(angle))
+	}
+	if wc.Transition.Pos != "" {
+		args = append(args, "--pos", wc.Transition.Pos)
+	}
+	if wc.Transition.Feather > 0 {
+		args = append(args, "--feather", strconv.FormatFloat(wc.Transition.Feather, 'f', -1, 64))
+	}
+	if invert {
+		args = append(args, "--invert")
+	}
+	if wc.Transition.Layer != "" {
+		args = append(args, "--layer", wc.Transition.Layer)
+	}
+	useOutput := monitor.Name != "" && monitor.Name != "default"
+	if useOutput {
+		args = append(args, "--output", monitor.Name)
+	}
+
+	var onComplete string
+	if useOutput {
+		onComplete = fmt.Sprintf("%s img -o %s --transition-type none %s",
+			shQuote(setterPath), shQuote(monitor.Name), shQuote(path))
+	} else {
+		onComplete = fmt.Sprintf("%s img --transition-type none %s",
+			shQuote(setterPath), shQuote(path))
+	}
+	args = append(args, "--on-complete", onComplete)
+
+	return exec.Command(roserlayPath, args...), true
+}
+
+func (wc *WallpaperChanger) runBackgroundCommand(cmd *exec.Cmd) error {
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start %s: %w", cmd.Path, err)
+	}
+	go func() { _ = cmd.Wait() }()
 	return nil
 }
 
@@ -184,12 +516,50 @@ func (wc *WallpaperChanger) execCommand(monitor Monitor, path string, index int)
 // los tests puedan comprobar la construcción del comando y el manejo de errores
 // sin invocarlo: gsettings y dbus-send modificarían el escritorio real del
 // usuario y swaymsg, swaybg, awww o swww llegarían a arrancar procesos.
-var runCommand = func(cmd *exec.Cmd) error { return cmd.Run() }
+//
+// La implementación real aplica un timeout para que un compositor colgado no
+// bloquee el daemon indefinidamente.
+var runCommand = func(cmd *exec.Cmd) error {
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(commandTimeout(cmd)):
+		_ = cmd.Process.Kill()
+		<-done
+		return fmt.Errorf("command %s timed out", cmd.Path)
+	}
+}
+
+// commandTimeout da más margen a roserlay porque su duración es configurable;
+// el resto de comandos de escritorio deben responder rápido.
+func commandTimeout(cmd *exec.Cmd) time.Duration {
+	if filepath.Base(cmd.Path) == "roserlay" {
+		return 5 * time.Minute
+	}
+	return 10 * time.Second
+}
 
 // startBackgroundProcess lanza un demonio de wallpaper en segundo plano.
-var startBackgroundProcess = func(name string) error { return exec.Command(name).Start() }
+var startBackgroundProcess = func(name string) error {
+	cmd := exec.Command(name)
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	go func() { _ = cmd.Wait() }()
+	return nil
+}
 
 func (wc *WallpaperChanger) buildCommand(monitor Monitor, path string, index int) (*exec.Cmd, error) {
+	if cmd, ok := wc.roserlayCommand(monitor, path); ok {
+		return cmd, nil
+	}
+
 	switch wc.Env {
 	case "kde":
 		script := fmt.Sprintf(`
@@ -217,26 +587,25 @@ func (wc *WallpaperChanger) buildCommand(monitor Monitor, path string, index int
 				return exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri), nil
 			}
 		} else {
-			_ = runCommand(exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri))
-			return exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri-dark", uri), nil
+			return exec.Command("gsettings", "set", "org.gnome.desktop.background", "picture-uri", uri), nil
 		}
 
 	case "niri":
 		// Prioriza el demonio ya activo: tener swww y awww a la vez causa parpadeo.
 		if IsProcessRunning("awww-daemon") && commandExists("awww") {
-			return exec.Command("awww", "img", "-o", monitor.Name, path), nil
+			return wc.swwwCommand("awww", monitor, path), nil
 		}
 		if IsProcessRunning("swww-daemon") && commandExists("swww") {
-			return exec.Command("swww", "img", "-o", monitor.Name, path), nil
+			return wc.swwwCommand("swww", monitor, path), nil
 		}
 		// Ninguno activo: intenta iniciar uno de los instalados.
 		if commandExists("awww") {
 			startDaemon("awww-daemon")
-			return exec.Command("awww", "img", "-o", monitor.Name, path), nil
+			return wc.swwwCommand("awww", monitor, path), nil
 		}
 		if commandExists("swww") {
 			startDaemon("swww-daemon")
-			return exec.Command("swww", "img", "-o", monitor.Name, path), nil
+			return wc.swwwCommand("swww", monitor, path), nil
 		}
 		if commandExists("swaybg") {
 			return exec.Command("swaybg", "-o", monitor.Name, "-i", path, "-m", "fill"), nil
@@ -257,10 +626,10 @@ func (wc *WallpaperChanger) buildCommand(monitor Monitor, path string, index int
 		return exec.Command("nitrogen", "--set-auto", "--save", path), nil
 
 	case "swww":
-		return exec.Command("swww", "img", "-o", monitor.Name, path), nil
+		return wc.swwwCommand("swww", monitor, path), nil
 
 	case "awww":
-		return exec.Command("awww", "-o", monitor.Name, path), nil
+		return wc.swwwCommand("awww", monitor, path), nil
 
 	default:
 		return nil, fmt.Errorf("unsupported or undetected desktop environment '%s'", wc.Env)
@@ -275,22 +644,34 @@ var commandExists = func(cmd string) bool {
 	return err == nil
 }
 
+// outputWithTimeout ejecuta un comando de consulta con un timeout corto para
+// que un compositor congelado no bloquee el daemon.
+func outputWithTimeout(timeout time.Duration, name string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	return exec.CommandContext(ctx, name, args...).Output()
+}
+
 // IsProcessRunning checks if a process with the exact given name is running.
 // Exported so other packages (p. ej. cmd/status) can detect daemon conflicts.
 var IsProcessRunning = func(processName string) bool {
-	cmd := exec.Command("pgrep", "-x", processName)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "pgrep", "-x", processName)
 	if err := cmd.Run(); err == nil {
 		return true
 	}
 	return false
 }
 
-// isProcessRunning mantiene el alias interno para no romper los tests que
-// sustituyen esta variable.
-var isProcessRunning = IsProcessRunning
+// isProcessRunning mantiene la costura que usan los tests. Es una función (no
+// una copia del valor de IsProcessRunning) para que sustituir IsProcessRunning
+// afecte también a la detección interna.
+var isProcessRunning = func(processName string) bool {
+	return IsProcessRunning(processName)
+}
 
-// startDaemon lanza un demonio de fondo y espera brevemente a que levante, para
-// que la primera invocacion no falle contra un daemon aun sin socket.
+// startDaemon lanza un demonio de fondo y espera a que el proceso aparezca.
 func startDaemon(name string) {
 	if isProcessRunning(name) {
 		return
@@ -299,24 +680,36 @@ func startDaemon(name string) {
 		utils.Log.Error("Failed to start %s: %v", name, err)
 		return
 	}
-	time.Sleep(500 * time.Millisecond)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if isProcessRunning(name) {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 func DetectDesktopEnv() string {
 	if runtime.GOOS == "windows" {
 		return "windows"
 	}
-	if isProcessRunning("swww-daemon") && commandExists("swww") {
-		return "swww"
-	}
-	if (isProcessRunning("dms") || isProcessRunning("quickshell")) && (commandExists("dms") || commandExists("quickshell")) {
-		return "dms"
-	}
+	// El compositor manda: un niri con swww-daemon activo se detecta como niri,
+	// no como swww, para poder usar los nombres de monitor correctos.
 	if (isProcessRunning("niri") || isProcessRunning("niri-session")) && commandExists("niri") {
 		return "niri"
 	}
 	if isProcessRunning("sway") && commandExists("swaybg") {
 		return "sway"
+	}
+	if (isProcessRunning("dms") || isProcessRunning("quickshell")) && (commandExists("dms") || commandExists("quickshell")) {
+		return "dms"
+	}
+	if isProcessRunning("swww-daemon") && commandExists("swww") {
+		return "swww"
+	}
+	if isProcessRunning("awww-daemon") && commandExists("awww") {
+		return "awww"
 	}
 	if isProcessRunning("gnome-shell") {
 		return "gnome"
@@ -412,7 +805,7 @@ func (wc *WallpaperChanger) DetectMonitors() ([]Monitor, error) {
 	var monitors []Monitor
 
 	if commandExists("hyprctl") {
-		out, err := exec.Command("hyprctl", "monitors", "-j").Output()
+		out, err := outputWithTimeout(3*time.Second, "hyprctl", "monitors", "-j")
 		if err == nil {
 			var hyprMonitors []struct {
 				ID      int    `json:"id"`
@@ -437,7 +830,7 @@ func (wc *WallpaperChanger) DetectMonitors() ([]Monitor, error) {
 	}
 
 	if commandExists("swaymsg") {
-		out, err := exec.Command("swaymsg", "-t", "get_outputs").Output()
+		out, err := outputWithTimeout(3*time.Second, "swaymsg", "-t", "get_outputs")
 		if err == nil {
 			var swayMonitors []struct {
 				Name string `json:"name"`
@@ -467,10 +860,9 @@ func (wc *WallpaperChanger) DetectMonitors() ([]Monitor, error) {
 	}
 
 	switch wc.Env {
-	case "gnome", "kde", "feh", "nitrogen", "swww", "awww", "dms", "sway", "niri", "unknown":
+	case "gnome", "kde", "feh", "nitrogen", "swww", "awww", "dms", "sway", "niri", "hyprland", "unknown", "":
 		if commandExists("xrandr") {
-			cmd := exec.Command("xrandr", "--query")
-			output, err := cmd.Output()
+			output, err := outputWithTimeout(3*time.Second, "xrandr", "--query")
 			if err != nil {
 				return nil, fmt.Errorf("failed to query xrandr: %w", err)
 			}
@@ -550,7 +942,7 @@ func filterXWaylandMonitors(monitors []Monitor) []Monitor {
 
 func IsSystemInDarkMode() bool {
 	if commandExists("dbus-send") {
-		out, err := exec.Command("dbus-send", "--session", "--print-reply=literal", "--dest=org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop", "org.freedesktop.portal.Settings.Read", "string:org.freedesktop.appearance", "string:color-scheme").Output()
+		out, err := outputWithTimeout(3*time.Second, "dbus-send", "--session", "--print-reply=literal", "--dest=org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop", "org.freedesktop.portal.Settings.Read", "string:org.freedesktop.appearance", "string:color-scheme")
 		if err == nil {
 			if strings.Contains(string(out), "uint32 1") {
 				return true
@@ -559,7 +951,7 @@ func IsSystemInDarkMode() bool {
 	}
 
 	if commandExists("gsettings") {
-		out, err := exec.Command("gsettings", "get", "org.gnome.desktop.interface", "color-scheme").Output()
+		out, err := outputWithTimeout(3*time.Second, "gsettings", "get", "org.gnome.desktop.interface", "color-scheme")
 		if err == nil {
 			s := strings.TrimSpace(string(out))
 			s = strings.Trim(s, "'")
@@ -570,7 +962,7 @@ func IsSystemInDarkMode() bool {
 	}
 
 	if commandExists("kreadconfig5") {
-		out, err := exec.Command("kreadconfig5", "--file", "kdeglobals", "--group", "General", "--key", "ColorScheme").Output()
+		out, err := outputWithTimeout(3*time.Second, "kreadconfig5", "--file", "kdeglobals", "--group", "General", "--key", "ColorScheme")
 		if err == nil {
 			s := strings.ToLower(strings.TrimSpace(string(out)))
 			if strings.Contains(s, "dark") {

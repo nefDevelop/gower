@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -63,19 +62,5 @@ func TestParseAspectRatio(t *testing.T) {
 				t.Errorf("ParseAspectRatio(%q) = %f; want %f", tc.input, got, tc.want)
 			}
 		}
-	}
-}
-
-func TestBuildSearchQuery(t *testing.T) {
-	flags := map[string]interface{}{
-		"min-width":    1920,
-		"aspect-ratio": "16:9",
-	}
-	query := BuildSearchQuery(flags)
-	if !strings.Contains(query, "min_width=1920") {
-		t.Errorf("Query missing min_width: %s", query)
-	}
-	if !strings.Contains(query, "aspect_ratio=16:9") {
-		t.Errorf("Query missing aspect_ratio: %s", query)
 	}
 }

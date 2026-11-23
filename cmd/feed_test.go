@@ -153,7 +153,7 @@ func TestFeedRandom(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error executing feed random: %v", err)
 	}
-	if !strings.Contains(output, "Displaying wallpaper") {
+	if !strings.Contains(output, "ID: 1") {
 		t.Errorf("Expected wallpaper display, got: %s", output)
 	}
 }

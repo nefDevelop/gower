@@ -2,10 +2,10 @@ package providers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"gower/internal/utils"
@@ -39,39 +39,47 @@ func (p *NasaProvider) Search(ctx context.Context, query string, opts SearchOpti
 	if query == "" {
 		return p.fetchAPOD(ctx, opts.Limit, opts.ExcludeIDs)
 	}
-	return p.searchImageLibrary(ctx, query, opts.Limit, opts.ExcludeIDs)
+	return p.searchImageLibrary(ctx, query, opts)
 }
 
 func (p *NasaProvider) fetchAPOD(ctx context.Context, limit int, excludeIDs map[string]bool) ([]models.Wallpaper, error) {
-	if limit <= 0 {
-		limit = 10
-	}
-	// APOD 'count' parameter returns random images
-	// Pedimos más items para filtrar videos, pero respetando el límite de 100 de la API
+	limit = normalizeLimit(limit, 10, 100)
+
+	// APOD 'count' devuelve imágenes aleatorias: se piden más para poder
+	// descartar vídeos sin quedarse corto.
 	count := limit * 2
 	if count > 100 {
 		count = 100
 	}
+
 	apiKey := p.APIKey
 	if apiKey == "" {
 		apiKey = "DEMO_KEY"
 	}
-	apiURL := fmt.Sprintf("https://api.nasa.gov/planetary/apod?api_key=%s&count=%d", apiKey, count)
 
-	p.log().Debug("NASA APOD fetching: %s", apiURL)
-
-	if p.RateLimiter != nil {
-		p.RateLimiter.Wait()
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	u, err := url.Parse("https://api.nasa.gov/planetary/apod")
 	if err != nil {
 		return nil, err
 	}
-	resp, err := utils.DefaultHTTPClient.Do(req)
+	q := u.Query()
+	q.Set("api_key", apiKey)
+	q.Set("count", strconv.Itoa(count))
+	u.RawQuery = q.Encode()
+
+	p.log().Debug("NASA APOD fetching: %s", utils.RedactURL(u.String()))
+
+	if err := waitRateLimiter(p.RateLimiter, ctx); err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	resp, err := utils.DoRequest(ctx, utils.DefaultHTTPClient, req, 3) //nolint:bodyclose // cerrado con utils.CloseResponse
+	if err != nil {
+		return nil, err
+	}
+	defer utils.CloseResponse(resp)
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("nasa apod api returned status: %d", resp.StatusCode)
@@ -79,17 +87,17 @@ func (p *NasaProvider) fetchAPOD(ctx context.Context, limit int, excludeIDs map[
 
 	var results []struct {
 		Title     string `json:"title"`
-		Url       string `json:"url"`
-		HdUrl     string `json:"hdurl"`
+		URL       string `json:"url"`
+		HdURL     string `json:"hdurl"`
 		MediaType string `json:"media_type"`
 		Date      string `json:"date"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
+	if err := utils.DecodeJSON(resp.Body, &results); err != nil {
 		return nil, err
 	}
 
-	var wallpapers []models.Wallpaper
+	wallpapers := make([]models.Wallpaper, 0, limit)
 	for _, item := range results {
 		if len(wallpapers) >= limit {
 			break
@@ -103,15 +111,15 @@ func (p *NasaProvider) fetchAPOD(ctx context.Context, limit int, excludeIDs map[
 			continue
 		}
 
-		imgURL := item.HdUrl
+		imgURL := item.HdURL
 		if imgURL == "" {
-			imgURL = item.Url
+			imgURL = item.URL
 		}
 
 		wallpapers = append(wallpapers, models.Wallpaper{
 			ID:        id,
 			URL:       imgURL,
-			Thumbnail: item.Url, // APOD no da thumbnail separado, usamos la URL estándar
+			Thumbnail: item.URL,
 			Source:    "nasa",
 			Title:     item.Title,
 		})
@@ -119,9 +127,14 @@ func (p *NasaProvider) fetchAPOD(ctx context.Context, limit int, excludeIDs map[
 	return wallpapers, nil
 }
 
-func (p *NasaProvider) searchImageLibrary(ctx context.Context, query string, limit int, excludeIDs map[string]bool) ([]models.Wallpaper, error) {
-	baseURL := "https://images-api.nasa.gov/search"
-	u, err := url.Parse(baseURL)
+func (p *NasaProvider) searchImageLibrary(ctx context.Context, query string, opts SearchOptions) ([]models.Wallpaper, error) {
+	limit := normalizeLimit(opts.Limit, 25, 100)
+	page := opts.Page
+	if page <= 0 {
+		page = 1
+	}
+
+	u, err := url.Parse("https://images-api.nasa.gov/search")
 	if err != nil {
 		return nil, err
 	}
@@ -129,22 +142,24 @@ func (p *NasaProvider) searchImageLibrary(ctx context.Context, query string, lim
 	q := u.Query()
 	q.Set("q", query)
 	q.Set("media_type", "image")
+	q.Set("page", strconv.Itoa(page))
+	q.Set("page_size", strconv.Itoa(limit))
 	u.RawQuery = q.Encode()
 
 	p.log().Debug("NASA Image Library fetching: %s", u.String())
 
-	if p.RateLimiter != nil {
-		p.RateLimiter.Wait()
+	if err := waitRateLimiter(p.RateLimiter, ctx); err != nil {
+		return nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := utils.DefaultHTTPClient.Do(req)
+	resp, err := utils.DoRequest(ctx, utils.DefaultHTTPClient, req, 3) //nolint:bodyclose // cerrado con utils.CloseResponse
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer utils.CloseResponse(resp)
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("nasa image api returned status: %d", resp.StatusCode)
@@ -165,18 +180,13 @@ func (p *NasaProvider) searchImageLibrary(ctx context.Context, query string, lim
 		} `json:"collection"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := utils.DecodeJSON(resp.Body, &result); err != nil {
 		return nil, err
 	}
 
-	var wallpapers []models.Wallpaper
-	count := 0
-	if limit <= 0 {
-		limit = 25
-	}
-
+	wallpapers := make([]models.Wallpaper, 0, limit)
 	for _, item := range result.Collection.Items {
-		if count >= limit {
+		if len(wallpapers) >= limit {
 			break
 		}
 		if len(item.Data) == 0 || len(item.Links) == 0 {
@@ -185,7 +195,7 @@ func (p *NasaProvider) searchImageLibrary(ctx context.Context, query string, lim
 
 		data := item.Data[0]
 		id := "ns_" + data.NasaID
-		if excludeIDs != nil && excludeIDs[id] {
+		if opts.ExcludeIDs != nil && opts.ExcludeIDs[id] {
 			continue
 		}
 
@@ -200,11 +210,13 @@ func (p *NasaProvider) searchImageLibrary(ctx context.Context, query string, lim
 			thumb = item.Links[0].Href
 		}
 
-		// Heurística mejorada para alta resolución
-		// Usamos ~large o ~medium que son más seguros que ~orig (que puede ser tif)
+		// ~thumb y ~small son versiones reducidas; ~orig puede ser TIFF.
 		imgURL := strings.Replace(thumb, "~thumb", "~large", 1)
 		if imgURL == thumb {
 			imgURL = strings.Replace(thumb, "~small", "~large", 1)
+		}
+		if imgURL == thumb && !strings.HasPrefix(thumb, "http") {
+			continue
 		}
 
 		wallpapers = append(wallpapers, models.Wallpaper{
@@ -214,7 +226,6 @@ func (p *NasaProvider) searchImageLibrary(ctx context.Context, query string, lim
 			Source:    "nasa",
 			Title:     data.Title,
 		})
-		count++
 	}
 	return wallpapers, nil
 }

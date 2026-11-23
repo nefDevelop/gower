@@ -2,7 +2,6 @@ package providers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -32,11 +31,28 @@ func (p *WallhavenProvider) GetName() string {
 	return "wallhaven"
 }
 
+// wallhavenSorting traduce los valores genéricos de Sort a los que acepta la
+// API de Wallhaven. Un valor desconocido se omite en lugar de enviarse tal cual.
+func wallhavenSorting(sort string) string {
+	switch sort {
+	case "date_added", "relevance", "random", "favorites", "toplist", "views", "hot":
+		return sort
+	case "newest", "latest":
+		return "date_added"
+	case "top", "popular":
+		return "toplist"
+	default:
+		return ""
+	}
+}
+
 func (p *WallhavenProvider) Search(ctx context.Context, query string, opts SearchOptions) ([]models.Wallpaper, error) {
 	u, err := url.Parse(WallhavenBaseURL)
 	if err != nil {
 		return nil, err
 	}
+
+	limit := normalizeLimit(opts.Limit, 24, 48)
 
 	q := u.Query()
 	if query != "" {
@@ -48,8 +64,8 @@ func (p *WallhavenProvider) Search(ctx context.Context, query string, opts Searc
 	if opts.Category != "" {
 		q.Set("categories", opts.Category)
 	}
-	if opts.Sort != "" {
-		q.Set("sorting", opts.Sort)
+	if sorting := wallhavenSorting(opts.Sort); sorting != "" {
+		q.Set("sorting", sorting)
 	}
 	if opts.MinWidth > 0 || opts.MinHeight > 0 {
 		w := opts.MinWidth
@@ -71,23 +87,32 @@ func (p *WallhavenProvider) Search(ctx context.Context, query string, opts Searc
 	if p.APIKey != "" {
 		q.Set("apikey", p.APIKey)
 	}
+	// Wallhaven solo admite 24, 32 o 48 resultados por página.
+	switch {
+	case limit <= 24:
+		q.Set("per_page", "24")
+	case limit <= 32:
+		q.Set("per_page", "32")
+	default:
+		q.Set("per_page", "48")
+	}
 
 	u.RawQuery = q.Encode()
 
-	p.log().Debug("Wallhaven fetching: %s", u.String())
+	p.log().Debug("Wallhaven fetching: %s", utils.RedactURL(u.String()))
 
-	if p.RateLimiter != nil {
-		p.RateLimiter.Wait()
+	if err := waitRateLimiter(p.RateLimiter, ctx); err != nil {
+		return nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := utils.DefaultHTTPClient.Do(req)
+	resp, err := utils.DoRequest(ctx, utils.DefaultHTTPClient, req, 3) //nolint:bodyclose // cerrado con utils.CloseResponse
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer utils.CloseResponse(resp)
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("wallhaven api returned status: %d", resp.StatusCode)
@@ -106,24 +131,34 @@ func (p *WallhavenProvider) Search(ctx context.Context, query string, opts Searc
 				Small    string `json:"small"`
 			} `json:"thumbs"`
 		} `json:"data"`
+		Meta struct {
+			Error string `json:"error"`
+		} `json:"meta"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := utils.DecodeJSON(resp.Body, &result); err != nil {
 		return nil, err
 	}
+	if result.Meta.Error != "" {
+		return nil, fmt.Errorf("wallhaven api error: %s", result.Meta.Error)
+	}
 
-	var wallpapers []models.Wallpaper
+	wallpapers := make([]models.Wallpaper, 0, len(result.Data))
 	for _, item := range result.Data {
-		wp := models.Wallpaper{
+		if len(wallpapers) >= limit {
+			break
+		}
+		if opts.ExcludeIDs != nil && opts.ExcludeIDs["wh_"+item.ID] {
+			continue
+		}
+		wallpapers = append(wallpapers, models.Wallpaper{
 			ID:        "wh_" + item.ID,
 			URL:       item.Path,
-			Thumbnail: item.Thumbs.Large, // Usamos 'large' para el thumbnail
+			Thumbnail: item.Thumbs.Large,
 			Source:    "wallhaven",
 			Dimension: item.Resolution,
 			Ratio:     item.Ratio,
-			// Theme se deja vacío para que omitempty lo oculte hasta que se analice
-		}
-		wallpapers = append(wallpapers, wp)
+		})
 	}
 
 	return wallpapers, nil

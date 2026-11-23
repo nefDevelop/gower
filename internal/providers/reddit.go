@@ -2,10 +2,11 @@ package providers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math/rand"
 	"net/http"
+	"net/url"
+	"sort"
 	"strings"
 
 	"gower/internal/utils"
@@ -52,125 +53,194 @@ func (p *RedditProvider) Search(ctx context.Context, query string, opts SearchOp
 		limit = 25
 	}
 
-	// Agrupar subreddits por tipo de ordenamiento
 	groups := make(map[string][]string)
 	for _, item := range strings.Split(subConfig, "+") {
 		parts := strings.Split(item, ":")
 		sub := parts[0]
-		sort := defaultSort
+		sortMode := defaultSort
 		if len(parts) > 1 && parts[1] != "" {
-			sort = parts[1]
+			sortMode = parts[1]
 		}
-		groups[sort] = append(groups[sort], sub)
+		groups[sortMode] = append(groups[sortMode], sub)
+	}
+
+	// El orden del map no es determinista: ordenar los grupos evita que el
+	// proveedor por defecto cambie entre ejecuciones.
+	sortModes := make([]string, 0, len(groups))
+	for mode := range groups {
+		sortModes = append(sortModes, mode)
+	}
+	sort.Strings(sortModes)
+
+	// Reddit no permite offset directo: se pide suficiente historial y se
+	// recorta la página solicitada.
+	page := opts.Page
+	if page <= 0 {
+		page = 1
+	}
+	apiLimit := limit * page
+	if apiLimit > 100 {
+		apiLimit = 100
+	}
+	if apiLimit < limit {
+		apiLimit = limit
 	}
 
 	var allWallpapers []models.Wallpaper
+	var firstErr error
+	successes := 0
 
-	for sort, subs := range groups {
-		subreddit := strings.Join(subs, "+")
-
-		// Calcular límite API para este grupo
-		apiLimit := 50
-		if limit > apiLimit {
-			apiLimit = limit
-		}
-		if apiLimit > 100 {
-			apiLimit = 100
-		}
+	for _, sortMode := range sortModes {
+		subreddit := strings.Join(groups[sortMode], "+")
 
 		var wps []models.Wallpaper
 		var err error
 
-		if query == "" && sort == "mix" {
-			wps, err = p.searchMixed(ctx, subreddit, limit, opts)
+		if query == "" && sortMode == "mix" {
+			wps, err = p.searchMixed(ctx, subreddit, apiLimit, opts)
 		} else {
-			var url string
-			timeParam := ""
-			if sort == "top" || sort == "controversial" {
-				timeParam = "&t=all"
-			}
-
-			if query != "" {
-				url = fmt.Sprintf("https://www.reddit.com/r/%s/search.json?q=%s&restrict_sr=1&sort=%s&limit=%d%s", subreddit, query, sort, apiLimit, timeParam)
+			u, errURL := redditListingURL(subreddit, sortMode, query)
+			if errURL != nil {
+				err = errURL
 			} else {
-				url = fmt.Sprintf("https://www.reddit.com/r/%s/%s.json?limit=%d%s", subreddit, sort, apiLimit, timeParam)
+				q := u.Query()
+				q.Set("limit", fmt.Sprintf("%d", apiLimit))
+				if sortMode == "top" || sortMode == "controversial" {
+					q.Set("t", "all")
+				}
+				u.RawQuery = q.Encode()
+				wps, err = p.fetchFromReddit(ctx, u.String(), apiLimit, opts)
 			}
-			wps, err = p.fetchFromReddit(ctx, url, limit, opts)
 		}
 
-		if err == nil {
-			allWallpapers = append(allWallpapers, wps...)
-		} else {
-			p.log().Error("Error fetching from reddit group %s (sort: %s): %v", subreddit, sort, err)
+		if err != nil {
+			p.log().Error("Error fetching from reddit group %s (sort: %s): %v", subreddit, sortMode, err)
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
 		}
+		successes++
+		allWallpapers = append(allWallpapers, wps...)
 	}
 
-	// Mezclar resultados si hay múltiples grupos
-	if len(allWallpapers) > limit {
+	if successes == 0 && firstErr != nil {
+		return nil, firstErr
+	}
+
+	// Deduplicar manteniendo el orden de llegada.
+	seen := make(map[string]bool, len(allWallpapers))
+	unique := allWallpapers[:0]
+	for _, wp := range allWallpapers {
+		if seen[wp.ID] {
+			continue
+		}
+		seen[wp.ID] = true
+		unique = append(unique, wp)
+	}
+	allWallpapers = unique
+
+	if len(sortModes) > 1 && len(allWallpapers) > 1 {
 		rand.Shuffle(len(allWallpapers), func(i, j int) {
 			allWallpapers[i], allWallpapers[j] = allWallpapers[j], allWallpapers[i]
 		})
-		return allWallpapers[:limit], nil
 	}
 
-	return allWallpapers, nil
+	return paginate(allWallpapers, page, limit), nil
+}
+
+// redditListingURL construye la URL de un listing escapando la query.
+func redditListingURL(subreddit, sortMode, query string) (*url.URL, error) {
+	path := fmt.Sprintf("https://www.reddit.com/r/%s/%s.json", subreddit, sortMode)
+	if query != "" {
+		path = fmt.Sprintf("https://www.reddit.com/r/%s/search.json", subreddit)
+	}
+	u, err := url.Parse(path)
+	if err != nil {
+		return nil, err
+	}
+	q := u.Query()
+	if query != "" {
+		q.Set("q", query)
+		q.Set("restrict_sr", "1")
+		q.Set("sort", sortMode)
+	}
+	u.RawQuery = q.Encode()
+	return u, nil
+}
+
+func paginate(list []models.Wallpaper, page, limit int) []models.Wallpaper {
+	if limit <= 0 {
+		return list
+	}
+	start := (page - 1) * limit
+	if start >= len(list) {
+		return []models.Wallpaper{}
+	}
+	end := start + limit
+	if end > len(list) {
+		end = len(list)
+	}
+	return list[start:end]
 }
 
 func (p *RedditProvider) searchMixed(ctx context.Context, subreddit string, limit int, opts SearchOptions) ([]models.Wallpaper, error) {
-	// Dividimos el esfuerzo, pero pedimos suficiente de cada uno
-	apiLimit := 40
+	apiLimit := normalizeLimit(limit, 40, 100)
 
-	urlHot := fmt.Sprintf("https://www.reddit.com/r/%s/hot.json?limit=%d", subreddit, apiLimit)
-	urlNew := fmt.Sprintf("https://www.reddit.com/r/%s/new.json?limit=%d", subreddit, apiLimit)
-	urlTop := fmt.Sprintf("https://www.reddit.com/r/%s/top.json?limit=%d&t=month", subreddit, apiLimit) // Top del mes para variar
+	urls := []string{
+		fmt.Sprintf("https://www.reddit.com/r/%s/hot.json?limit=%d", subreddit, apiLimit),
+		fmt.Sprintf("https://www.reddit.com/r/%s/new.json?limit=%d", subreddit, apiLimit),
+		fmt.Sprintf("https://www.reddit.com/r/%s/top.json?limit=%d&t=month", subreddit, apiLimit),
+	}
 
-	resHot, _ := p.fetchFromReddit(ctx, urlHot, limit, opts)
-	resNew, _ := p.fetchFromReddit(ctx, urlNew, limit, opts)
-	resTop, _ := p.fetchFromReddit(ctx, urlTop, limit, opts)
-
-	// Combinar y desduplicar
-	uniqueMap := make(map[string]models.Wallpaper)
 	var combined []models.Wallpaper
+	seen := make(map[string]bool)
+	var firstErr error
+	successes := 0
 
-	// Función helper para agregar
-	add := func(list []models.Wallpaper) {
-		for _, wp := range list {
-			if _, exists := uniqueMap[wp.ID]; !exists {
-				uniqueMap[wp.ID] = wp
-				combined = append(combined, wp)
+	for _, u := range urls {
+		list, err := p.fetchFromReddit(ctx, u, apiLimit, opts)
+		if err != nil {
+			p.log().Error("Reddit mixed listing failed (%s): %v", u, err)
+			if firstErr == nil {
+				firstErr = err
 			}
+			continue
+		}
+		successes++
+		for _, wp := range list {
+			if seen[wp.ID] {
+				continue
+			}
+			seen[wp.ID] = true
+			combined = append(combined, wp)
 		}
 	}
 
-	add(resHot)
-	add(resNew)
-	add(resTop)
-
-	// Barajar resultados
-	rand.Shuffle(len(combined), func(i, j int) { combined[i], combined[j] = combined[j], combined[i] })
-
-	if len(combined) > limit {
-		return combined[:limit], nil
+	if successes == 0 && firstErr != nil {
+		return nil, firstErr
 	}
+
+	rand.Shuffle(len(combined), func(i, j int) { combined[i], combined[j] = combined[j], combined[i] })
 	return combined, nil
 }
 
-func (p *RedditProvider) fetchFromReddit(ctx context.Context, url string, limit int, opts SearchOptions) ([]models.Wallpaper, error) {
-	p.log().Debug("Reddit fetching: %s", url)
-	if p.RateLimiter != nil {
-		p.RateLimiter.Wait()
+func (p *RedditProvider) fetchFromReddit(ctx context.Context, rawURL string, limit int, opts SearchOptions) ([]models.Wallpaper, error) {
+	p.log().Debug("Reddit fetching: %s", rawURL)
+	if err := waitRateLimiter(p.RateLimiter, ctx); err != nil {
+		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Gower/1.0")
+	req.Header.Set("User-Agent", "gower/1.0 (+https://github.com/nefDevelop/gower)")
 
-	resp, err := utils.DefaultHTTPClient.Do(req)
+	resp, err := utils.DoRequest(ctx, utils.DefaultHTTPClient, req, 3) //nolint:bodyclose // cerrado con utils.CloseResponse
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer utils.CloseResponse(resp)
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("reddit api returned status: %d", resp.StatusCode)
@@ -204,13 +274,12 @@ func (p *RedditProvider) fetchFromReddit(ctx context.Context, url string, limit 
 		} `json:"data"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := utils.DecodeJSON(resp.Body, &result); err != nil {
 		return nil, err
 	}
 
-	var wallpapers []models.Wallpaper
+	wallpapers := make([]models.Wallpaper, 0, len(result.Data.Children))
 	for _, child := range result.Data.Children {
-		// Respetar el límite solicitado por el usuario
 		if len(wallpapers) >= limit {
 			break
 		}
@@ -225,32 +294,28 @@ func (p *RedditProvider) fetchFromReddit(ctx context.Context, url string, limit 
 			continue
 		}
 
-		// Detección mejorada de imágenes
 		isImage := data.PostHint == "image"
 		if !isImage {
-			// Fallback: comprobar extensión si post_hint no es explícito
 			lowerURL := strings.ToLower(data.URL)
-			if strings.HasSuffix(lowerURL, ".jpg") || strings.HasSuffix(lowerURL, ".jpeg") || strings.HasSuffix(lowerURL, ".png") {
-				isImage = true
+			for _, ext := range []string{".jpg", ".jpeg", ".png", ".webp", ".gif"} {
+				if strings.HasSuffix(lowerURL, ext) {
+					isImage = true
+					break
+				}
 			}
 		}
-
 		if !isImage {
 			continue
 		}
 
-		// Obtener la mejor URL posible
 		imageURL := data.URL
 		if len(data.Preview.Images) > 0 {
 			imageURL = data.Preview.Images[0].Source.URL
 		}
-		// Decodificar entidades HTML (&amp; -> &)
 		imageURL = strings.ReplaceAll(imageURL, "&amp;", "&")
 
-		// Determinar thumbnail
 		thumb := ""
 		if len(data.Preview.Images) > 0 {
-			// Intentar buscar una resolución cercana a 320px de ancho
 			for _, res := range data.Preview.Images[0].Resolutions {
 				if res.Width >= 320 {
 					thumb = strings.ReplaceAll(res.URL, "&amp;", "&")
@@ -262,7 +327,6 @@ func (p *RedditProvider) fetchFromReddit(ctx context.Context, url string, limit 
 			}
 		}
 
-		// Determinar dimensión
 		dimension := ""
 		width := 0
 		height := 0
@@ -273,7 +337,6 @@ func (p *RedditProvider) fetchFromReddit(ctx context.Context, url string, limit 
 			height = src.Height
 		}
 
-		// Filtrar por resolución si está disponible
 		if width > 0 && height > 0 {
 			if opts.MinWidth > 0 && width < opts.MinWidth {
 				continue

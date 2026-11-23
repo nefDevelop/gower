@@ -154,6 +154,35 @@ func TestContractStatus(t *testing.T) {
 	}
 }
 
+// TestContractStatusEmptyKeys cubre el caso que rompía a la GUI: un status sin
+// datos. Las claves obligatorias deben seguir presentes aunque sus valores sean
+// cero; si vuelve un omitempty, este test falla.
+func TestContractStatusEmptyKeys(t *testing.T) {
+	c := loadJSONContract(t)
+
+	out := StatusOutput{}
+	ensureStatusShape(&out)
+
+	keys := objectKeys(t, out)
+	for _, k := range c.Status.Required {
+		if !keys[k] {
+			t.Errorf("clave obligatoria de status %q ausente en un StatusOutput vacío", k)
+		}
+	}
+
+	data, err := json.Marshal(out)
+	if err != nil {
+		t.Fatalf("marshal status vacío: %v", err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("unmarshal status vacío: %v", err)
+	}
+	for _, path := range c.Status.Paths {
+		assertJSONPath(t, m, path)
+	}
+}
+
 // assertJSONPath comprueba que una ruta con puntos ("a.b") existe en el JSON.
 func assertJSONPath(t *testing.T, m map[string]any, path string) {
 	t.Helper()

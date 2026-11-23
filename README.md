@@ -183,6 +183,20 @@ Key settings / Ajustes principales:
 | `behavior.change_interval` | `30` | Daemon change interval (minutes) |
 | `behavior.multi_monitor` | `clone` | Multi-monitor mode (clone/distinct) |
 | `behavior.respect_dark_mode` | `true` | Pick wallpapers matching the system theme |
+| `behavior.transition.type` | `simple` | Transition effect (awww/swww only) |
+| `behavior.transition.duration` | `0` | Transition duration in seconds (0 = backend default) |
+| `behavior.transition.fps` | `0` | Transition frame rate (0 = backend default) |
+| `behavior.transition.step` | `0` | Transition step (0 = backend default) |
+| `behavior.transition.angle` | `0` | Wipe/wave angle in degrees |
+| `behavior.transition.pos` | `""` | Grow/outer center (e.g. `center`, `0.5,0.5`) |
+| `behavior.transition.bezier` | `""` | Fade bezier curve |
+| `behavior.transition.wave` | `""` | Wave width/height (e.g. `20,20`) |
+| `behavior.transition.engine` | `auto` | `auto` (roserlay if installed+supported, else awww), `awww` or `roserlay` |
+| `behavior.transition.linger` | `0` | `roserlay`: ms to keep the overlay after committing (0 = its default) |
+| `behavior.transition.mask` | `""` | `roserlay` mask: crossfade, wipe, radial, drops, random, color, edges, luminance, hue, saliency, diff |
+| `behavior.transition.feather` | `0` | `roserlay` mask edge softness (0..1, 0 = its default) |
+| `behavior.transition.invert` | `false` | Invert the reveal order (edges first, light first, etc.) |
+| `behavior.transition.layer` | `""` | `roserlay` layer: background, bottom, top, overlay (empty = its default) |
 | `paths.index_wallpapers` | `false` | Index a local folder into the feed |
 | `paths.wallpapers` | `""` | Folder to index |
 | `ui.items_per_page` | `10` | Default page size for `list` commands |
@@ -191,8 +205,66 @@ Key settings / Ajustes principales:
 | `limits.feed_hard_limit` | `2000` | Hard feed cap |
 | `limits.analysis_workers` | `5` | Concurrent analysis workers |
 
-`gower config get <key>` and `gower config set <key> <value>` work on any of
+`gower config get <key>` and `gower config set <key=value>` work on any of
 them. / Funcionan con cualquiera de ellas.
+
+### Transitions / Transiciones
+
+Only `awww` and `swww` animate wallpaper changes. Available types:
+`none`, `simple`, `fade`, `left`, `right`, `top`, `bottom`, `wipe`, `wave`,
+`grow`, `center`, `any`, `outer`, `random`.
+
+```bash
+gower config set behavior.transition.type=wave
+gower config set behavior.transition.duration=1.2
+gower config set behavior.transition.fps=60
+
+# or per invocation
+gower set random --transition-type grow --transition-duration 1.2 --transition-pos center
+```
+
+For the built-in crossfade overlay (`roserlay`, separate project), use:
+
+```bash
+gower config set behavior.transition.engine=roserlay
+gower config set behavior.transition.duration=1.5
+gower config set behavior.transition.linger=500
+gower config set behavior.transition.mask=wipe
+gower config set behavior.transition.angle=30
+gower config set behavior.transition.feather=0.15
+# or
+gower set random --transition-engine roserlay --transition-duration 1.5
+gower set random --transition-engine roserlay --transition-mask radial
+```
+
+Content-aware masks (`color`, `edges`, `luminance`, `hue`, `saliency`, `diff`) are
+generated from the new wallpaper: `color` groups pixels by color (k-means) and
+reveals dark regions first; `edges` uses Sobel and reveals contours last (or
+first with `invert`); `luminance` and `hue` order pixels by brightness/hue;
+`saliency` reveals the subject (high local contrast/center) first; `diff`
+compares the current and new wallpaper and reveals the most changed areas first.
+Gower writes the mask to `cache/masks/` and passes it to roserlay with
+`--mask-file`. `diff` needs the current wallpaper (`awww query`); if it cannot
+be read, gower falls back to `color`.
+
+```bash
+gower config set behavior.transition.mask=edges
+gower config set behavior.transition.invert=true
+gower config set behavior.transition.feather=0.1
+
+gower config set behavior.transition.mask=color
+gower config set behavior.transition.feather=0.15
+```
+
+`roserlay` draws the transition on a layer-shell `Background` surface, so riceway
+desktop widgets and normal windows stay visible. By default `engine=auto`: gower
+uses `roserlay` if it is in `PATH` and the backend supports transitions,
+otherwise it falls back to awww's native effects. Force either one with
+`behavior.transition.engine=awww` or `roserlay`.
+
+`swaybg`, `swaymsg`, GNOME, KDE, `feh`, `nitrogen` and Windows ignore these
+values because their APIs do not support animation. / Solo `awww` y `swww`
+animan el cambio; el resto de backends los ignoran.
 
 ## Architecture / Arquitectura
 

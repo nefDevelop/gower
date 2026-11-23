@@ -22,6 +22,13 @@ func NewFeedService(cfg *models.Config, fm *utils.SecureJSONManager) *FeedServic
 	}
 }
 
+func (s *FeedService) log() *utils.Logger {
+	if s.Log != nil {
+		return s.Log
+	}
+	return utils.Log
+}
+
 func (s *FeedService) getFeedPath() (string, error) {
 	appDir, err := GetAppDir()
 	if err != nil {
@@ -136,11 +143,15 @@ func (s *FeedService) SaveParserSearch(providerName, query string, results []mod
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(appDir, "data", "parser", providerName+".json")
+	path := filepath.Join(appDir, "data", "parser", utils.SafeFilename(providerName)+".json")
 
 	var searches []ParserSearch
 	if _, err := os.Stat(path); err == nil {
-		_ = s.feedManager.ReadJSON(path, &searches)
+		if err := s.feedManager.ReadJSON(path, &searches); err != nil {
+			// Un fichero corrupto se descarta, pero dejando constancia en el log.
+			s.log().Error("Failed to read parser cache %s: %v", path, err)
+			searches = nil
+		}
 	}
 
 	cutoff := time.Now().AddDate(0, 0, -14)
@@ -166,7 +177,7 @@ func (s *FeedService) LoadParserSearch(providerName, query string) ([]models.Wal
 	if err != nil {
 		return nil, false
 	}
-	path := filepath.Join(appDir, "data", "parser", providerName+".json")
+	path := filepath.Join(appDir, "data", "parser", utils.SafeFilename(providerName)+".json")
 
 	var searches []ParserSearch
 	if _, err := os.Stat(path); err == nil {

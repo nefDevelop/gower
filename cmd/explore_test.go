@@ -266,21 +266,15 @@ func TestExploreGenericProvider_404(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 4. Verificar que la salida indica que el proveedor fue omitido y que el comando falló
-	// porque el proveedor no fue encontrado.
-	expectedRootErrorMessage := "provider not found: generic_404_test"
-	if !strings.Contains(err.Error(), expectedRootErrorMessage) {
-		t.Errorf("Se esperaba que el mensaje de error del comando contuviera '%s', se obtuvo: %v", expectedRootErrorMessage, err)
+	// 4. Verificar que el fallo real de la API se propaga. Desde que se eliminó
+	// el HEAD de registro (usaba los placeholders sin sustituir), el proveedor
+	// se registra siempre y el error llega desde Search.
+	if !strings.Contains(err.Error(), "404") {
+		t.Errorf("Se esperaba que el error del comando contuviera '404', se obtuvo: %v", err)
 	}
 
-	// Este es el mensaje de advertencia impreso por explore.go
-	// En este escenario, el error proviene de GetProvider, no de Search.
-	expectedExploreWarningMsg := "Error: provider not found: generic_404_test"
+	expectedExploreWarningMsg := "generic api returned status: 404"
 	if !strings.Contains(output, expectedExploreWarningMsg) {
-		t.Errorf("Se esperaba que la salida contuviera el mensaje de advertencia de explore.go '%s', se obtuvo: %s", expectedExploreWarningMsg, output)
+		t.Errorf("Se esperaba que la salida contuviera '%s', se obtuvo: %s", expectedExploreWarningMsg, output)
 	}
-
-	// Este es el mensaje de log original del proveedor (si lo imprime directamente a stderr)
-	// El método de búsqueda del proveedor ni siquiera se llama, por lo que este log no aparecerá.
-	// Se elimina esta verificación.
 }

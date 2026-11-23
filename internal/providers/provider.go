@@ -25,3 +25,22 @@ type Provider interface {
 	GetName() string
 	Search(ctx context.Context, query string, options SearchOptions) ([]models.Wallpaper, error)
 }
+
+// normalizeLimit acota un límite de resultados a un rango válido.
+func normalizeLimit(limit, fallback, max int) int {
+	if limit <= 0 {
+		limit = fallback
+	}
+	if max > 0 && limit > max {
+		limit = max
+	}
+	return limit
+}
+
+// waitRateLimiter espera respetando el contexto de la petición.
+func waitRateLimiter(rl interface{ Wait(context.Context) error }, ctx context.Context) error {
+	if rl == nil {
+		return nil
+	}
+	return rl.Wait(ctx)
+}

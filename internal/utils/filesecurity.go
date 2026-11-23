@@ -5,8 +5,31 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
+
+// fileLocks serializa las secuencias load-modify-save sobre un mismo fichero
+// aunque intervengan instancias distintas de SecureJSONManager.
+var fileLocks sync.Map // map[string]*sync.Mutex
+
+func fileLockFor(path string) *sync.Mutex {
+	key, err := filepath.Abs(path)
+	if err != nil {
+		key = path
+	}
+	actual, _ := fileLocks.LoadOrStore(key, &sync.Mutex{})
+	return actual.(*sync.Mutex)
+}
+
+// WithFileLock ejecuta fn manteniendo un lock exclusivo asociado a path.
+// Debe envolver lecturas y escrituras relacionadas, no operaciones sueltas.
+func WithFileLock(path string, fn func() error) error {
+	mu := fileLockFor(path)
+	mu.Lock()
+	defer mu.Unlock()
+	return fn()
+}
 
 // SecureJSONManager handles secure reading and writing of JSON files with backups.
 type SecureJSONManager struct {
@@ -30,31 +53,25 @@ func NewSecureJSONManager() *SecureJSONManager {
 
 // WriteJSON writes data to a JSON file atomically and manages backups.
 func (m *SecureJSONManager) WriteJSON(filePath string, data interface{}) error {
-	// 1. Marshal new data to ensure it's valid before touching anything
 	jsonData, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal data: %w", err)
 	}
 
-	// 2. Manage Backup of existing file
 	if err := m.manageBackup(filePath); err != nil {
-		// Log warning but proceed with write, as saving current work is priority
 		m.log().Error("Failed to create backup for %s: %v", filePath, err)
 	}
 
-	// 3. Atomic Write
 	return m.atomicWrite(filePath, jsonData)
 }
 
 // ReadJSON reads data from a JSON file, falling back to backup if necessary.
 func (m *SecureJSONManager) ReadJSON(filePath string, v interface{}) error {
-	// Try reading main file
 	err := m.readAndUnmarshal(filePath, v)
 	if err == nil {
 		return nil
 	}
 
-	// If main file fails, try backup
 	backupPath := filePath + ".bak"
 	m.log().Error("Failed to read %s (%v). Attempting backup %s...", filePath, err, backupPath)
 
@@ -62,7 +79,6 @@ func (m *SecureJSONManager) ReadJSON(filePath string, v interface{}) error {
 		return fmt.Errorf("failed to read file and backup: %w", err)
 	}
 
-	// Restore main file from backup since main is corrupt
 	m.log().Info("Restoring %s from backup...", filePath)
 	if data, err := os.ReadFile(backupPath); err == nil {
 		_ = m.atomicWrite(filePath, data)
@@ -85,12 +101,12 @@ func (m *SecureJSONManager) atomicWrite(filePath string, data []byte) error {
 		return err
 	}
 
-	// Create temp file in the same directory to ensure atomic rename works
+	// El fichero temporal se crea con 0600: los JSON incluyen claves de API.
 	tmpFile, err := os.CreateTemp(dir, "gower-tmp-*.json")
 	if err != nil {
 		return err
 	}
-	defer func() { _ = os.Remove(tmpFile.Name()) }() // Clean up if something goes wrong before rename
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	if _, err := tmpFile.Write(data); err != nil {
 		_ = tmpFile.Close()
@@ -104,36 +120,40 @@ func (m *SecureJSONManager) atomicWrite(filePath string, data []byte) error {
 		return err
 	}
 
-	// Rename is atomic on POSIX
-	return os.Rename(tmpFile.Name(), filePath)
+	if err := os.Rename(tmpFile.Name(), filePath); err != nil {
+		return err
+	}
+
+	// fsync del directorio para que el rename sobreviva a un corte de energía.
+	if d, err := os.Open(dir); err == nil {
+		_ = d.Sync()
+		_ = d.Close()
+	}
+	return nil
 }
 
 func (m *SecureJSONManager) manageBackup(filePath string) error {
-	// Check if file exists
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		return nil // Nothing to backup yet
+		return nil
 	}
 
 	backupPath := filePath + ".bak"
 
-	// Check if backup exists and is recent
-	info, err := os.Stat(backupPath)
-	if err == nil {
+	if info, err := os.Stat(backupPath); err == nil {
 		if time.Since(info.ModTime()) < m.BackupInterval {
-			return nil // Backup is recent enough
+			return nil
 		}
 	}
 
-	// Read existing file to verify integrity before backing up
 	existingData, err := os.ReadFile(filePath)
 	if err != nil {
-		return nil // Can't read existing, maybe corrupt, don't backup corrupt data
+		return nil
 	}
 
 	if !json.Valid(existingData) {
 		return fmt.Errorf("existing file is corrupt, skipping backup")
 	}
 
-	// Write to backup
-	return os.WriteFile(backupPath, existingData, 0644)
+	// El backup conserva secretos: debe tener los mismos permisos que el original.
+	return os.WriteFile(backupPath, existingData, 0600)
 }

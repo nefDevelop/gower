@@ -2,10 +2,10 @@ package providers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -15,6 +15,8 @@ import (
 
 // BingBaseURL es la URL base para la API de Bing Image of the Day.
 var BingBaseURL = "https://www.bing.com/HPImageArchive.aspx"
+
+var bingResolutionRE = regexp.MustCompile(`_(\d{3,5}x\d{3,5})\.(jpg|jpeg|png)$`)
 
 type BingProvider struct {
 	Market      string
@@ -41,41 +43,40 @@ func (p *BingProvider) GetName() string {
 }
 
 func (p *BingProvider) Search(ctx context.Context, query string, opts SearchOptions) ([]models.Wallpaper, error) {
-	// Bing devuelve las imágenes del día (hasta 8 días atrás)
-	limit := opts.Limit
-	if limit <= 0 {
-		limit = 8
+	// Bing devuelve las imágenes del día (hasta 8 días atrás).
+	limit := normalizeLimit(opts.Limit, 8, 8)
+
+	idx := opts.Page - 1
+	if idx < 0 {
+		idx = 0
 	}
-	if limit > 8 {
-		limit = 8
-	}
+
 	u, err := url.Parse(BingBaseURL)
 	if err != nil {
 		return nil, err
 	}
 
 	q := u.Query()
-	q.Set("format", "js")                   // Solicitar formato JSON
-	q.Set("idx", strconv.Itoa(opts.Page-1)) // idx=0 es hoy, idx=1 es ayer, etc.
-	q.Set("n", strconv.Itoa(limit))         // Solicitar up to limit imágenes
+	q.Set("format", "js")
+	q.Set("idx", strconv.Itoa(idx))
+	q.Set("n", strconv.Itoa(limit))
 	q.Set("mkt", p.Market)
-
 	u.RawQuery = q.Encode()
 
 	p.log().Debug("Bing fetching: %s", u.String())
 
-	if p.RateLimiter != nil {
-		p.RateLimiter.Wait()
+	if err := waitRateLimiter(p.RateLimiter, ctx); err != nil {
+		return nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := utils.DefaultHTTPClient.Do(req)
+	resp, err := utils.DoRequest(ctx, utils.DefaultHTTPClient, req, 3) //nolint:bodyclose // cerrado con utils.CloseResponse
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer utils.CloseResponse(resp)
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("bing api returned status: %d", resp.StatusCode)
@@ -83,46 +84,44 @@ func (p *BingProvider) Search(ctx context.Context, query string, opts SearchOpti
 
 	var result struct {
 		Images []struct {
-			Hsh       string `json:"hsh"` // Hash único, bueno para ID
-			URL       string `json:"url"` // URL relativa de la imagen
+			Hsh       string `json:"hsh"`
+			URL       string `json:"url"`
 			URLBase   string `json:"urlbase"`
 			Copyright string `json:"copyright"`
-			Drk       int    `json:"drk"` // 1 si es oscuro, 0 si es claro (no siempre presente o fiable)
 		} `json:"images"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := utils.DecodeJSON(resp.Body, &result); err != nil {
 		return nil, err
 	}
 
-	var wallpapers []models.Wallpaper
-	for _, item := range result.Images {
-		fullURL := "https://www.bing.com" + item.URL
-
-		// Intentar extraer la resolución de la URL
-		dimension := ""
-		if strings.Contains(item.URL, "_") && strings.Contains(item.URL, ".jpg") {
-			parts := strings.Split(item.URL, "_")
-			if len(parts) > 1 {
-				resPart := parts[len(parts)-1] // Última parte después del último '_'
-				if strings.Contains(resPart, "x") {
-					resPart = strings.Split(resPart, ".jpg")[0]                             // Eliminar .jpg
-					if _, err := strconv.Atoi(strings.Split(resPart, "x")[0]); err == nil { // Verificar que es un número
-						dimension = resPart
-					}
-				}
-			}
+	wallpapers := make([]models.Wallpaper, 0, len(result.Images))
+	for i, item := range result.Images {
+		fullURL := item.URL
+		if !strings.HasPrefix(fullURL, "http://") && !strings.HasPrefix(fullURL, "https://") {
+			fullURL = "https://www.bing.com" + fullURL
+		}
+		if fullURL == "" {
+			continue
 		}
 
-		wp := models.Wallpaper{
-			ID:        "bing_" + item.Hsh, // Usamos el hash como ID único
+		dimension := ""
+		if match := bingResolutionRE.FindStringSubmatch(fullURL); len(match) == 3 {
+			dimension = match[1]
+		}
+
+		id := item.Hsh
+		if id == "" {
+			id = fmt.Sprintf("%s_%d", item.Copyright, i)
+		}
+
+		wallpapers = append(wallpapers, models.Wallpaper{
+			ID:        "bing_" + utils.SafeFilename(id),
 			URL:       fullURL,
-			Thumbnail: fullURL, // Usamos la misma URL para el thumbnail
+			Thumbnail: fullURL,
 			Source:    "bing",
 			Dimension: dimension,
-			// El tema se determinará en el análisis de color
-		}
-		wallpapers = append(wallpapers, wp)
+		})
 	}
 
 	return wallpapers, nil

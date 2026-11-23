@@ -37,7 +37,6 @@ var statusCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(statusCmd)
-	statusCmd.Flags().BoolVar(&statusJSON, "json", false, "Output in JSON")
 	statusCmd.Flags().BoolVar(&statusProviders, "providers", false, "Show providers status")
 	statusCmd.Flags().BoolVar(&statusStorage, "storage", false, "Show storage usage")
 	statusCmd.Flags().BoolVar(&statusDaemon, "daemon", false, "Show daemon status")
@@ -47,12 +46,12 @@ func init() {
 }
 
 type StatusOutput struct {
-	System    *SystemStatus           `json:"system,omitempty"`
-	Daemon    *DaemonStatus           `json:"daemon,omitempty"`
-	Providers *ProvidersStatus        `json:"providers,omitempty"`
+	System    *SystemStatus           `json:"system"`
+	Daemon    *DaemonStatus           `json:"daemon"`
+	Providers *ProvidersStatus        `json:"providers"`
 	Storage   *StorageStatus          `json:"storage,omitempty"`
 	Monitors  []core.Monitor          `json:"monitors,omitempty"`
-	Wallpaper *CurrentWallpaperStatus `json:"wallpaper,omitempty"`
+	Wallpaper *CurrentWallpaperStatus `json:"wallpaper"`
 }
 
 type SystemStatus struct {
@@ -83,7 +82,7 @@ type StorageStatus struct {
 }
 
 type CurrentWallpaperStatus struct {
-	Wallpapers []models.Wallpaper `json:"wallpapers,omitempty"`
+	Wallpapers []models.Wallpaper `json:"wallpapers"`
 }
 
 func runStatus(cmd *cobra.Command, args []string) {
@@ -99,7 +98,7 @@ func runStatus(cmd *cobra.Command, args []string) {
 		output.Daemon = getDaemonStatus()
 	}
 	if showAll || statusWallpaper {
-		output.Wallpaper = getWallpaperStatus()
+		output.Wallpaper = getWallpaperStatus(cmd)
 	}
 	if showAll || statusProviders {
 		output.Providers = getProvidersStatus()
@@ -112,7 +111,7 @@ func runStatus(cmd *cobra.Command, args []string) {
 		changer := core.NewWallpaperChanger("", false) // RespectDarkMode doesn't matter for detection
 		monitors, err := changer.DetectMonitors()
 		if err != nil {
-			if !statusJSON {
+			if !config.JSONOutput {
 				cmd.Printf("Error detecting monitors: %v\n", err)
 			}
 		}
@@ -121,8 +120,17 @@ func runStatus(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	if statusJSON {
-		data, _ := json.MarshalIndent(output, "", "  ")
+	// En JSON, el contrato exige las claves de system/daemon/providers/wallpaper
+	// incluso cuando se piden secciones concretas. Se rellenan con objetos
+	// vacíos para que las rutas anidadas (wallpaper.wallpapers) existan siempre.
+	if statusJSON || config.JSONOutput {
+		ensureStatusShape(&output)
+		data, err := json.MarshalIndent(output, "", "  ")
+		if err != nil {
+			cmd.PrintErrf("Error encoding status: %v\n", err)
+			setCommandError(err)
+			return
+		}
 		cmd.Println(string(data))
 		return
 	}
@@ -258,6 +266,26 @@ func colorizeBool(b bool) string {
 	return colorize("false", colorRed)
 }
 
+// ensureStatusShape rellena las secciones obligatorias del contrato para que
+// una salida filtrada (p. ej. --daemon) no omita claves anidadas.
+func ensureStatusShape(out *StatusOutput) {
+	if out.System == nil {
+		out.System = &SystemStatus{Dependencies: map[string]bool{}}
+	}
+	if out.Daemon == nil {
+		out.Daemon = &DaemonStatus{}
+	}
+	if out.Providers == nil {
+		out.Providers = &ProvidersStatus{Generic: map[string]bool{}}
+	}
+	if out.Wallpaper == nil {
+		out.Wallpaper = &CurrentWallpaperStatus{Wallpapers: []models.Wallpaper{}}
+	}
+	if out.Wallpaper.Wallpapers == nil {
+		out.Wallpaper.Wallpapers = []models.Wallpaper{}
+	}
+}
+
 func getSystemStatus() *SystemStatus {
 	home, _ := os.UserHomeDir()
 	configDir, _ := core.GetAppDir()
@@ -307,29 +335,32 @@ func getDaemonStatus() *DaemonStatus {
 	return &DaemonStatus{Running: running, PID: pid}
 }
 
-func getWallpaperStatus() *CurrentWallpaperStatus {
+func getWallpaperStatus(cmd *cobra.Command) *CurrentWallpaperStatus {
+	empty := &CurrentWallpaperStatus{Wallpapers: []models.Wallpaper{}}
+
 	state, err := loadState()
 	if err != nil {
-		// If state can't be loaded, we can't determine wallpaper status.
-		_, _ = fmt.Fprintf(os.Stderr, "Error loading state for wallpaper status: %v\n", err)
-		return &CurrentWallpaperStatus{Wallpapers: []models.Wallpaper{}}
+		cmd.PrintErrf("Error loading state for wallpaper status: %v\n", err)
+		return empty
 	}
 
-	var wallpapers []models.Wallpaper
+	wallpapers := []models.Wallpaper{}
 	cfg, err := loadConfig()
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "Error loading config for wallpaper status: %v\n", err)
-		return nil
+		cmd.PrintErrf("Error loading config for wallpaper status: %v\n", err)
+		return empty
 	}
 	controller := core.NewController(cfg)
 
 	// If multiple wallpapers are set (for multiple monitors)
 	if len(state.CurrentWallpapers) > 0 {
 		for _, id := range state.CurrentWallpapers {
+			if id == "" {
+				continue
+			}
 			wp, err := controller.GetWallpaper(id)
 			if err != nil {
-				// Log error but continue with other wallpapers
-				_, _ = fmt.Fprintf(os.Stderr, "Error retrieving wallpaper %s: %v\n", id, err)
+				cmd.PrintErrf("Error retrieving wallpaper %s: %v\n", id, err)
 				continue
 			}
 			if wp != nil {
@@ -340,7 +371,7 @@ func getWallpaperStatus() *CurrentWallpaperStatus {
 		// Fallback for single wallpaper (older state format or single monitor setup)
 		wp, err := controller.GetWallpaper(state.CurrentWallpaperID)
 		if err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "Error retrieving wallpaper %s: %v\n", state.CurrentWallpaperID, err)
+			cmd.PrintErrf("Error retrieving wallpaper %s: %v\n", state.CurrentWallpaperID, err)
 		}
 		if wp != nil {
 			wallpapers = append(wallpapers, *wp)
@@ -355,7 +386,7 @@ func getWallpaperStatus() *CurrentWallpaperStatus {
 func getProvidersStatus() *ProvidersStatus {
 	cfg, err := loadConfig()
 	if err != nil {
-		return nil
+		return &ProvidersStatus{Generic: map[string]bool{}}
 	}
 
 	generic := make(map[string]bool)

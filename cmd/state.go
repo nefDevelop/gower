@@ -68,15 +68,7 @@ var saveState = func(s *State) error {
 		return err
 	}
 
-	// Ensure the directory exists
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return err
-	}
-
-	data, err := json.MarshalIndent(s, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(path, data, 0644)
+	// Escritura atómica: un corte a mitad no deja state.json corrupto.
+	manager := utils.NewSecureJSONManager()
+	return manager.WriteJSON(path, s)
 }

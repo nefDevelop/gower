@@ -85,6 +85,10 @@ func TestWallpaperDeleteFile(t *testing.T) {
 	wp := models.Wallpaper{ID: "local_image.jpg", URL: localFilePath, Source: "local"}
 	ctrl.AddWallpaperToFeed(wp)
 
+	// El borrado de ficheros locales solo se permite dentro de la carpeta
+	// configurada como colección.
+	executeCommand(rootCmd, "config", "set", "paths.wallpapers="+localFilesDir)
+
 	// Execute delete with --file and --force (to avoid interactive prompt in test)
 	output, err := executeCommand(rootCmd, "wallpaper", "local_image.jpg", "--delete", "--file", "--force")
 	if err != nil {

@@ -5,6 +5,8 @@ linters:
     - unused
     - ineffassign
     - staticcheck
+    - bodyclose
+    - errorlint
   exclusions:
     paths:
       - /usr/local/go/

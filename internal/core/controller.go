@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -57,30 +56,7 @@ type FavoriteWallpaper struct {
 
 // GetAppDir returns the application directory, preferring XDG but falling back to legacy .gower
 func GetAppDir() (string, error) {
-	// Usar os.UserConfigDir para soportar estándares multiplataforma (ej. AppData en Windows)
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		// Fallback a home/.config si UserConfigDir falla
-		homeDir, errHome := os.UserHomeDir()
-		if errHome != nil {
-			return "", errHome
-		}
-		configDir = filepath.Join(homeDir, ".config")
-	}
-
-	primaryDir := filepath.Join(configDir, "gower")
-
-	// Comprobar ubicación legacy (.gower en home) por retrocompatibilidad
-	if homeDir, err := os.UserHomeDir(); err == nil {
-		legacyDir := filepath.Join(homeDir, ".gower")
-		// Si existe config en legacy y NO en primary, usar legacy
-		if _, err := os.Stat(filepath.Join(legacyDir, "config.json")); err == nil {
-			if _, err := os.Stat(filepath.Join(primaryDir, "config.json")); os.IsNotExist(err) {
-				return legacyDir, nil
-			}
-		}
-	}
-	return primaryDir, nil
+	return utils.AppDir()
 }
 
 // NewController creates a new Controller.
@@ -120,58 +96,33 @@ var NewController = func(config *models.Config) *Controller {
 		})
 	}
 
-	// Register generic providers
+	// Register generic providers. La comprobación de disponibilidad se hacía
+	// aquí con un HEAD secuencial y con los placeholders {query}/{apikey} sin
+	// sustituir: bloqueaba el arranque y podía omitir proveedores válidos. La
+	// primera búsqueda real ya reporta el error si la API no responde.
 	jsonManager := utils.NewSecureJSONManager()
 	appDir, _ := GetAppDir()
 
 	for _, providerConfig := range config.GenericProviders {
-		if providerConfig.Enabled {
-			if appDir != "" {
-				parserPath := filepath.Join(appDir, "data", "parser", providerConfig.Name+".json")
-				var mapping models.ResponseMapping
-				if err := jsonManager.ReadJSON(parserPath, &mapping); err == nil {
-					providerConfig.ResponseMapping = mapping
-				}
-			}
-
-			// Realizar una verificación de disponibilidad de la API para proveedores genéricos
-			if providerConfig.APIURL != "" {
-				req, err := http.NewRequest(http.MethodHead, providerConfig.APIURL, nil)
-				if err != nil {
-					utils.Log.Error("Error creando solicitud HEAD para el proveedor genérico %s (URL: %s): %v", providerConfig.Name, providerConfig.APIURL, err)
-					// Continuar, ya que podría ser un problema temporal o una URL malformada que Search() puede manejar.
-				} else {
-					resp, err := utils.ShortHTTPClient.Do(req)
-					if err != nil {
-						utils.Log.Error("Verificación de API del proveedor genérico %s falló (URL: %s): %v", providerConfig.Name, providerConfig.APIURL, err)
-						// Continuar, ya que podría ser un problema de red temporal.
-					} else {
-						defer func() { _ = resp.Body.Close() }()
-						if resp.StatusCode == http.StatusNotFound {
-							utils.Log.Error("El proveedor genérico %s (URL: %s) devolvió 404 Not Found. Se omite el registro.", providerConfig.Name, providerConfig.APIURL)
-							continue // Omitir el registro de este proveedor
-						}
-						if resp.StatusCode >= 400 { // Registrar otros errores de cliente como advertencias
-							utils.Log.Error("El proveedor genérico %s (URL: %s) devolvió estado %d. Se procede con el registro, pero la API podría ser problemática.", providerConfig.Name, providerConfig.APIURL, resp.StatusCode)
-						}
-					}
-				}
-			}
-
-			provider := &providers.GenericProvider{
-				Config:      providerConfig,
-				RateLimiter: utils.NewRateLimiter(30, 60),
-			}
-			providerManager.RegisterProvider(provider)
+		if !providerConfig.Enabled {
+			continue
 		}
-	}
+		if appDir != "" {
+			parserPath := filepath.Join(appDir, "data", "parser", utils.SafeFilename(providerConfig.Name)+".json")
+			var mapping models.ResponseMapping
+			if err := jsonManager.ReadJSON(parserPath, &mapping); err == nil {
+				providerConfig.ResponseMapping = mapping
+			}
+		}
 
-	colorManager := NewColorManager()
-	if colorManager == nil {
-		utils.Log.Error("NewColorManager returned nil. This should not happen.")
+		providerManager.RegisterProvider(&providers.GenericProvider{
+			Config:      providerConfig,
+			RateLimiter: utils.NewRateLimiter(30, 60),
+		})
 	}
 
 	feedManager := utils.NewSecureJSONManager()
+	colorManager := NewColorManager()
 
 	return &Controller{
 		Config:          config,
@@ -185,97 +136,104 @@ var NewController = func(config *models.Config) *Controller {
 }
 
 func (c *Controller) getFeedPath() (string, error) {
-	if c.FeedService != nil {
-		return c.FeedService.getFeedPath()
+	if c.FeedService == nil {
+		return "", fmt.Errorf("feed service not initialized")
 	}
-	return c.getLegacyFeedPath()
+	return c.FeedService.getFeedPath()
 }
 
 func (c *Controller) getFeedCachePath() (string, error) {
-	if c.FeedService != nil {
-		return c.FeedService.getFeedCachePath()
+	if c.FeedService == nil {
+		return "", fmt.Errorf("feed service not initialized")
 	}
-	appDir, err := GetAppDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(appDir, "data", "feed_cache.json"), nil
+	return c.FeedService.getFeedCachePath()
 }
 
 func (c *Controller) getBlacklistPath() (string, error) {
-	if c.FeedService != nil {
-		return c.FeedService.getBlacklistPath()
+	if c.FeedService == nil {
+		return "", fmt.Errorf("feed service not initialized")
 	}
-	appDir, err := GetAppDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(appDir, "data", "blacklist.json"), nil
+	return c.FeedService.getBlacklistPath()
 }
 
-func (c *Controller) loadBlacklist() ([]string, error) {
-	if c.FeedService != nil {
-		return c.FeedService.loadBlacklist()
-	}
-	path, err := c.getBlacklistPath()
-	if err != nil {
-		return nil, err
-	}
-	var blacklist []string
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return []string{}, nil
-	}
-	if err := c.feedManager.ReadJSON(path, &blacklist); err != nil {
-		return nil, err
-	}
-	return blacklist, nil
-}
-
-func (c *Controller) loadFeed() ([]models.Wallpaper, error) {
-	if c.FeedService != nil {
-		return c.FeedService.loadFeed()
-	}
-	path, err := c.getLegacyFeedPath()
-	if err != nil {
-		return nil, err
-	}
-	var feed []models.Wallpaper
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return []models.Wallpaper{}, nil
-	}
-	if err := c.feedManager.ReadJSON(path, &feed); err != nil {
-		return nil, err
-	}
-	return feed, nil
-}
-
-func (c *Controller) saveFeed(feed []models.Wallpaper) error {
-	if c.FeedService != nil {
-		return c.FeedService.saveFeed(feed)
-	}
-	path, err := c.getLegacyFeedPath()
+func (c *Controller) withFeedLock(fn func() error) error {
+	path, err := c.getFeedPath()
 	if err != nil {
 		return err
 	}
-	return c.feedManager.WriteJSON(path, feed)
+	return utils.WithFileLock(path, fn)
 }
 
-func (c *Controller) getLegacyFeedPath() (string, error) {
-	appDir, err := GetAppDir()
+func (c *Controller) withBlacklistLock(fn func() error) error {
+	path, err := c.getBlacklistPath()
 	if err != nil {
-		return "", err
+		return err
 	}
-	return filepath.Join(appDir, "data", "feed.json"), nil
+	return utils.WithFileLock(path, fn)
+}
+
+func (c *Controller) withFavoritesLock(fn func() error) error {
+	if c.FeedService == nil {
+		return fmt.Errorf("feed service not initialized")
+	}
+	path := c.FeedService.getFavoritesPath()
+	if path == "" {
+		return fmt.Errorf("cannot resolve favorites path")
+	}
+	return utils.WithFileLock(path, fn)
+}
+
+func (c *Controller) loadBlacklist() ([]string, error) {
+	if c.FeedService == nil {
+		return nil, fmt.Errorf("feed service not initialized")
+	}
+	return c.FeedService.loadBlacklist()
+}
+
+func (c *Controller) loadFeed() ([]models.Wallpaper, error) {
+	if c.FeedService == nil {
+		return nil, fmt.Errorf("feed service not initialized")
+	}
+	return c.FeedService.loadFeed()
+}
+
+func (c *Controller) saveFeed(feed []models.Wallpaper) error {
+	if c.FeedService == nil {
+		return fmt.Errorf("feed service not initialized")
+	}
+	return c.FeedService.saveFeed(feed)
 }
 
 // GetFeed retrieves wallpapers from the feed with pagination and optional search/theme filters.
 func (c *Controller) GetFeed(page, limit int, search, theme, color, sortMode string, refresh bool) ([]models.Wallpaper, error) {
+	if page < 1 {
+		return nil, fmt.Errorf("page must be >= 1")
+	}
+	if limit < 1 {
+		return nil, fmt.Errorf("limit must be >= 1")
+	}
+
+	var result []models.Wallpaper
+	err := c.withFeedLock(func() error {
+		var err error
+		result, err = c.getFeed(page, limit, search, theme, color, sortMode, refresh)
+		return err
+	})
+	return result, err
+}
+
+// getFeed contiene la implementación de GetFeed. Debe llamarse con el lock del
+// feed tomado.
+func (c *Controller) getFeed(page, limit int, search, theme, color, sortMode string, refresh bool) ([]models.Wallpaper, error) {
 	feed, err := c.loadFeed()
 	if err != nil {
 		return nil, err
 	}
 
-	blacklist, _ := c.loadBlacklist()
+	blacklist, err := c.loadBlacklist()
+	if err != nil {
+		return nil, err
+	}
 	blacklistMap := make(map[string]bool)
 	for _, id := range blacklist {
 		blacklistMap[id] = true
@@ -283,11 +241,20 @@ func (c *Controller) GetFeed(page, limit int, search, theme, color, sortMode str
 
 	var filteredFeed []models.Wallpaper
 
-	// Load dynamic palette for color filtering
+	// Load dynamic palette for color filtering.
 	var palette []string
+	targetBucket := ""
 	if color != "" {
-		// For feed, we use the feed palette
-		palette, _, _ = c.LoadColorPalettes()
+		var errPalette error
+		palette, _, errPalette = c.LoadColorPalettes()
+		if errPalette != nil {
+			return nil, fmt.Errorf("color filter unavailable: %w", errPalette)
+		}
+		if len(palette) == 0 {
+			return nil, fmt.Errorf("color filter unavailable: no color palette (run 'gower feed analyze' first)")
+		}
+		// El bucket objetivo se calcula una sola vez, no por wallpaper.
+		targetBucket = c.ColorManager.FindNearestColorInPalette(color, palette)
 	}
 
 	for _, wp := range feed {
@@ -304,12 +271,7 @@ func (c *Controller) GetFeed(page, limit int, search, theme, color, sortMode str
 
 		matchesColor := true
 		if color != "" {
-			// 1. Find which bucket the user selected (snap input to nearest palette color)
-			targetBucket := c.ColorManager.FindNearestColorInPalette(color, palette)
-
-			// 2. Find which bucket the wallpaper belongs to
 			wpBucket := c.ColorManager.FindNearestColorInPalette(wp.Color, palette)
-
 			if wpBucket != targetBucket {
 				matchesColor = false
 			}
@@ -505,10 +467,18 @@ func (c *Controller) SearchFeed(query string, page, limit int, theme string) ([]
 
 // PurgeFeed clears all entries from the feed.
 func (c *Controller) PurgeFeed() error {
-	if err := c.saveFeed([]models.Wallpaper{}); err != nil {
-		return err
-	}
-	return c.RebuildColorIndex()
+	return c.withFeedLock(func() error {
+		if err := c.saveFeed([]models.Wallpaper{}); err != nil {
+			return err
+		}
+		// Los IDs cacheados quedarían obsoletos tras vaciar el feed.
+		if cachePath, err := c.getFeedCachePath(); err == nil {
+			if err := os.Remove(cachePath); err != nil && !os.IsNotExist(err) {
+				c.log().Error("Failed to remove feed cache: %v", err)
+			}
+		}
+		return c.rebuildColorsIndex([]models.Wallpaper{})
+	})
 }
 
 // AnalyzeFeed analyzes the feed items, regenerates thumbnails/colors if needed, and rebuilds the color index.
@@ -516,6 +486,14 @@ func (c *Controller) AnalyzeFeed(all bool, force bool, progress func(string)) er
 	if c == nil {
 		return fmt.Errorf("controller is nil")
 	}
+	return c.withFeedLock(func() error {
+		return c.analyzeFeed(all, force, progress)
+	})
+}
+
+// analyzeFeed contiene la implementación de AnalyzeFeed. Debe llamarse con el
+// lock del feed tomado.
+func (c *Controller) analyzeFeed(all bool, force bool, progress func(string)) error {
 	feed, err := c.loadFeed()
 	if err != nil {
 		return err
@@ -597,9 +575,7 @@ func (c *Controller) AnalyzeFeed(all bool, force bool, progress func(string)) er
 			}
 		}
 		feed = newFeed
-	}
 
-	if updatedCount > 0 || changedByIndexing {
 		if err := c.saveFeed(feed); err != nil {
 			return err
 		}
@@ -709,11 +685,22 @@ func (c *Controller) AnalyzeFavorites(all bool, force bool, progress func(string
 	if c == nil {
 		return fmt.Errorf("controller is nil")
 	}
+	return c.withFavoritesLock(func() error {
+		return c.analyzeFavorites(all, force, progress)
+	})
+}
+
+// analyzeFavorites contiene la implementación de AnalyzeFavorites. Debe
+// llamarse con el lock de favoritos tomado.
+func (c *Controller) analyzeFavorites(all bool, force bool, progress func(string)) error {
 	appDir, err := GetAppDir()
 	if err != nil {
 		return err
 	}
-	favPath := filepath.Join(appDir, "data", "favorites.json")
+	favPath := c.FeedService.getFavoritesPath()
+	if favPath == "" {
+		return fmt.Errorf("cannot resolve favorites path")
+	}
 	thumbDir := filepath.Join(appDir, "cache", "thumbs")
 
 	var favorites []FavoriteWallpaper
@@ -802,15 +789,15 @@ func (c *Controller) processWallpaperItem(wp models.Wallpaper, force, all bool, 
 		}
 		return wp, false, true // Mark for deletion or skip
 	}
-	thumbPath := filepath.Join(thumbDir, wp.ID+".jpg")
+	thumbPath := filepath.Join(thumbDir, utils.SafeFilename(wp.ID)+".jpg")
 
 	var sourceFilePath string // This will hold the path to the wallpaper file we will use for analysis
 
 	// Helper function to delete associated files
 	deleteAssociatedFiles := func(wallpaper models.Wallpaper) {
 		// Always delete thumbnail
-		_ = os.Remove(filepath.Join(thumbDir, wallpaper.ID+".jpg"))
-		c.log().Info("Deleted thumbnail: %s", filepath.Join(thumbDir, wallpaper.ID+".jpg"))
+		_ = os.Remove(filepath.Join(thumbDir, utils.SafeFilename(wallpaper.ID)+".jpg"))
+		c.log().Info("Deleted thumbnail: %s", filepath.Join(thumbDir, utils.SafeFilename(wallpaper.ID)+".jpg"))
 
 		// Delete main file ONLY if it's in the cache directory.
 		// We should NEVER delete files from the user's configured wallpaper directory automatically.
@@ -1097,172 +1084,147 @@ func (c *Controller) GetRandomFromFeed(theme string) (models.Wallpaper, error) {
 	return filteredFeed[n.Int64()], nil
 }
 
-// GetRandomWallpapersFromFeed retrieves N unique random wallpapers from the feed.
-func (c *Controller) GetRandomWallpapersFromFeed(count int, theme string) ([]models.Wallpaper, error) {
-	feed, err := c.loadFeed()
-	if err != nil {
-		return nil, err
-	}
-
-	blacklist, _ := c.loadBlacklist()
-	blacklistMap := make(map[string]bool)
-	for _, id := range blacklist {
-		blacklistMap[id] = true
-	}
-
-	var filteredFeed []models.Wallpaper
-	for _, wp := range feed {
-		if blacklistMap[wp.ID] {
-			continue
-		}
-		if theme == "" || strings.EqualFold(wp.Theme, theme) {
-			filteredFeed = append(filteredFeed, wp)
-		}
-	}
-
-	if len(filteredFeed) == 0 {
-		return nil, fmt.Errorf("no wallpapers found in feed (with given theme)")
-	}
-
-	// Shuffle using a local seeded source
-	r := rand.New(rand.NewSource(time.Now().UnixNano())) //nolint:gosec // G404: Cryptographically secure random is not required for wallpaper shuffling.
-	r.Shuffle(len(filteredFeed), func(i, j int) {
-		filteredFeed[i], filteredFeed[j] = filteredFeed[j], filteredFeed[i]
-	})
-
-	if len(filteredFeed) < count {
-		return filteredFeed, nil
-	}
-	return filteredFeed[:count], nil
-}
-
 // GetFeedStats calculates and returns statistics about the feed.
 func (c *Controller) GetFeedStats() (models.FeedStats, error) {
-	feed, err := c.loadFeed()
-	if err != nil {
-		return models.FeedStats{}, err
-	}
-
-	stats := models.FeedStats{
-		Total: len(feed),
-	}
-
-	for _, wp := range feed {
-		if strings.ToLower(wp.Theme) == "dark" {
-			stats.DarkCount++
-		} else if strings.ToLower(wp.Theme) == "light" {
-			stats.LightCount++
+	var stats models.FeedStats
+	err := c.withFeedLock(func() error {
+		feed, err := c.loadFeed()
+		if err != nil {
+			return err
 		}
-		// For FavoritesCount and LastAdded, we'd need more info in Wallpaper model
-		// or a separate favorites manager. For now, leave as 0 or default.
-	}
 
-	return stats, nil
+		stats.Total = len(feed)
+		for _, wp := range feed {
+			switch strings.ToLower(wp.Theme) {
+			case "dark":
+				stats.DarkCount++
+			case "light":
+				stats.LightCount++
+			}
+			if wp.Added > 0 {
+				added := time.Unix(wp.Added, 0)
+				if added.After(stats.LastAdded) {
+					stats.LastAdded = added
+				}
+			}
+		}
+
+		if c.FeedService != nil {
+			if favorites, err := c.FeedService.loadFavorites(); err == nil {
+				stats.FavoritesCount = len(favorites)
+			}
+		}
+		return nil
+	})
+	return stats, err
 }
 
 // AddWallpaperToFeed adds a wallpaper to the feed.
 func (c *Controller) AddWallpaperToFeed(wallpaper models.Wallpaper) error {
-	// Check blacklist
-	blacklist, err := c.loadBlacklist()
-	if err != nil {
-		return err
-	}
-	for _, id := range blacklist {
-		if id == wallpaper.ID {
-			return fmt.Errorf("wallpaper %s is blacklisted", wallpaper.ID)
+	return c.withFeedLock(func() error {
+		blacklist, err := c.loadBlacklist()
+		if err != nil {
+			return err
 		}
-	}
-
-	feed, err := c.loadFeed()
-	if err != nil {
-		return err
-	}
-
-	// Check if already exists to avoid duplicates
-	for i, existingWp := range feed {
-		if existingWp.ID == wallpaper.ID {
-			// Update existing entry with new data (like Path or Color)
-			// but preserve metadata like Added time if it's not provided
-			if wallpaper.Added == 0 {
-				wallpaper.Added = existingWp.Added
+		for _, id := range blacklist {
+			if id == wallpaper.ID {
+				return fmt.Errorf("wallpaper %s is blacklisted", wallpaper.ID)
 			}
-			feed[i] = wallpaper
-			return c.saveFeed(feed)
 		}
-	}
 
-	if wallpaper.Added == 0 {
-		wallpaper.Added = time.Now().Unix()
-	}
-	feed = append(feed, wallpaper)
-	if err := c.saveFeed(feed); err != nil {
-		return err
-	}
-	c.log().Info("Added wallpaper %s to feed", wallpaper.ID)
-	return nil
+		feed, err := c.loadFeed()
+		if err != nil {
+			return err
+		}
+
+		for i, existingWp := range feed {
+			if existingWp.ID == wallpaper.ID {
+				if wallpaper.Added == 0 {
+					wallpaper.Added = existingWp.Added
+				}
+				feed[i] = wallpaper
+				return c.saveFeed(feed)
+			}
+		}
+
+		if wallpaper.Added == 0 {
+			wallpaper.Added = time.Now().Unix()
+		}
+		feed = append(feed, wallpaper)
+		if err := c.saveFeed(feed); err != nil {
+			return err
+		}
+		c.log().Info("Added wallpaper %s to feed", wallpaper.ID)
+		return nil
+	})
 }
 
 // AddWallpapersToFeed adds multiple wallpapers to the feed efficiently.
 func (c *Controller) AddWallpapersToFeed(wallpapers []models.Wallpaper) (int, error) {
-	feed, err := c.loadFeed()
-	if err != nil {
-		return 0, err
-	}
-
-	blacklist, err := c.loadBlacklist()
-	if err != nil {
-		return 0, err
-	}
-	blacklistMap := make(map[string]bool)
-	for _, id := range blacklist {
-		blacklistMap[id] = true
-	}
-
-	// Create a map for existing IDs to avoid duplicates
-	existing := make(map[string]bool)
-	for _, wp := range feed {
-		existing[wp.ID] = true
-	}
-
 	addedCount := 0
-	for _, wp := range wallpapers {
-		if blacklistMap[wp.ID] {
-			continue
+	err := c.withFeedLock(func() error {
+		feed, err := c.loadFeed()
+		if err != nil {
+			return err
 		}
-		if !existing[wp.ID] {
-			if wp.Added == 0 {
-				wp.Added = time.Now().Unix()
-			}
-			feed = append(feed, wp)
-			existing[wp.ID] = true
-			addedCount++
-		}
-	}
 
-	if addedCount > 0 {
-		return addedCount, c.saveFeed(feed)
-	}
-	return 0, nil
+		blacklist, err := c.loadBlacklist()
+		if err != nil {
+			return err
+		}
+		blacklistMap := make(map[string]bool)
+		for _, id := range blacklist {
+			blacklistMap[id] = true
+		}
+
+		existing := make(map[string]bool)
+		for _, wp := range feed {
+			existing[wp.ID] = true
+		}
+
+		for _, wp := range wallpapers {
+			if blacklistMap[wp.ID] {
+				continue
+			}
+			if !existing[wp.ID] {
+				if wp.Added == 0 {
+					wp.Added = time.Now().Unix()
+				}
+				feed = append(feed, wp)
+				existing[wp.ID] = true
+				addedCount++
+			}
+		}
+
+		if addedCount > 0 {
+			return c.saveFeed(feed)
+		}
+		return nil
+	})
+	return addedCount, err
 }
 
 // AddToBlacklist adds an ID to the blacklist.
 func (c *Controller) AddToBlacklist(id string) error {
-	blacklist, err := c.loadBlacklist()
-	if err != nil {
-		return err
-	}
-	for _, existing := range blacklist {
-		if existing == id {
-			return nil
+	err := c.withBlacklistLock(func() error {
+		blacklist, err := c.loadBlacklist()
+		if err != nil {
+			return err
 		}
-	}
-	blacklist = append(blacklist, id)
+		for _, existing := range blacklist {
+			if existing == id {
+				return nil
+			}
+		}
+		blacklist = append(blacklist, id)
 
-	path, err := c.getBlacklistPath()
+		path, err := c.getBlacklistPath()
+		if err != nil {
+			return err
+		}
+		return c.feedManager.WriteJSON(path, blacklist)
+	})
 	if err != nil {
-		return err
-	}
-	if err := c.feedManager.WriteJSON(path, blacklist); err != nil {
 		return err
 	}
 	c.log().Info("Added wallpaper %s to blacklist", id)
@@ -1272,30 +1234,33 @@ func (c *Controller) AddToBlacklist(id string) error {
 
 // RemoveFromBlacklist removes an ID from the blacklist.
 func (c *Controller) RemoveFromBlacklist(id string) error {
-	blacklist, err := c.loadBlacklist()
-	if err != nil {
-		return err
-	}
-
-	newBlacklist := make([]string, 0, len(blacklist))
-	found := false
-	for _, existing := range blacklist {
-		if existing == id {
-			found = true
-			continue
+	err := c.withBlacklistLock(func() error {
+		blacklist, err := c.loadBlacklist()
+		if err != nil {
+			return err
 		}
-		newBlacklist = append(newBlacklist, existing)
-	}
 
-	if !found {
-		return fmt.Errorf("ID %s not found in blacklist", id)
-	}
+		newBlacklist := make([]string, 0, len(blacklist))
+		found := false
+		for _, existing := range blacklist {
+			if existing == id {
+				found = true
+				continue
+			}
+			newBlacklist = append(newBlacklist, existing)
+		}
 
-	path, err := c.getBlacklistPath()
+		if !found {
+			return fmt.Errorf("ID %s not found in blacklist", id)
+		}
+
+		path, err := c.getBlacklistPath()
+		if err != nil {
+			return err
+		}
+		return c.feedManager.WriteJSON(path, newBlacklist)
+	})
 	if err != nil {
-		return err
-	}
-	if err := c.feedManager.WriteJSON(path, newBlacklist); err != nil {
 		return err
 	}
 	c.log().Info("Removed wallpaper %s from blacklist", id)
@@ -1310,30 +1275,32 @@ func (c *Controller) GetBlacklist() ([]string, error) {
 
 // RemoveFromFeed removes a wallpaper from the feed by ID.
 func (c *Controller) RemoveFromFeed(id string) error {
-	feed, err := c.loadFeed()
-	if err != nil {
-		return err
-	}
-
-	newFeed := make([]models.Wallpaper, 0, len(feed))
-	found := false
-	for _, wp := range feed {
-		if wp.ID == id {
-			found = true
-			continue
+	return c.withFeedLock(func() error {
+		feed, err := c.loadFeed()
+		if err != nil {
+			return err
 		}
-		newFeed = append(newFeed, wp)
-	}
 
-	if !found {
+		newFeed := make([]models.Wallpaper, 0, len(feed))
+		found := false
+		for _, wp := range feed {
+			if wp.ID == id {
+				found = true
+				continue
+			}
+			newFeed = append(newFeed, wp)
+		}
+
+		if !found {
+			return nil
+		}
+
+		if err := c.saveFeed(newFeed); err != nil {
+			return err
+		}
+		c.log().Info("Removed wallpaper %s from feed", id)
 		return nil
-	}
-
-	if err := c.saveFeed(newFeed); err != nil {
-		return err
-	}
-	c.log().Info("Removed wallpaper %s from feed", id)
-	return nil
+	})
 }
 
 // DeleteWallpaper removes a wallpaper from the feed and optionally deletes the file from disk.
@@ -1353,21 +1320,25 @@ func (c *Controller) DeleteWallpaper(id string, deleteFile bool) error {
 
 	if deleteFile {
 		if wp.Source == "local" {
-			// Delete local file
+			// Un feed.json manipulado podría apuntar a cualquier fichero del
+			// usuario. Solo se borra si está dentro del directorio configurado.
+			if !utils.IsWithinDir(wp.URL, c.Config.Paths.Wallpapers) {
+				return fmt.Errorf("refusing to delete %q: outside configured wallpapers directory", wp.URL)
+			}
 			if err := os.Remove(wp.URL); err != nil {
 				return fmt.Errorf("failed to delete local file: %w", err)
 			}
 			c.log().Info("Deleted local file: %s", wp.URL)
 		} else {
-			// Delete cached file
 			if path, found := c.FindWallpaperCacheFile(*wp); found {
 				_ = os.Remove(path)
 			}
 		}
 
-		appDir, _ := GetAppDir()
-		thumbPath := filepath.Join(appDir, "cache", "thumbs", wp.ID+".jpg")
-		_ = os.Remove(thumbPath)
+		if appDir, err := GetAppDir(); err == nil {
+			thumbPath := filepath.Join(appDir, "cache", "thumbs", utils.SafeFilename(wp.ID)+".jpg")
+			_ = os.Remove(thumbPath)
+		}
 	}
 
 	return c.RebuildColorIndex()
@@ -1375,36 +1346,37 @@ func (c *Controller) DeleteWallpaper(id string, deleteFile bool) error {
 
 // RemoveFromFavorites removes a wallpaper from the favorites list by ID.
 func (c *Controller) RemoveFromFavorites(id string) error {
-	appDir, err := GetAppDir()
-	if err != nil {
-		return err
-	}
-	favPath := filepath.Join(appDir, "data", "favorites.json")
+	return c.withFavoritesLock(func() error {
+		favPath := c.FeedService.getFavoritesPath()
+		if favPath == "" {
+			return fmt.Errorf("cannot resolve favorites path")
+		}
 
-	var favorites []FavoriteWallpaper
-	if err := c.feedManager.ReadJSON(favPath, &favorites); err != nil {
-		if os.IsNotExist(err) {
+		var favorites []FavoriteWallpaper
+		if err := c.feedManager.ReadJSON(favPath, &favorites); err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return err
+		}
+
+		newFavorites := make([]FavoriteWallpaper, 0, len(favorites))
+		found := false
+		for _, fav := range favorites {
+			if fav.ID == id {
+				found = true
+				continue
+			}
+			newFavorites = append(newFavorites, fav)
+		}
+
+		if !found {
 			return nil
 		}
-		return err
-	}
 
-	newFavorites := make([]FavoriteWallpaper, 0, len(favorites))
-	found := false
-	for _, fav := range favorites {
-		if fav.ID == id {
-			found = true
-			continue
-		}
-		newFavorites = append(newFavorites, fav)
-	}
-
-	if !found {
-		return nil
-	}
-
-	c.log().Info("Removed wallpaper %s from favorites", id)
-	return c.feedManager.WriteJSON(favPath, newFavorites)
+		c.log().Info("Removed wallpaper %s from favorites", id)
+		return c.feedManager.WriteJSON(favPath, newFavorites)
+	})
 }
 
 // GetFeedWallpapers returns all wallpapers in the feed.
@@ -1426,9 +1398,13 @@ func (c *Controller) GetWallpaper(id string) (*models.Wallpaper, error) {
 	}
 
 	// 2. Check Favorites
-	// We need to manually load favorites here since Controller doesn't manage them directly yet,
-	// or we can assume the caller handles it. However, for convenience:
-	favPath := filepath.Join(filepath.Dir(c.getFeedPathString()), "favorites.json")
+	if c.FeedService == nil {
+		return nil, fmt.Errorf("wallpaper with ID %s not found", id)
+	}
+	favPath := c.FeedService.getFavoritesPath()
+	if favPath == "" {
+		return nil, fmt.Errorf("wallpaper with ID %s not found", id)
+	}
 	var favorites []FavoriteWallpaper
 	if err := c.feedManager.ReadJSON(favPath, &favorites); err == nil {
 		for i := range favorites {
@@ -1440,12 +1416,6 @@ func (c *Controller) GetWallpaper(id string) (*models.Wallpaper, error) {
 	}
 
 	return nil, fmt.Errorf("wallpaper with ID %s not found", id)
-}
-
-// Helper to get path string (ignoring error for internal use)
-func (c *Controller) getFeedPathString() string {
-	p, _ := c.getFeedPath()
-	return p
 }
 
 // GetWallpaperLocalPath returns the expected local path for a wallpaper without downloading it.
@@ -1485,51 +1455,29 @@ type ParserSearch struct {
 	Results []models.Wallpaper `json:"results"`
 }
 
-func (c *Controller) getParserPath(providerName string) (string, error) {
-	appDir, err := GetAppDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(appDir, "data", "parser", providerName+".json"), nil
-}
-
 // SaveParserSearch saves the search results to the provider's parser cache file.
 // It enforces a 14-day retention policy for old searches.
 func (c *Controller) SaveParserSearch(providerName, query string, results []models.Wallpaper) error {
-	path, err := c.getParserPath(providerName)
-	if err != nil {
-		return err
+	if c.FeedService == nil {
+		return fmt.Errorf("feed service not initialized")
 	}
-
-	var searches []ParserSearch
-	// Try to read existing file
-	if _, err := os.Stat(path); err == nil {
-		// We ignore error here to overwrite corrupt files or start fresh
-		_ = c.feedManager.ReadJSON(path, &searches)
-	}
-
-	// Prune searches older than 14 days
-	cutoff := time.Now().AddDate(0, 0, -14)
-	var validSearches []ParserSearch
-	for _, s := range searches {
-		if s.Date.After(cutoff) {
-			validSearches = append(validSearches, s)
-		}
-	}
-
-	// Append new search
-	newSearch := ParserSearch{
-		Date:    time.Now(),
-		Query:   query,
-		Results: results,
-	}
-	validSearches = append(validSearches, newSearch)
-
-	return c.feedManager.WriteJSON(path, validSearches)
+	return c.FeedService.SaveParserSearch(providerName, query, results)
 }
 
 // SyncFeed processes parser cache files and populates the feed.
 func (c *Controller) SyncFeed() (int, int, error) {
+	var added, repaired int
+	err := c.withFeedLock(func() error {
+		var err error
+		added, repaired, err = c.syncFeed()
+		return err
+	})
+	return added, repaired, err
+}
+
+// syncFeed contiene la implementación de SyncFeed. Debe llamarse con el lock
+// del feed tomado.
+func (c *Controller) syncFeed() (int, int, error) {
 	c.log().Info("Starting feed sync...")
 
 	appDir, err := GetAppDir()
@@ -1538,18 +1486,23 @@ func (c *Controller) SyncFeed() (int, int, error) {
 	}
 	parserDir := filepath.Join(appDir, "data", "parser")
 
+	// Un directorio de parser inexistente no es un error: el indexado local
+	// puede seguir aportando wallpapers.
 	files, err := os.ReadDir(parserDir)
-	if err != nil {
-		// If dir doesn't exist, just return 0
-		if os.IsNotExist(err) {
-			return 0, 0, nil
-		}
+	if err != nil && !os.IsNotExist(err) {
 		return 0, 0, err
 	}
 
-	// Load existing feed and blacklist to avoid duplicates
-	feed, _ := c.loadFeed()
-	blacklist, _ := c.loadBlacklist()
+	// Load existing feed and blacklist to avoid duplicates. No se ignoran los
+	// errores: sobrescribir un feed ilegible perdería datos.
+	feed, err := c.loadFeed()
+	if err != nil {
+		return 0, 0, err
+	}
+	blacklist, err := c.loadBlacklist()
+	if err != nil {
+		return 0, 0, err
+	}
 
 	// Index local wallpapers if enabled
 	addedLocal := 0
@@ -1632,7 +1585,7 @@ func (c *Controller) SyncFeed() (int, int, error) {
 				// Check if already in feed
 				if inFeed[wp.ID] {
 					// Check if thumbnail exists
-					thumbPath := filepath.Join(thumbDir, wp.ID+".jpg")
+					thumbPath := filepath.Join(thumbDir, utils.SafeFilename(wp.ID)+".jpg")
 					if info, err := os.Stat(thumbPath); err == nil && info.Size() > 0 {
 						// Check if valid image
 						if _, _, err := c.ColorManager.GetImageDimensions(thumbPath); err == nil {
@@ -1651,6 +1604,18 @@ func (c *Controller) SyncFeed() (int, int, error) {
 	}
 
 	if len(candidates) == 0 {
+		// Aunque no haya parser files, el indexado local puede haber añadido o
+		// quitado entradas: hay que persistirlas en vez de descartarlas.
+		if addedLocal > 0 || removedLocal > 0 {
+			if err := c.rebuildColorsIndex(feed); err != nil {
+				c.log().Error("Failed to rebuild color index: %v", err)
+			}
+			if err := c.saveFeed(feed); err != nil {
+				return 0, 0, err
+			}
+			c.log().Info("Feed sync completed. Local changes: +%d/-%d", addedLocal, removedLocal)
+			return addedLocal, 0, nil
+		}
 		return 0, 0, nil
 	}
 
@@ -1667,7 +1632,7 @@ func (c *Controller) SyncFeed() (int, int, error) {
 			for wp := range jobs {
 				// Filtrar por metadatos antes de intentar descargar nada
 
-				thumbPath := filepath.Join(thumbDir, wp.ID+".jpg")
+				thumbPath := filepath.Join(thumbDir, utils.SafeFilename(wp.ID)+".jpg")
 
 				// Usar thumbnail URL si existe para ahorrar ancho de banda
 				src := wp.Thumbnail
@@ -1736,21 +1701,22 @@ func (c *Controller) SyncFeed() (int, int, error) {
 	wg.Wait()
 	close(results)
 
-	// Recolectar resultados
+	// Recolectar resultados. Un índice por ID evita el O(n²) de recorrer el
+	// feed completo para cada wallpaper procesado.
+	feedIndex := make(map[string]int, len(feed))
+	for i := range feed {
+		feedIndex[feed[i].ID] = i
+	}
+
 	for wp := range results {
-		if inFeed[wp.ID] {
-			// Update existing entry
-			for i := range feed {
-				if feed[i].ID == wp.ID {
-					wp.Seen = feed[i].Seen   // Preserve seen status
-					wp.Added = feed[i].Added // Preserve added time
-					feed[i] = wp
-					break
-				}
-			}
+		if idx, ok := feedIndex[wp.ID]; ok {
+			wp.Seen = feed[idx].Seen
+			wp.Added = feed[idx].Added
+			feed[idx] = wp
 			repairedCount++
 		} else {
 			wp.Added = time.Now().Unix()
+			feedIndex[wp.ID] = len(feed)
 			feed = append(feed, wp)
 			addedCount++
 		}
@@ -1762,11 +1728,7 @@ func (c *Controller) SyncFeed() (int, int, error) {
 	}
 
 	if addedCount > 0 || repairedCount > 0 || addedLocal > 0 || removedLocal > 0 {
-		// Aplicar Hard Limit (FIFO)
-		if c.Config.Limits.FeedHardLimit > 0 && len(feed) > c.Config.Limits.FeedHardLimit {
-			// Mantener solo los últimos N elementos
-			feed = feed[len(feed)-c.Config.Limits.FeedHardLimit:]
-		}
+		feed = c.applyHardLimit(feed)
 		err := c.saveFeed(feed)
 		if err == nil {
 			c.log().Info("Feed sync completed. Added: %d (Local: %d), Repaired: %d", addedCount+addedLocal, addedLocal, repairedCount)
@@ -1775,6 +1737,45 @@ func (c *Controller) SyncFeed() (int, int, error) {
 	}
 	c.log().Info("Feed sync completed. No changes.")
 	return 0, 0, nil
+}
+
+// applyHardLimit recorta el feed por antigüedad (no por posición en el slice) y
+// elimina los ficheros cacheados de las entradas descartadas.
+func (c *Controller) applyHardLimit(feed []models.Wallpaper) []models.Wallpaper {
+	limit := 0
+	if c.Config != nil {
+		limit = c.Config.Limits.FeedHardLimit
+	}
+	if limit <= 0 || len(feed) <= limit {
+		return feed
+	}
+
+	sort.SliceStable(feed, func(i, j int) bool {
+		if feed[i].Added == feed[j].Added {
+			return feed[i].ID < feed[j].ID
+		}
+		return feed[i].Added < feed[j].Added
+	})
+
+	removed := len(feed) - limit
+	for i := 0; i < removed; i++ {
+		c.removeCachedFiles(feed[i])
+	}
+	return feed[removed:]
+}
+
+// removeCachedFiles borra el fichero cacheado y el thumbnail de un wallpaper,
+// asegurándose de no tocar ficheros fuera del directorio de caché.
+func (c *Controller) removeCachedFiles(wp models.Wallpaper) {
+	appDir, err := GetAppDir()
+	if err != nil {
+		return
+	}
+	cacheDir := filepath.Join(appDir, "cache", "wallpapers")
+	if path, found := c.FindWallpaperCacheFile(wp); found && utils.IsWithinDir(path, cacheDir) {
+		_ = os.Remove(path)
+	}
+	_ = os.Remove(filepath.Join(appDir, "cache", "thumbs", utils.SafeFilename(wp.ID)+".jpg"))
 }
 
 func calculateRatio(w, h int) string {
@@ -1793,24 +1794,29 @@ func calculateRatio(w, h int) string {
 
 // RebuildColorIndex rebuilds the colors.json file generating a dynamic palette.
 func (c *Controller) RebuildColorIndex() error {
-	feed, err := c.loadFeed()
-	if err != nil {
-		return err
-	}
-
-	blacklist, _ := c.loadBlacklist()
-	blacklistMap := make(map[string]bool)
-	for _, id := range blacklist {
-		blacklistMap[id] = true
-	}
-
-	var activeFeed []models.Wallpaper
-	for _, wp := range feed {
-		if !blacklistMap[wp.ID] {
-			activeFeed = append(activeFeed, wp)
+	return c.withFeedLock(func() error {
+		feed, err := c.loadFeed()
+		if err != nil {
+			return err
 		}
-	}
-	return c.rebuildColorsIndex(activeFeed)
+
+		blacklist, err := c.loadBlacklist()
+		if err != nil {
+			return err
+		}
+		blacklistMap := make(map[string]bool)
+		for _, id := range blacklist {
+			blacklistMap[id] = true
+		}
+
+		activeFeed := make([]models.Wallpaper, 0, len(feed))
+		for _, wp := range feed {
+			if !blacklistMap[wp.ID] {
+				activeFeed = append(activeFeed, wp)
+			}
+		}
+		return c.rebuildColorsIndex(activeFeed)
+	})
 }
 
 func (c *Controller) rebuildColorsIndex(feed []models.Wallpaper) error {
@@ -1850,15 +1856,17 @@ func (c *Controller) GetLastProviderUpdateTime() (time.Time, error) {
 			}
 		}
 	}
-	// Closing brace for the 'if wp.Source == "local" ...' block
 	return lastTime, nil
 }
 
 // UpdateWallpaperPath updates the local path for a wallpaper in both Feed and Favorites if they exist.
 func (c *Controller) UpdateWallpaperPath(id, path string) error {
 	// 1. Update Feed
-	feed, err := c.loadFeed()
-	if err == nil {
+	if err := c.withFeedLock(func() error {
+		feed, err := c.loadFeed()
+		if err != nil {
+			return err
+		}
 		changed := false
 		for i := range feed {
 			if feed[i].ID == id {
@@ -1870,16 +1878,26 @@ func (c *Controller) UpdateWallpaperPath(id, path string) error {
 			}
 		}
 		if changed {
-			if err := c.saveFeed(feed); err != nil {
-				c.log().Error("Failed to save feed after updating wallpaper path: %v", err)
-			}
+			return c.saveFeed(feed)
 		}
+		return nil
+	}); err != nil {
+		c.log().Error("Failed to save feed after updating wallpaper path: %v", err)
 	}
 
 	// 2. Update Favorites
-	favPath := filepath.Join(filepath.Dir(c.getFeedPathString()), "favorites.json")
-	var favorites []FavoriteWallpaper
-	if err := c.feedManager.ReadJSON(favPath, &favorites); err == nil {
+	if c.FeedService == nil {
+		return nil
+	}
+	favPath := c.FeedService.getFavoritesPath()
+	if favPath == "" {
+		return nil
+	}
+	return c.withFavoritesLock(func() error {
+		var favorites []FavoriteWallpaper
+		if err := c.feedManager.ReadJSON(favPath, &favorites); err != nil {
+			return nil
+		}
 		changed := false
 		for i := range favorites {
 			if favorites[i].ID == id {
@@ -1893,6 +1911,6 @@ func (c *Controller) UpdateWallpaperPath(id, path string) error {
 		if changed {
 			return c.feedManager.WriteJSON(favPath, favorites)
 		}
-	}
-	return nil
+		return nil
+	})
 }

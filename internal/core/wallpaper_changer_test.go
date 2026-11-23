@@ -2,11 +2,14 @@ package core
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gower/pkg/models"
 )
 
 // stubWallpaperExecution sustituye las costuras que acaban tocando el sistema
@@ -313,19 +316,437 @@ func TestBuildCommand_SwayDefaultMonitor(t *testing.T) {
 	}
 }
 
+// Los flags de transición solo se pasan a awww/swww, y solo si hay valores.
+func TestBuildCommand_TransitionArgs(t *testing.T) {
+	wc := NewWallpaperChanger("awww")
+	wc.Transition = models.TransitionConfig{
+		Type:     "wave",
+		Duration: 1.5,
+		FPS:      60,
+		Step:     90,
+		Angle:    45,
+		Pos:      "center",
+		Bezier:   ".54,0,.34,.99",
+		Wave:     "20,20",
+	}
+
+	cmd, err := wc.buildCommand(Monitor{Name: "eDP-1"}, "/tmp/wp.jpg", 0)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	got := strings.Join(cmd.Args, " ")
+	for _, want := range []string{
+		"--transition-type wave",
+		"--transition-duration 1.5",
+		"--transition-fps 60",
+		"--transition-step 90",
+		"--transition-angle 45",
+		"--transition-pos center",
+		"--transition-bezier .54,0,.34,.99",
+		"--transition-wave 20,20",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("expected %q in %q", want, got)
+		}
+	}
+}
+
+func TestBuildCommand_NoTransitionForUnsupportedEnv(t *testing.T) {
+	wc := NewWallpaperChanger("feh")
+	wc.Transition = models.TransitionConfig{Type: "wave"}
+
+	cmd, err := wc.buildCommand(Monitor{Name: "eDP-1"}, "/tmp/wp.jpg", 0)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if strings.Contains(strings.Join(cmd.Args, " "), "--transition") {
+		t.Errorf("feh no soporta transiciones, got %v", cmd.Args)
+	}
+}
+
+// CurrentWallpaperPath debe elegir la línea del monitor solicitado.
+func TestCurrentWallpaperPath(t *testing.T) {
+	dir := t.TempDir()
+	script := filepath.Join(dir, "awww")
+	content := `#!/bin/sh
+if [ "$1" = "query" ]; then
+  echo ': DP-2: 1920x1080, scale: 1, currently displaying: image: /tmp/old.png'
+  echo ': eDP-1: 1920x1080, scale: 1, currently displaying: image: /tmp/other.png'
+  exit 0
+fi
+exit 0
+`
+	if err := os.WriteFile(script, []byte(content), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := CurrentWallpaperPath(script, "DP-2")
+	if err != nil {
+		t.Fatalf("CurrentWallpaperPath: %v", err)
+	}
+	if got != "/tmp/old.png" {
+		t.Errorf("got %q, want /tmp/old.png", got)
+	}
+}
+
+// Con mask=diff, gower consulta el fondo actual y genera una máscara diff.
+func TestBuildCommand_RoserlayDiffMask(t *testing.T) {
+	stub := &stubWallpaperExecution{}
+	stub.install(t)
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	dir := t.TempDir()
+	oldPath := filepath.Join(dir, "old.png")
+	newPath := filepath.Join(dir, "new.png")
+	writeMaskTestImage(t, oldPath)
+	writeDiffTestImage(t, newPath)
+
+	awwwScript := filepath.Join(dir, "awww")
+	content := fmt.Sprintf(`#!/bin/sh
+if [ "$1" = "query" ]; then
+  echo ': DP-2: 1920x1080, scale: 1, currently displaying: image: %s'
+  exit 0
+fi
+exit 0
+`, oldPath)
+	if err := os.WriteFile(awwwScript, []byte(content), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "roserlay"), []byte("#!/bin/sh\nexit 0\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	wc := NewWallpaperChanger("awww")
+	wc.Transition = models.TransitionConfig{Engine: "roserlay", Mask: "diff"}
+
+	cmd, err := wc.buildCommand(Monitor{Name: "DP-2"}, newPath, 0)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	joined := strings.Join(cmd.Args, " ")
+	if !strings.Contains(joined, "--mask-file") {
+		t.Fatalf("expected --mask-file in %q", joined)
+	}
+
+	maskPath := ""
+	for i, arg := range cmd.Args {
+		if arg == "--mask-file" && i+1 < len(cmd.Args) {
+			maskPath = cmd.Args[i+1]
+			break
+		}
+	}
+	if _, err := os.Stat(maskPath); err != nil {
+		t.Fatalf("diff mask not found at %s: %v", maskPath, err)
+	}
+}
+
+// engine=auto usa roserlay cuando está disponible.
+func TestBuildCommand_EngineAutoUsesRoserlay(t *testing.T) {
+	stub := &stubWallpaperExecution{}
+	stub.install(t)
+
+	dir := t.TempDir()
+	for _, name := range []string{"roserlay", "awww"} {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	wc := NewWallpaperChanger("awww")
+	wc.Transition = models.TransitionConfig{Engine: "auto", Type: "fade", Mask: "wipe"}
+
+	cmd, err := wc.buildCommand(Monitor{Name: "DP-2"}, "/tmp/wp.jpg", 0)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if got := filepath.Base(cmd.Path); got != "roserlay" {
+		t.Fatalf("auto deberia elegir roserlay, se obtuvo %q", got)
+	}
+}
+
+// engine=auto cae a awww si roserlay no está.
+func TestBuildCommand_EngineAutoFallsBack(t *testing.T) {
+	stub := &stubWallpaperExecution{}
+	stub.install(t)
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "awww"), []byte("#!/bin/sh\nexit 0\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	wc := NewWallpaperChanger("awww")
+	wc.Transition = models.TransitionConfig{Engine: "auto", Type: "fade"}
+
+	cmd, err := wc.buildCommand(Monitor{Name: "DP-2"}, "/tmp/wp.jpg", 0)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if got := filepath.Base(cmd.Path); got != "awww" {
+		t.Fatalf("auto deberia caer a awww, se obtuvo %q", got)
+	}
+}
+
+func TestSupportsTransitions(t *testing.T) {
+	stub := &stubWallpaperExecution{}
+	stub.install(t)
+
+	if !(NewWallpaperChanger("awww")).SupportsTransitions() {
+		t.Error("awww deberia soportar transiciones")
+	}
+	if !(NewWallpaperChanger("swww")).SupportsTransitions() {
+		t.Error("swww deberia soportar transiciones")
+	}
+	if (NewWallpaperChanger("gnome")).SupportsTransitions() {
+		t.Error("gnome no deberia soportar transiciones")
+	}
+}
+
+// Con engine=roserlay, buildCommand debe devolver roserlay y dejar el awww
+// definitivo en --on-complete.
+func TestBuildCommand_RoserlayEngine(t *testing.T) {
+	stub := &stubWallpaperExecution{}
+	stub.install(t)
+
+	dir := t.TempDir()
+	for _, name := range []string{"roserlay", "awww"} {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	wc := NewWallpaperChanger("awww")
+	wc.Transition = models.TransitionConfig{
+		Engine:   "roserlay",
+		Type:     "fade",
+		Duration: 2,
+		Linger:   500,
+	}
+
+	cmd, err := wc.buildCommand(Monitor{Name: "DP-2"}, "/tmp/wp.jpg", 0)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if got := filepath.Base(cmd.Path); got != "roserlay" {
+		t.Fatalf("se esperaba roserlay, se obtuvo %q (%v)", got, cmd.Args)
+	}
+
+	got := strings.Join(cmd.Args, " ")
+	for _, want := range []string{
+		"--new /tmp/wp.jpg",
+		"--duration 2",
+		"--linger 500",
+		"--output DP-2",
+		"--on-complete",
+		"img -o 'DP-2' --transition-type none '/tmp/wp.jpg'",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("expected %q in %q", want, got)
+		}
+	}
+}
+
+// Si roserlay no está instalado, debe caer a la transición nativa de awww.
+func TestBuildCommand_RoserlayFallback(t *testing.T) {
+	stub := &stubWallpaperExecution{}
+	stub.install(t)
+	t.Setenv("PATH", t.TempDir())
+
+	wc := NewWallpaperChanger("awww")
+	wc.Transition = models.TransitionConfig{Engine: "roserlay", Type: "fade", Duration: 2}
+
+	cmd, err := wc.buildCommand(Monitor{Name: "DP-2"}, "/tmp/wp.jpg", 0)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if got := filepath.Base(cmd.Path); got != "awww" {
+		t.Fatalf("se esperaba fallback a awww, se obtuvo %q (%v)", got, cmd.Args)
+	}
+	if got := strings.Join(cmd.Args, " "); !strings.Contains(got, "--transition-type fade") {
+		t.Errorf("el fallback deberia conservar la transición nativa, got %q", got)
+	}
+}
+
+func TestBuildCommand_RoserlayMaskMapping(t *testing.T) {
+	stub := &stubWallpaperExecution{}
+	stub.install(t)
+
+	dir := t.TempDir()
+	for _, name := range []string{"roserlay", "awww"} {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	cases := []struct {
+		name string
+		tr   models.TransitionConfig
+		want []string
+	}{
+		{
+			name: "top type maps to wipe 90",
+			tr:   models.TransitionConfig{Engine: "roserlay", Type: "top"},
+			want: []string{"--mask wipe", "--angle 90"},
+		},
+		{
+			name: "outer type maps to radial inverted",
+			tr:   models.TransitionConfig{Engine: "roserlay", Type: "outer"},
+			want: []string{"--mask radial", "--invert"},
+		},
+		{
+			name: "explicit mask and feather",
+			tr:   models.TransitionConfig{Engine: "roserlay", Type: "fade", Mask: "radial", Feather: 0.1},
+			want: []string{"--mask radial", "--feather 0.1"},
+		},
+		{
+			name: "invert flag",
+			tr:   models.TransitionConfig{Engine: "roserlay", Mask: "wipe", Invert: true},
+			want: []string{"--mask wipe", "--invert"},
+		},
+		{
+			name: "overlay layer",
+			tr:   models.TransitionConfig{Engine: "roserlay", Mask: "wipe", Layer: "overlay"},
+			want: []string{"--mask wipe", "--layer overlay"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			wc := NewWallpaperChanger("awww")
+			wc.Transition = tc.tr
+			cmd, err := wc.buildCommand(Monitor{Name: "DP-2"}, "/tmp/wp.jpg", 0)
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+			got := strings.Join(cmd.Args, " ")
+			for _, want := range tc.want {
+				if !strings.Contains(got, want) {
+					t.Errorf("expected %q in %q", want, got)
+				}
+			}
+		})
+	}
+}
+
+// Una máscara de contenido debe generar un PNG y pasarse con --mask-file.
+func TestBuildCommand_RoserlayContentMask(t *testing.T) {
+	stub := &stubWallpaperExecution{}
+	stub.install(t)
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	dir := t.TempDir()
+	for _, name := range []string{"roserlay", "awww"} {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	src := filepath.Join(t.TempDir(), "src.png")
+	writeMaskTestImage(t, src)
+
+	wc := NewWallpaperChanger("awww")
+	wc.Transition = models.TransitionConfig{Engine: "roserlay", Mask: "color", Feather: 0.1, Invert: true}
+
+	cmd, err := wc.buildCommand(Monitor{Name: "DP-2"}, src, 0)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	joined := strings.Join(cmd.Args, " ")
+	if strings.Contains(joined, "--mask color") {
+		t.Errorf("content mask should not be passed with --mask: %q", joined)
+	}
+	if !strings.Contains(joined, "--mask-file") {
+		t.Fatalf("expected --mask-file in %q", joined)
+	}
+
+	maskPath := ""
+	for i, arg := range cmd.Args {
+		if arg == "--mask-file" && i+1 < len(cmd.Args) {
+			maskPath = cmd.Args[i+1]
+			break
+		}
+	}
+	if maskPath == "" {
+		t.Fatal("--mask-file without path")
+	}
+	if _, err := os.Stat(maskPath); err != nil {
+		t.Fatalf("generated mask not found at %s: %v", maskPath, err)
+	}
+}
+
+// Si roserlay existe pero falla en ejecución, execCommand reintenta con awww.
+func TestExecCommand_RoserlayFallbackOnError(t *testing.T) {
+	stub := &stubWallpaperExecution{}
+	stub.install(t)
+
+	dir := t.TempDir()
+	for _, name := range []string{"roserlay", "awww"} {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	origRun := runCommand
+	t.Cleanup(func() { runCommand = origRun })
+
+	var seen []string
+	runCommand = func(cmd *exec.Cmd) error {
+		name := filepath.Base(cmd.Path)
+		seen = append(seen, name)
+		if name == "roserlay" {
+			return errors.New("boom")
+		}
+		return nil
+	}
+
+	wc := NewWallpaperChanger("awww")
+	wc.Transition = models.TransitionConfig{Engine: "roserlay", Type: "fade", Duration: 2}
+
+	if err := wc.execCommand(Monitor{Name: "DP-2"}, "/tmp/wp.jpg", 0); err != nil {
+		t.Fatalf("execCommand devolvió error pese al fallback: %v", err)
+	}
+	if len(seen) != 2 || seen[0] != "roserlay" || seen[1] != "awww" {
+		t.Errorf("se esperaba roserlay y luego awww, se ejecutó %v", seen)
+	}
+}
+
 // applyToMonitor no delega en SetWallpapersFunc: lanza la IPC de dms y, si esta
 // falla, cae a quickshell. Con runCommand sustituido se comprueba que se intenta
-// la IPC y que su fallo no se propaga, sin tocar el compositor real.
+// la IPC y que el fallo del fallback sí se propaga, sin tocar el compositor real.
 func TestApplyToMonitor_DMS_Fallback(t *testing.T) {
 	stub := &stubWallpaperExecution{runErr: errors.New("dms no disponible")}
 	stub.install(t)
 
 	wc := NewWallpaperChanger("dms")
-	if err := wc.applyToMonitor(Monitor{Name: "eDP-1"}, "/tmp/wp.jpg", 0); err != nil {
-		t.Errorf("applyToMonitor no deberia propagar el fallo de la IPC: %v", err)
+	err := wc.applyToMonitor(Monitor{Name: "eDP-1"}, "/tmp/wp.jpg", 0)
+	if err == nil {
+		t.Error("applyToMonitor deberia propagar el fallo del fallback")
 	}
 	if !contains(stub.binaries(), "dms") {
 		t.Errorf("Se esperaba la IPC de dms, se ejecutaron %v", stub.binaries())
+	}
+	if !contains(stub.binaries(), "quickshell") {
+		t.Errorf("Se esperaba el fallback a quickshell, se ejecutaron %v", stub.binaries())
 	}
 }
 

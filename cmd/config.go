@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
-	"gower/internal/core"
 	"gower/internal/utils"
 	"gower/pkg/models"
 
@@ -24,16 +24,23 @@ var configShowCmd = &cobra.Command{
 	Short: "Show configuration",
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := ensureConfig(); err != nil {
-			cmd.Println(err)
+			cmd.PrintErrln(err)
+			setCommandError(err)
 			return
 		}
 		cfg, err := loadConfig()
 		if err != nil {
-			cmd.Printf("Error loading configuration: %v\n", err)
+			cmd.PrintErrf("Error loading configuration: %v\n", err)
+			setCommandError(err)
 			return
 		}
 		if !config.Quiet {
-			data, _ := json.MarshalIndent(cfg, "", "  ")
+			data, err := json.MarshalIndent(cfg, "", "  ")
+			if err != nil {
+				cmd.PrintErrf("Error encoding configuration: %v\n", err)
+				setCommandError(err)
+				return
+			}
 			cmd.Println(string(data))
 		}
 	},
@@ -45,29 +52,35 @@ var configSetCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := ensureConfig(); err != nil {
-			cmd.Println(err)
+			cmd.PrintErrln(err)
+			setCommandError(err)
 			return
 		}
 		parts := strings.SplitN(args[0], "=", 2)
 		if len(parts) != 2 {
-			cmd.Println("Required format: key=value")
+			err := fmt.Errorf("required format: key=value")
+			cmd.PrintErrln(err)
+			setCommandError(err)
 			return
 		}
 		key, val := parts[0], parts[1]
 
 		cfg, err := loadConfig()
 		if err != nil {
-			cmd.Printf("Error loading configuration: %v\n", err)
+			cmd.PrintErrf("Error loading configuration: %v\n", err)
+			setCommandError(err)
 			return
 		}
 
 		if err := setConfigValue(cfg, key, val); err != nil {
-			cmd.Printf("Error setting value: %v\n", err)
+			cmd.PrintErrf("Error setting value: %v\n", err)
+			setCommandError(err)
 			return
 		}
 
 		if err := saveConfig(cfg); err != nil {
-			cmd.Printf("Error saving configuration: %v\n", err)
+			cmd.PrintErrf("Error saving configuration: %v\n", err)
+			setCommandError(err)
 			return
 		}
 		if !config.Quiet {
@@ -82,7 +95,8 @@ var configGetCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := ensureConfig(); err != nil {
-			cmd.Println(err)
+			cmd.PrintErrln(err)
+			setCommandError(err)
 			return
 		}
 
@@ -91,7 +105,8 @@ var configGetCmd = &cobra.Command{
 		if key == "config-folder" {
 			configFilePath, err := getConfigPath()
 			if err != nil {
-				cmd.Printf("Error obteniendo ruta del archivo de configuración: %v\n", err)
+				cmd.PrintErrf("Error obteniendo ruta del archivo de configuración: %v\n", err)
+				setCommandError(err)
 				return
 			}
 			configFolder := filepath.Dir(configFilePath)
@@ -103,12 +118,14 @@ var configGetCmd = &cobra.Command{
 
 		cfg, err := loadConfig()
 		if err != nil {
-			cmd.Printf("Error cargando configuración: %v\n", err)
+			cmd.PrintErrf("Error cargando configuración: %v\n", err)
+			setCommandError(err)
 			return
 		}
 		val, err := getConfigValue(cfg, key)
 		if err != nil {
-			cmd.Printf("Error obteniendo valor: %v\n", err)
+			cmd.PrintErrf("Error obteniendo valor: %v\n", err)
+			setCommandError(err)
 			return
 		}
 		if !config.Quiet {
@@ -125,9 +142,29 @@ var configResetCmd = &cobra.Command{
 			cmd.Println(err)
 			return
 		}
+		if config.DryRun {
+			if !config.Quiet {
+				cmd.Println("[DRY-RUN] Se restablecería la configuración a los valores por defecto.")
+			}
+			return
+		}
+
+		// Copia de seguridad con timestamp antes de sobrescribir.
+		if path, err := getConfigPath(); err == nil {
+			if data, err := os.ReadFile(path); err == nil {
+				backup := fmt.Sprintf("%s.bak-%s", path, time.Now().Format("20060102-150405"))
+				if err := os.WriteFile(backup, data, 0600); err != nil {
+					cmd.PrintErrf("Warning: could not create config backup: %v\n", err)
+				} else if !config.Quiet {
+					cmd.Printf("Config backup: %s\n", backup)
+				}
+			}
+		}
+
 		defaultCfg := getDefaultConfig()
 		if err := saveConfig(&defaultCfg); err != nil {
-			cmd.Printf("Error resetting configuration: %v\n", err)
+			cmd.PrintErrf("Error resetting configuration: %v\n", err)
+			setCommandError(err)
 			return
 		}
 		if !config.Quiet {
@@ -141,16 +178,19 @@ var configUpdateCmd = &cobra.Command{
 	Short: "Update config file structure with new fields",
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := ensureConfig(); err != nil {
-			cmd.Println(err)
+			cmd.PrintErrln(err)
+			setCommandError(err)
 			return
 		}
 		cfg, err := loadConfig()
 		if err != nil {
-			cmd.Printf("Error cargando configuración: %v\n", err)
+			cmd.PrintErrf("Error cargando configuración: %v\n", err)
+			setCommandError(err)
 			return
 		}
 		if err := saveConfig(cfg); err != nil {
-			cmd.Printf("Error guardando configuración: %v\n", err)
+			cmd.PrintErrf("Error guardando configuración: %v\n", err)
+			setCommandError(err)
 			return
 		}
 		if !config.Quiet {
@@ -210,7 +250,9 @@ func defaultLoadConfig() (*models.Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	var cfg models.Config
+	// Se parte de los defaults para que los campos ausentes en un config
+	// antiguo tomen su valor por defecto en vez de cero.
+	cfg := getDefaultConfig()
 	manager := utils.NewSecureJSONManager()
 	if err := manager.ReadJSON(path, &cfg); err != nil {
 		return nil, err
@@ -225,10 +267,18 @@ func defaultLoadConfig() (*models.Config, error) {
 		}
 	}
 
+	cfg.Normalize()
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid config %s: %w", path, err)
+	}
+
 	return &cfg, nil
 }
 
 func defaultSaveConfig(cfg *models.Config) error {
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
 	path, err := getConfigPath()
 	if err != nil {
 		return err
@@ -266,6 +316,7 @@ func getDefaultConfig() models.Config {
 		Behavior: models.BehaviorConfig{
 			Theme: "", ChangeInterval: 30, MultiMonitor: "clone",
 			AutoDownload: true, RespectDarkMode: true, SaveFavoritesToFolder: false, FromFavorites: false,
+			Transition: models.TransitionConfig{Type: "simple", Engine: "auto"},
 		},
 		Paths: models.PathsConfig{
 			Wallpapers: "", IndexWallpapers: false,
@@ -274,7 +325,7 @@ func getDefaultConfig() models.Config {
 			ShowColors: true, ItemsPerPage: 10,
 		},
 		Limits: models.LimitsConfig{
-			FeedSoftLimit: 400, FeedHardLimit: 2000, RateLimitRequests: 45, RateLimitPeriod: 60, LogRetentionDays: 7, AnalysisWorkers: 5,
+			FeedSoftLimit: 400, FeedHardLimit: 2000, RateLimitPeriod: 60, LogRetentionDays: 7, AnalysisWorkers: 5,
 		},
 	}
 }
@@ -287,11 +338,63 @@ func getConfigValue(cfg *models.Config, path string) (string, error) {
 	return models.GetConfigValue(cfg, path)
 }
 
-func createConfigStructure(cmd *cobra.Command) error {
-	baseDir, err := core.GetAppDir()
+// buildInitConfig aplica los flags de `config init` sobre la configuración por
+// defecto. Antes se registraban y nunca se leían.
+func buildInitConfig(cmd *cobra.Command) (models.Config, error) {
+	cfg := getDefaultConfig()
+	flags := cmd.Flags()
+
+	if flags.Changed("wallhaven-api-key") {
+		key, _ := flags.GetString("wallhaven-api-key")
+		cfg.Providers.Wallhaven.APIKey = key
+	}
+	if flags.Changed("providers") {
+		providers, _ := flags.GetStringSlice("providers")
+		enabled := make(map[string]bool, len(providers))
+		for _, p := range providers {
+			enabled[strings.ToLower(strings.TrimSpace(p))] = true
+		}
+		cfg.Providers.Wallhaven.Enabled = enabled["wallhaven"]
+		cfg.Providers.Reddit.Enabled = enabled["reddit"]
+		cfg.Providers.Nasa.Enabled = enabled["nasa"]
+		cfg.Providers.Bing.Enabled = enabled["bing"]
+		cfg.Providers.Unsplash.Enabled = enabled["unsplash"]
+	}
+	if flags.Changed("min-resolution") {
+		res, _ := flags.GetString("min-resolution")
+		width, height, err := utils.ParseResolution(res)
+		if err != nil {
+			return cfg, fmt.Errorf("invalid --min-resolution %q: %w", res, err)
+		}
+		cfg.Search.MinWidth = width
+		cfg.Search.MinHeight = height
+	}
+	if flags.Changed("change-interval") {
+		interval, _ := flags.GetInt("change-interval")
+		cfg.Behavior.ChangeInterval = interval
+	}
+	if flags.Changed("wallpapers-dir") {
+		dir, _ := flags.GetString("wallpapers-dir")
+		cfg.Paths.Wallpapers = dir
+	}
+	if flags.Changed("multi-monitor") {
+		mode, _ := flags.GetString("multi-monitor")
+		cfg.Behavior.MultiMonitor = mode
+	}
+
+	cfg.Normalize()
+	if err := cfg.Validate(); err != nil {
+		return cfg, err
+	}
+	return cfg, nil
+}
+
+func createConfigStructure(cmd *cobra.Command, cfg models.Config) error {
+	configFile, err := getConfigPath()
 	if err != nil {
 		return err
 	}
+	baseDir := filepath.Dir(configFile)
 
 	dirs := []string{
 		baseDir,
@@ -304,7 +407,7 @@ func createConfigStructure(cmd *cobra.Command) error {
 
 	for _, d := range dirs {
 		if err := os.MkdirAll(d, 0755); err != nil {
-			return fmt.Errorf("error creando directorio %s: %v", d, err)
+			return fmt.Errorf("error creando directorio %s: %w", d, err)
 		}
 	}
 
@@ -326,16 +429,12 @@ func createConfigStructure(cmd *cobra.Command) error {
 		}
 	}
 
-	configFile := filepath.Join(baseDir, "config.json")
-
 	if _, err := os.Stat(configFile); !os.IsNotExist(err) {
-		return nil // Already exists
+		return nil // Already exists; nunca se sobrescribe.
 	}
 
-	defaultConfig := getDefaultConfig()
-
-	if err := saveConfig(&defaultConfig); err != nil {
-		return fmt.Errorf("error guardando configuración inicial: %v", err)
+	if err := saveConfig(&cfg); err != nil {
+		return fmt.Errorf("error guardando configuración inicial: %w", err)
 	}
 
 	if !config.Quiet {
@@ -345,23 +444,24 @@ func createConfigStructure(cmd *cobra.Command) error {
 }
 
 func runConfigInit(cmd *cobra.Command, args []string) {
-	// Usar la misma lógica que getConfigPath para encontrar el directorio correcto.
-	configDir, err := os.UserConfigDir()
+	configFile, err := getConfigPath()
 	if err != nil {
-		homeDir, errHome := os.UserHomeDir()
-		if errHome != nil {
-			fmt.Printf("Error getting user home or config directory: %v\n", errHome)
-			return
-		}
-		configDir = filepath.Join(homeDir, ".config")
+		cmd.PrintErrf("Error resolving config path: %v\n", err)
+		setCommandError(err)
+		return
 	}
-	baseDir := filepath.Join(configDir, "gower")
-	configFile := filepath.Join(baseDir, "config.json")
 
 	if _, err := os.Stat(configFile); !os.IsNotExist(err) {
 		if !config.Quiet {
 			cmd.Printf("El archivo de configuración ya existe en: %s\n", configFile)
 		}
+		return
+	}
+
+	cfg, err := buildInitConfig(cmd)
+	if err != nil {
+		cmd.PrintErrf("Error: %v\n", err)
+		setCommandError(err)
 		return
 	}
 
@@ -375,8 +475,9 @@ func runConfigInit(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	if err := createConfigStructure(cmd); err != nil {
-		cmd.Printf("Error: %v\n", err)
+	if err := createConfigStructure(cmd, cfg); err != nil {
+		cmd.PrintErrf("Error: %v\n", err)
+		setCommandError(err)
 	}
 }
 

@@ -28,6 +28,21 @@ var (
 	daemonForce         bool
 	daemonJSON          bool
 	daemonForeground    bool
+
+	daemonTransitionType     string
+	daemonTransitionDuration float64
+	daemonTransitionFPS      int
+	daemonTransitionStep     int
+	daemonTransitionAngle    int
+	daemonTransitionPos      string
+	daemonTransitionBezier   string
+	daemonTransitionWave     string
+	daemonTransitionEngine   string
+	daemonTransitionLinger   int
+	daemonTransitionMask     string
+	daemonTransitionFeather  float64
+	daemonTransitionInvert   bool
+	daemonTransitionLayer    string
 )
 
 var daemonCmd = &cobra.Command{
@@ -59,8 +74,7 @@ var daemonPauseCmd = &cobra.Command{
 	Use:   "pause",
 	Short: "Pause the daemon",
 	Run: func(cmd *cobra.Command, args []string) {
-		pidFile := getPidFilePath()
-		if _, err := os.Stat(pidFile); os.IsNotExist(err) {
+		if _, alive := daemonPID(); !alive {
 			if !config.Quiet {
 				cmd.Println("Daemon not running.")
 			}
@@ -68,7 +82,7 @@ var daemonPauseCmd = &cobra.Command{
 		}
 		pauseFile := getPauseFilePath()
 		if f, err := os.Create(pauseFile); err != nil {
-			cmd.Printf("Error creating pause signal: %v\n", err)
+			cmd.PrintErrf("Error creating pause signal: %v\n", err)
 		} else {
 			if err := f.Close(); err != nil {
 				utils.Log.Error("Failed to close pause file: %v", err)
@@ -100,8 +114,7 @@ var daemonResumeCmd = &cobra.Command{
 	Use:   "resume",
 	Short: "Resume the daemon",
 	Run: func(cmd *cobra.Command, args []string) {
-		pidFile := getPidFilePath()
-		if _, err := os.Stat(pidFile); os.IsNotExist(err) {
+		if _, alive := daemonPID(); !alive {
 			if !config.Quiet {
 				cmd.Println("Daemon not running.")
 			}
@@ -110,7 +123,7 @@ var daemonResumeCmd = &cobra.Command{
 		pauseFile := getPauseFilePath()
 		if err := os.Remove(pauseFile); err != nil {
 			if !os.IsNotExist(err) {
-				cmd.Printf("Error removing pause signal: %v\n", err)
+				cmd.PrintErrf("Error removing pause signal: %v\n", err)
 			}
 		}
 		if !config.Quiet {
@@ -133,13 +146,22 @@ func init() {
 	daemonStartCmd.Flags().BoolVar(&daemonFromFavorites, "from-favorites", false, "Include favorites")
 	daemonStartCmd.Flags().StringVar(&daemonTheme, "theme", "", "Filter by theme")
 	daemonStartCmd.Flags().BoolVar(&daemonForeground, "foreground", false, "Run in foreground (blocking)")
+	daemonStartCmd.Flags().StringVar(&daemonTransitionType, "transition-type", "", "transition effect for awww/swww")
+	daemonStartCmd.Flags().Float64Var(&daemonTransitionDuration, "transition-duration", 0, "transition duration in seconds")
+	daemonStartCmd.Flags().IntVar(&daemonTransitionFPS, "transition-fps", 0, "transition frame rate")
+	daemonStartCmd.Flags().IntVar(&daemonTransitionStep, "transition-step", 0, "transition step")
+	daemonStartCmd.Flags().IntVar(&daemonTransitionAngle, "transition-angle", 0, "wipe/wave angle in degrees")
+	daemonStartCmd.Flags().StringVar(&daemonTransitionPos, "transition-pos", "", "grow/outer center")
+	daemonStartCmd.Flags().StringVar(&daemonTransitionBezier, "transition-bezier", "", "fade bezier curve")
+	daemonStartCmd.Flags().StringVar(&daemonTransitionWave, "transition-wave", "", "wave width and height")
+	daemonStartCmd.Flags().StringVar(&daemonTransitionEngine, "transition-engine", "", "transition engine [auto|awww|roserlay]")
+	daemonStartCmd.Flags().IntVar(&daemonTransitionLinger, "transition-linger", 0, "roserlay: ms to keep the overlay after committing the image")
+	daemonStartCmd.Flags().StringVar(&daemonTransitionMask, "transition-mask", "", "roserlay mask [crossfade|wipe|radial|drops|random|color|edges|luminance|hue|saliency|diff]")
+	daemonStartCmd.Flags().Float64Var(&daemonTransitionFeather, "transition-feather", 0, "roserlay mask feather (0..1)")
+	daemonStartCmd.Flags().BoolVar(&daemonTransitionInvert, "transition-invert", false, "roserlay: invert reveal order")
+	daemonStartCmd.Flags().StringVar(&daemonTransitionLayer, "transition-layer", "", "roserlay layer [background|bottom|top|overlay]")
 
 	daemonStopCmd.Flags().BoolVar(&daemonForce, "force", false, "Force stop")
-	daemonStatusCmd.Flags().BoolVar(&daemonJSON, "json", false, "Output in JSON")
-}
-
-// init initializes randomness
-func init() {
 }
 
 func getPidFilePath() string {
@@ -155,6 +177,61 @@ func getPauseFilePath() string {
 func getStopFilePath() string {
 	appDir, _ := core.GetAppDir()
 	return filepath.Join(appDir, "gower.stop")
+}
+
+// processAlive comprueba si un PID sigue vivo con la señal 0.
+func processAlive(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	return proc.Signal(syscall.Signal(0)) == nil
+}
+
+// daemonPID lee el PID file y comprueba que el proceso siga vivo.
+func daemonPID() (int, bool) {
+	data, err := os.ReadFile(getPidFilePath())
+	if err != nil {
+		return 0, false
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil || pid <= 0 {
+		return 0, false
+	}
+	return pid, processAlive(pid)
+}
+
+// acquirePidFile crea el PID file con O_EXCL para que dos arranques
+// simultáneos no puedan pasar ambos la comprobación de existencia.
+func acquirePidFile(path string) error {
+	for attempt := 0; attempt < 2; attempt++ {
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+		if err == nil {
+			_, writeErr := fmt.Fprintf(f, "%d", os.Getpid())
+			if writeErr != nil {
+				_ = f.Close()
+				_ = os.Remove(path)
+				return writeErr
+			}
+			_ = f.Sync()
+			return f.Close()
+		}
+		if !os.IsExist(err) {
+			return err
+		}
+
+		if pid, alive := daemonPID(); alive {
+			return fmt.Errorf("daemon already running with PID %d", pid)
+		}
+		// PID file obsoleto: se elimina y se reintenta la creación exclusiva.
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return fmt.Errorf("could not acquire pid file %s", path)
 }
 
 func runDaemonStart(cmd *cobra.Command, args []string) {
@@ -201,53 +278,33 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 			return
 		}
 		// Pass --foreground to the child process so it runs in foreground mode
-		// and doesn't try to fork again.
-		procArgs := append(os.Args[1:], "--foreground")
+		// and doesn't try to fork again. Se copia el slice para no mutar os.Args.
+		procArgs := make([]string, 0, len(os.Args))
+		for _, arg := range os.Args[1:] {
+			if arg != "--foreground" {
+				procArgs = append(procArgs, arg)
+			}
+		}
+		procArgs = append(procArgs, "--foreground")
 		command := exec.Command(exe, procArgs...) //nolint:gosec // Starting self, not a security issue.
+		detachProcess(command)
 
 		if err := command.Start(); err != nil {
-			cmd.Printf("Error starting daemon: %v\n", err)
+			cmd.PrintErrf("Error starting daemon: %v\n", err)
 			return
 		}
+		pid := command.Process.Pid
+		_ = command.Process.Release()
 		if !config.Quiet {
-			cmd.Printf("Daemon started in background with PID %d\n", command.Process.Pid)
+			cmd.Printf("Daemon started in background with PID %d\n", pid)
 		}
 		return
 	}
 
-	// This block runs when --foreground is true (i.e., the background process itself)
+	// This block runs when --foreground is true (i.e., the background process itself).
 	pidFile := getPidFilePath()
-	// Double check if PID file exists and process is running, in case of race condition
-	if _, err := os.Stat(pidFile); err == nil { // PID file exists
-		if !config.Quiet {
-			cmd.Println("Checking for existing daemon process in foreground mode...")
-		}
-		pid := os.Getpid()
-		pidData, readErr := os.ReadFile(pidFile)
-		if readErr == nil {
-			existingPid, _ := strconv.Atoi(string(pidData))
-			if existingPid > 0 && existingPid != pid { // If PID file points to a different running process
-				proc, findErr := os.FindProcess(existingPid)
-				if findErr == nil {
-					if err := proc.Signal(syscall.Signal(0)); err == nil {
-						// Another daemon is already running, this is a duplicate foreground start
-						if !config.Quiet {
-							cmd.Printf("Another daemon is already running with PID %d. Exiting foreground start.\n", existingPid)
-						}
-						return
-					}
-				}
-			}
-		}
-		// If PID file exists but process is not running, or it was our own stale PID, remove it.
-		if err := os.Remove(pidFile); err != nil && !os.IsNotExist(err) {
-			utils.Log.Error("Failed to remove stale PID file in foreground: %v", err)
-		}
-	}
-
-	pid := os.Getpid()
-	if err := os.WriteFile(pidFile, []byte(strconv.Itoa(pid)), 0644); err != nil {
-		cmd.Printf("Error writing PID file: %v\n", err)
+	if err := acquirePidFile(pidFile); err != nil {
+		cmd.PrintErrf("Error: %v\n", err)
 		return
 	}
 	defer func() {
@@ -256,6 +313,8 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 		}
 		utils.Log.Info("Daemon stopped, PID file removed.")
 	}()
+
+	pid := os.Getpid()
 
 	if !config.Quiet { // This message is for the foreground process itself
 		cmd.Printf("Daemon started with PID %d\n", pid)
@@ -303,8 +362,16 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 			cmd.Printf("Detected Monitors: %d\n", len(monitors))
 			cmd.Printf("Theme Filter: %s\n", themeDisplay)
 			cmd.Printf("From Favorites: %v\n", daemonFromFavorites)
+			cmd.Printf("Transition: %s (engine=%s, linger=%dms)\n", cfg.Behavior.Transition.Type, cfg.Behavior.Transition.Engine, cfg.Behavior.Transition.Linger)
 			cmd.Println("----------------------------")
 		}
+	}
+
+	// time.NewTicker hace panic con un intervalo <= 0. Validarlo aquí evita un
+	// crash-loop bajo systemd (Restart=on-failure).
+	if daemonInterval <= 0 || daemonInterval > 24*60 {
+		cmd.PrintErrf("Error: interval must be between 1 and %d minutes, got %d\n", 24*60, daemonInterval)
+		return
 	}
 
 	sigChan := make(chan os.Signal, 1)
@@ -368,6 +435,57 @@ func runDaemonStart(cmd *cobra.Command, args []string) {
 	}
 }
 
+// resolveDaemonTransition aplica la precedencia flag de `daemon start` > config.
+func resolveDaemonTransition(cfg *models.Config, cmd *cobra.Command) models.TransitionConfig {
+	t := cfg.Behavior.Transition
+	if cmd == nil {
+		return t
+	}
+	if f := cmd.Flags().Lookup("transition-type"); f != nil && f.Changed {
+		t.Type = daemonTransitionType
+	}
+	if f := cmd.Flags().Lookup("transition-duration"); f != nil && f.Changed {
+		t.Duration = daemonTransitionDuration
+	}
+	if f := cmd.Flags().Lookup("transition-fps"); f != nil && f.Changed {
+		t.FPS = daemonTransitionFPS
+	}
+	if f := cmd.Flags().Lookup("transition-step"); f != nil && f.Changed {
+		t.Step = daemonTransitionStep
+	}
+	if f := cmd.Flags().Lookup("transition-angle"); f != nil && f.Changed {
+		t.Angle = daemonTransitionAngle
+	}
+	if f := cmd.Flags().Lookup("transition-pos"); f != nil && f.Changed {
+		t.Pos = daemonTransitionPos
+	}
+	if f := cmd.Flags().Lookup("transition-bezier"); f != nil && f.Changed {
+		t.Bezier = daemonTransitionBezier
+	}
+	if f := cmd.Flags().Lookup("transition-wave"); f != nil && f.Changed {
+		t.Wave = daemonTransitionWave
+	}
+	if f := cmd.Flags().Lookup("transition-engine"); f != nil && f.Changed {
+		t.Engine = daemonTransitionEngine
+	}
+	if f := cmd.Flags().Lookup("transition-linger"); f != nil && f.Changed {
+		t.Linger = daemonTransitionLinger
+	}
+	if f := cmd.Flags().Lookup("transition-mask"); f != nil && f.Changed {
+		t.Mask = daemonTransitionMask
+	}
+	if f := cmd.Flags().Lookup("transition-feather"); f != nil && f.Changed {
+		t.Feather = daemonTransitionFeather
+	}
+	if f := cmd.Flags().Lookup("transition-invert"); f != nil && f.Changed {
+		t.Invert = daemonTransitionInvert
+	}
+	if f := cmd.Flags().Lookup("transition-layer"); f != nil && f.Changed {
+		t.Layer = daemonTransitionLayer
+	}
+	return t
+}
+
 func changeWallpaper(cmd *cobra.Command) {
 	cfg, err := loadConfig()
 	if err != nil {
@@ -380,6 +498,12 @@ func changeWallpaper(cmd *cobra.Command) {
 	controller := core.NewController(cfg)
 
 	targetTheme := daemonTheme
+	if targetTheme == "" {
+		targetTheme = cfg.Behavior.Theme
+	}
+	if targetTheme == "auto" {
+		targetTheme = ""
+	}
 	if targetTheme == "" && cfg.Behavior.RespectDarkMode {
 		if core.IsSystemInDarkMode() {
 			targetTheme = "dark"
@@ -390,6 +514,7 @@ func changeWallpaper(cmd *cobra.Command) {
 
 	// 1. Prepare Monitor Configuration
 	changer := core.NewWallpaperChanger("", cfg.Behavior.RespectDarkMode)
+	changer.Transition = resolveDaemonTransition(cfg, cmd)
 	if config.Debug {
 		utils.Log.Info("Daemon Debug: Desktop Environment detected: %s", changer.Env)
 	}
@@ -477,6 +602,14 @@ func changeWallpaper(cmd *cobra.Command) {
 		return
 	}
 
+	// Si fallaron algunas descargas, las listas de paths y monitores ya no
+	// cuadran. Se cae a clone para no aplicar el fondo equivocado a un monitor.
+	if len(selectedPaths) < needed {
+		utils.Log.Info("Daemon: only %d of %d wallpapers downloaded; falling back to clone mode", len(selectedPaths), needed)
+		mmMode = "clone"
+		selectedPaths = selectedPaths[:1]
+	}
+
 	// 4. Apply Wallpapers
 	if err := changer.SetWallpapers(selectedPaths, monitors, mmMode); err != nil {
 		utils.Log.Error("Daemon failed to set wallpapers: %v", err)
@@ -497,16 +630,21 @@ func changeWallpaper(cmd *cobra.Command) {
 		// Update state so 'gower status' knows what's set
 		if len(selectedWallpapers) > 0 {
 			if state, err := loadState(); err == nil {
-				var ids []string
+				ids := make([]string, 0, len(selectedWallpapers))
 				for _, wp := range selectedWallpapers {
 					ids = append(ids, wp.ID)
 				}
-				state.CurrentWallpapers = ids
 
-				if state.CurrentWallpaperID != selectedWallpapers[0].ID {
-					state.PreviousWallpaperID = state.CurrentWallpaperID
-					state.CurrentWallpaperID = selectedWallpapers[0].ID
+				// Guardar el estado anterior para que 'gower set undo' funcione
+				// también tras un cambio hecho por el daemon.
+				state.PreviousWallpapers = append([]string(nil), state.CurrentWallpapers...)
+				state.PreviousWallpaperID = state.CurrentWallpaperID
+
+				state.CurrentWallpapers = ids
+				if len(ids) > 0 {
+					state.CurrentWallpaperID = ids[0]
 				}
+
 				if err := saveState(state); err != nil {
 					utils.Log.Error("Failed to save state: %v", err)
 				}
@@ -517,70 +655,93 @@ func changeWallpaper(cmd *cobra.Command) {
 
 func runDaemonStop(cmd *cobra.Command, args []string) {
 	pidFile := getPidFilePath()
-	if _, err := os.Stat(pidFile); os.IsNotExist(err) {
+	pid, alive := daemonPID()
+
+	if !alive {
 		if !config.Quiet {
-			cmd.Println("Daemon not running (no pid file).")
+			cmd.Println("Daemon not running (no live pid file).")
 		}
-		// If forcing, try to remove control files anyway
+		// Limpiar el PID file obsoleto y los ficheros de control.
+		_ = os.Remove(pidFile)
 		if daemonForce {
-			if err := os.Remove(getStopFilePath()); err != nil && !os.IsNotExist(err) {
-				utils.Log.Error("Forced stop: failed to remove stop file: %v", err)
-			}
-			if err := os.Remove(getPauseFilePath()); err != nil && !os.IsNotExist(err) {
-				utils.Log.Error("Forced stop: failed to remove pause file: %v", err)
-			}
+			_ = os.Remove(getStopFilePath())
+			_ = os.Remove(getPauseFilePath())
 		}
 		return
 	}
 
-	// Create stop file
 	stopFile := getStopFilePath()
-	if f, err := os.Create(stopFile); err != nil {
-		cmd.Printf("Error creating stop signal: %v\n", err)
-	} else {
-		_ = f.Close() // Error on close is not critical here.
-		if !config.Quiet {
-			cmd.Println("Stop signal sent.")
+	if err := os.WriteFile(stopFile, []byte{}, 0644); err != nil {
+		cmd.PrintErrf("Error creating stop signal: %v\n", err)
+		return
+	}
+	if !config.Quiet {
+		cmd.Println("Stop signal sent.")
+	}
+
+	if !daemonForce {
+		return
+	}
+
+	// --force no debe dejar un daemon huérfano vivo: se escala a señales.
+	if proc, err := os.FindProcess(pid); err == nil {
+		_ = proc.Signal(syscall.SIGTERM)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if !processAlive(pid) {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if processAlive(pid) {
+		if proc, err := os.FindProcess(pid); err == nil {
+			_ = proc.Signal(syscall.SIGKILL)
 		}
 	}
 
-	if daemonForce {
-		// Also remove pid file to allow immediate restart
-		if err := os.Remove(pidFile); err != nil && !os.IsNotExist(err) {
-			utils.Log.Error("Forced stop: failed to remove pid file: %v", err)
-		}
-		if !config.Quiet {
-			cmd.Println("Forcing stop: removed pid file.")
-		}
+	if err := os.Remove(pidFile); err != nil && !os.IsNotExist(err) {
+		utils.Log.Error("Forced stop: failed to remove pid file: %v", err)
+	}
+	if !config.Quiet {
+		cmd.Printf("Forced stop: daemon PID %d terminated and pid file removed.\n", pid)
 	}
 }
 
 func runDaemonStatus(cmd *cobra.Command, args []string) {
-	pidFile := getPidFilePath()
-	data, err := os.ReadFile(pidFile)
-	running := false
-	pid := 0
+	pid, running := daemonPID()
+	_, pausedErr := os.Stat(getPauseFilePath())
+	paused := pausedErr == nil
 
-	// The presence of the PID file is our primary indicator.
-	// The daemon is responsible for cleaning it up on exit.
-	if err == nil {
-		running = true
-		pid, _ = strconv.Atoi(string(data))
+	type statusOutput struct {
+		Running bool `json:"running"`
+		PID     int  `json:"pid"`
+		Paused  bool `json:"paused"`
+	}
+	status := statusOutput{Running: running, PID: pid, Paused: paused}
+
+	if daemonJSON || config.JSONOutput {
+		jsonOut, err := json.Marshal(status)
+		if err != nil {
+			cmd.PrintErrf("Error encoding status: %v\n", err)
+			return
+		}
+		cmd.Println(string(jsonOut))
+		return
 	}
 
-	if daemonJSON {
-		status := map[string]interface{}{
-			"running": running,
-			"pid":     pid, // Will be 0 if not running
+	if config.Quiet {
+		return
+	}
+	if running {
+		suffix := ""
+		if paused {
+			suffix = " [paused]"
 		}
-		jsonOut, _ := json.Marshal(status)
-		cmd.Println(string(jsonOut))
-	} else if !config.Quiet {
-		if running {
-			cmd.Printf("Daemon is running (PID: %d)\n", pid)
-		} else {
-			cmd.Println("Daemon is stopped.")
-		}
+		cmd.Printf("Daemon is running (PID: %d)%s\n", pid, suffix)
+	} else {
+		cmd.Println("Daemon is stopped.")
 	}
 }
 
@@ -614,23 +775,30 @@ func runDaemonInstall(cmd *cobra.Command, args []string) {
 	}
 
 	servicePath := filepath.Join(serviceDir, "gower.service")
+	execStart := exe
+	if strings.ContainsAny(execStart, " \t\"'\\") {
+		execStart = strconv.Quote(execStart)
+	}
 	unit := fmt.Sprintf(`[Unit]
 Description=Gower Wallpaper Daemon
 Documentation=https://github.com/nefDevelop/gower
-After=network.target
+After=network.target graphical-session.target
 
 [Service]
 Type=simple
 ExecStart=%s daemon start --foreground
+Environment=PATH=%%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 Restart=on-failure
 RestartSec=30
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Install]
-WantedBy=default.target
-`, exe)
+WantedBy=graphical-session.target
+`, execStart)
 
 	if err := os.WriteFile(servicePath, []byte(unit), 0644); err != nil {
-		cmd.Printf("Error writing service file: %v\n", err)
+		cmd.PrintErrf("Error writing service file: %v\n", err)
 		return
 	}
 
@@ -645,7 +813,8 @@ WantedBy=default.target
 		c.Stderr = os.Stderr
 		c.Stdout = os.Stdout
 		if err := c.Run(); err != nil {
-			cmd.Printf("Warning: systemctl %s failed: %v\n", strings.Join(args, " "), err)
+			cmd.PrintErrf("Error: systemctl %s failed: %v\n", strings.Join(args, " "), err)
+			return
 		}
 	}
 
@@ -671,18 +840,27 @@ func runDaemonUninstall(cmd *cobra.Command, args []string) {
 	c := exec.Command("systemctl", "--user", "disable", "--now", "gower.service")
 	c.Stderr = os.Stderr
 	c.Stdout = os.Stdout
-	_ = c.Run()
+	if err := c.Run(); err != nil {
+		cmd.PrintErrf("Warning: systemctl disable --now failed: %v\n", err)
+	}
 
 	homeDir, err := os.UserHomeDir()
 	if err == nil {
 		servicePath := filepath.Join(homeDir, ".config", "systemd", "user", "gower.service")
 		if err := os.Remove(servicePath); err != nil && !os.IsNotExist(err) {
-			utils.Log.Error("Failed to remove service file: %v", err)
+			cmd.PrintErrf("Warning: failed to remove service file: %v\n", err)
 		}
 	}
 
-	// Reload systemd
-	_ = exec.Command("systemctl", "--user", "daemon-reload").Run()
+	// Reload systemd and clear any failed state.
+	for _, args := range [][]string{
+		{"--user", "daemon-reload"},
+		{"--user", "reset-failed", "gower.service"},
+	} {
+		if err := exec.Command("systemctl", args...).Run(); err != nil {
+			utils.Log.Error("systemctl %s failed: %v", strings.Join(args, " "), err)
+		}
+	}
 
 	if !config.Quiet {
 		cmd.Println("Daemon systemd service removed.")

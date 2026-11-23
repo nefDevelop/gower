@@ -2,7 +2,6 @@ package providers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -39,22 +38,20 @@ func (p *UnsplashProvider) Search(ctx context.Context, query string, opts Search
 }
 
 func (p *UnsplashProvider) fetchRandom(ctx context.Context, limit int, excludeIDs map[string]bool) ([]models.Wallpaper, error) {
-	if limit <= 0 {
-		limit = 30
-	}
-	if limit > 30 {
-		limit = 30
-	}
+	limit = normalizeLimit(limit, 30, 30)
 
-	u, _ := url.Parse(UnsplashBaseURL + "/photos/random")
+	u, err := url.Parse(UnsplashBaseURL + "/photos/random")
+	if err != nil {
+		return nil, err
+	}
 	q := u.Query()
 	q.Set("count", strconv.Itoa(limit))
 	u.RawQuery = q.Encode()
 
 	p.log().Debug("Unsplash random fetching: %s", u.String())
 
-	if p.RateLimiter != nil {
-		p.RateLimiter.Wait()
+	if err := waitRateLimiter(p.RateLimiter, ctx); err != nil {
+		return nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
@@ -62,18 +59,18 @@ func (p *UnsplashProvider) fetchRandom(ctx context.Context, limit int, excludeID
 	}
 	req.Header.Set("Authorization", "Client-ID "+p.APIKey)
 
-	resp, err := utils.DefaultHTTPClient.Do(req)
+	resp, err := utils.DoRequest(ctx, utils.DefaultHTTPClient, req, 3) //nolint:bodyclose // cerrado con utils.CloseResponse
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer utils.CloseResponse(resp)
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unsplash api returned status: %d", resp.StatusCode)
 	}
 
 	var photos []unsplashPhoto
-	if err := json.NewDecoder(resp.Body).Decode(&photos); err != nil {
+	if err := utils.DecodeJSON(resp.Body, &photos); err != nil {
 		return nil, err
 	}
 
@@ -81,19 +78,16 @@ func (p *UnsplashProvider) fetchRandom(ctx context.Context, limit int, excludeID
 }
 
 func (p *UnsplashProvider) searchPhotos(ctx context.Context, query string, opts SearchOptions) ([]models.Wallpaper, error) {
-	perPage := opts.Limit
-	if perPage <= 0 {
-		perPage = 30
-	}
-	if perPage > 30 {
-		perPage = 30
-	}
+	perPage := normalizeLimit(opts.Limit, 30, 30)
 	page := opts.Page
 	if page <= 0 {
 		page = 1
 	}
 
-	u, _ := url.Parse(UnsplashBaseURL + "/search/photos")
+	u, err := url.Parse(UnsplashBaseURL + "/search/photos")
+	if err != nil {
+		return nil, err
+	}
 	q := u.Query()
 	q.Set("query", query)
 	q.Set("per_page", strconv.Itoa(perPage))
@@ -102,8 +96,8 @@ func (p *UnsplashProvider) searchPhotos(ctx context.Context, query string, opts 
 
 	p.log().Debug("Unsplash search fetching: %s", u.String())
 
-	if p.RateLimiter != nil {
-		p.RateLimiter.Wait()
+	if err := waitRateLimiter(p.RateLimiter, ctx); err != nil {
+		return nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
@@ -111,11 +105,11 @@ func (p *UnsplashProvider) searchPhotos(ctx context.Context, query string, opts 
 	}
 	req.Header.Set("Authorization", "Client-ID "+p.APIKey)
 
-	resp, err := utils.DefaultHTTPClient.Do(req)
+	resp, err := utils.DoRequest(ctx, utils.DefaultHTTPClient, req, 3) //nolint:bodyclose // cerrado con utils.CloseResponse
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer utils.CloseResponse(resp)
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unsplash api returned status: %d", resp.StatusCode)
@@ -125,11 +119,11 @@ func (p *UnsplashProvider) searchPhotos(ctx context.Context, query string, opts 
 		Total   int             `json:"total"`
 		Results []unsplashPhoto `json:"results"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := utils.DecodeJSON(resp.Body, &result); err != nil {
 		return nil, err
 	}
 
-	return p.mapPhotos(result.Results, opts.Limit, opts.ExcludeIDs), nil
+	return p.mapPhotos(result.Results, perPage, opts.ExcludeIDs), nil
 }
 
 type unsplashPhoto struct {
@@ -156,7 +150,11 @@ type unsplashPhoto struct {
 }
 
 func (p *UnsplashProvider) mapPhotos(photos []unsplashPhoto, limit int, excludeIDs map[string]bool) []models.Wallpaper {
-	var wallpapers []models.Wallpaper
+	if limit <= 0 {
+		limit = len(photos)
+	}
+
+	wallpapers := make([]models.Wallpaper, 0, limit)
 	for _, photo := range photos {
 		if len(wallpapers) >= limit {
 			break
@@ -176,10 +174,17 @@ func (p *UnsplashProvider) mapPhotos(photos []unsplashPhoto, limit int, excludeI
 			dim = fmt.Sprintf("%dx%d", photo.Width, photo.Height)
 		}
 
-		// Use raw URL with q=100 for max quality, or regular as fallback
 		imgURL := photo.Urls.Regular
 		if photo.Urls.Raw != "" {
-			imgURL = photo.Urls.Raw + "&q=100&w=2400"
+			if raw, err := url.Parse(photo.Urls.Raw); err == nil {
+				q := raw.Query()
+				q.Set("q", "100")
+				q.Set("w", "2400")
+				raw.RawQuery = q.Encode()
+				imgURL = raw.String()
+			} else {
+				imgURL = photo.Urls.Raw
+			}
 		}
 
 		wallpapers = append(wallpapers, models.Wallpaper{

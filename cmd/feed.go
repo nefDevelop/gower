@@ -57,10 +57,10 @@ var feedCmd = &cobra.Command{
 	Short: "Manage wallpaper feed/history",
 	Long:  `View, search and manage your wallpaper history feed`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if !config.JSONOutput {
-			cmd.Println("Ejecutando el comando 'feed'...")
-		}
+		// La ayuda va a stderr para no contaminar stdout cuando se usa --json.
+		cmd.SetOut(cmd.ErrOrStderr())
 		_ = cmd.Help()
+		cmd.SetOut(nil)
 	},
 }
 
@@ -85,10 +85,22 @@ var feedShowCmd = &cobra.Command{
 			feedLimit = cfg.UI.ItemsPerPage
 		}
 
+		if feedPage < 1 {
+			cmd.PrintErrln("Error: --page must be >= 1")
+			setCommandError(fmt.Errorf("--page must be >= 1"))
+			return
+		}
+		if feedLimit < 1 {
+			cmd.PrintErrln("Error: --limit must be >= 1")
+			setCommandError(fmt.Errorf("--limit must be >= 1"))
+			return
+		}
+
 		// Mostrar feed normal
 		wallpapers, err := controller.GetFeed(feedPage, feedLimit, "", feedTheme, feedColor, feedSort, feedRefresh)
 		if err != nil {
-			cmd.Printf("Error getting feed: %v\n", err)
+			cmd.PrintErrf("Error getting feed: %v\n", err)
+			setCommandError(err)
 			return
 		}
 
@@ -115,15 +127,24 @@ var feedPurgeCmd = &cobra.Command{
 			return
 		}
 
+		if config.DryRun {
+			if !config.Quiet {
+				cmd.Println("[DRY-RUN] Se vaciaría el feed y se reconstruiría el índice de colores.")
+			}
+			return
+		}
+
 		cfg, err := loadConfig()
 		if err != nil {
-			cmd.Printf("Error loading config: %v\n", err)
+			cmd.PrintErrf("Error loading config: %v\n", err)
+			setCommandError(err)
 			return
 		}
 		controller := core.NewController(cfg)
 
 		if err := controller.PurgeFeed(); err != nil {
-			cmd.Printf("Error purging feed: %v\n", err)
+			cmd.PrintErrf("Error purging feed: %v\n", err)
+			setCommandError(err)
 			return
 		}
 		cmd.Println(colorize(symbolCheck+" Feed purged successfully", colorGreen))
@@ -520,9 +541,27 @@ func displayStats(cmd *cobra.Command, controller *core.Controller) {
 	}
 }
 
-func displayWallpaper(cmd *cobra.Command, wallpaper interface{}, noColor bool) {
-	// Placeholder: Implementar lógica de visualización del wallpaper
-	cmd.Printf("Displaying wallpaper: %+v (Color disabled: %t)\n", wallpaper, noColor)
+func displayWallpaper(cmd *cobra.Command, wallpaper models.Wallpaper, noColor bool) {
+	if config.JSONOutput {
+		displayJSON(cmd, wallpaper)
+		return
+	}
+
+	cmd.Printf("ID: %s\n", wallpaper.ID)
+	cmd.Printf("URL: %s\n", wallpaper.URL)
+	cmd.Printf("Source: %s\n", wallpaper.Source)
+	if wallpaper.Dimension != "" {
+		cmd.Printf("Resolution: %s\n", wallpaper.Dimension)
+	}
+	if wallpaper.Theme != "" {
+		cmd.Printf("Theme: %s\n", wallpaper.Theme)
+	}
+	if !noColor && wallpaper.Color != "" {
+		cmd.Printf("Color: %s\n", wallpaper.Color)
+	}
+	if wallpaper.Title != "" {
+		cmd.Printf("Title: %s\n", wallpaper.Title)
+	}
 }
 
 func displayJSON(cmd *cobra.Command, data interface{}) {
